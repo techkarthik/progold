@@ -1,0 +1,337 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/tenant_model.dart';
+import '../services/api_service.dart';
+
+class AuthProvider with ChangeNotifier {
+  final ApiService _api = ApiService();
+
+  Tenant? _currentTenant;
+  String? _authToken;
+  bool _isLoading = false;
+  String? _errorMessage;
+  String? _successMessage;
+
+  // OTP State
+  bool _otpSent = false;
+  bool _otpVerified = false;
+  int _otpCountdown = 0;
+  Timer? _countdownTimer;
+  String? _devOtpCode;
+
+  // Turso Pre-test State
+  bool _isTestingTurso = false;
+  TursoTestResult? _tursoTestResult;
+
+  // Database Management State
+  List<TableOverview> _tenantTables = [];
+  bool _isLoadingTables = false;
+  TursoTestResult? _tenantDbHealth;
+
+  // Getters
+  Tenant? get currentTenant => _currentTenant;
+  String? get authToken => _authToken;
+  bool get isAuthenticated => _authToken != null && _currentTenant != null;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
+  String? get successMessage => _successMessage;
+
+  bool get otpSent => _otpSent;
+  bool get otpVerified => _otpVerified;
+  int get otpCountdown => _otpCountdown;
+  String? get devOtpCode => _devOtpCode;
+
+  bool get isTestingTurso => _isTestingTurso;
+  TursoTestResult? get tursoTestResult => _tursoTestResult;
+
+  List<TableOverview> get tenantTables => _tenantTables;
+  bool get isLoadingTables => _isLoadingTables;
+  TursoTestResult? get tenantDbHealth => _tenantDbHealth;
+
+  AuthProvider() {
+    _loadSavedSession();
+  }
+
+  void clearMessages() {
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+  }
+
+  /// Load session from SharedPreferences
+  Future<void> _loadSavedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    _authToken = prefs.getString('auth_token');
+    if (_authToken != null) {
+      final profile = await _api.getProfile(_authToken!);
+      if (profile != null) {
+        _currentTenant = profile;
+        fetchTenantDbOverview();
+      } else {
+        _authToken = null;
+        await prefs.remove('auth_token');
+      }
+      notifyListeners();
+    }
+  }
+
+  /// Request OTP for registration
+  Future<bool> sendOtp(String email) async {
+    if (email.isEmpty || !email.contains('@')) {
+      _errorMessage = "Please enter a valid email address.";
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+
+    final res = await _api.sendOtp(email);
+    _isLoading = false;
+
+    if (res['success'] == true) {
+      _otpSent = true;
+      _otpVerified = false;
+      _devOtpCode = res['devOtp'];
+      _successMessage = res['message'] ?? "OTP sent to $email";
+      _startCountdown(60);
+      notifyListeners();
+      return true;
+    } else {
+      _errorMessage = res['message'] ?? "Failed to send OTP.";
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Verify entered OTP
+  Future<bool> verifyOtp(String email, String code) async {
+    if (code.length < 6) {
+      _errorMessage = "Please enter the complete 6-digit OTP.";
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    final res = await _api.verifyOtp(email, code);
+    _isLoading = false;
+
+    if (res['success'] == true) {
+      _otpVerified = true;
+      _successMessage = "Email verified successfully! You can now proceed to register.";
+      notifyListeners();
+      return true;
+    } else {
+      _errorMessage = res['message'] ?? "Invalid or expired OTP.";
+      notifyListeners();
+      return false;
+    }
+  }
+
+  void _startCountdown(int seconds) {
+    _otpCountdown = seconds;
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_otpCountdown > 0) {
+        _otpCountdown--;
+        notifyListeners();
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  /// Test Turso Connection before Registering
+  Future<void> testTursoConnection(String url, String token) async {
+    if (url.isEmpty || token.isEmpty) {
+      _errorMessage = "Please provide both Turso Database URL and Auth Token.";
+      notifyListeners();
+      return;
+    }
+
+    _isTestingTurso = true;
+    _tursoTestResult = null;
+    _errorMessage = null;
+    notifyListeners();
+
+    final result = await _api.testTursoConnection(url, token);
+    _isTestingTurso = false;
+    _tursoTestResult = result;
+    if (!result.success) {
+      _errorMessage = result.message;
+    }
+    notifyListeners();
+  }
+
+  /// Register Tenant
+  Future<bool> registerTenant({
+    required String email,
+    required String password,
+    required String contactNumber,
+    required String tursoUrl,
+    required String tursoToken,
+    required String validFrom,
+    required String validTo,
+  }) async {
+    if (!_otpVerified) {
+      _errorMessage = "Please verify your email with OTP first.";
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+
+    final res = await _api.register(
+      email: email,
+      password: password,
+      contactNumber: contactNumber,
+      tursoUrl: tursoUrl,
+      tursoToken: tursoToken,
+      validFrom: validFrom,
+      validTo: validTo,
+    );
+
+    _isLoading = false;
+
+    if (res['success'] == true) {
+      _authToken = res['token'];
+      if (res['tenant'] != null) {
+        _currentTenant = Tenant.fromJson(res['tenant']);
+      }
+      final prefs = await SharedPreferences.getInstance();
+      if (_authToken != null) {
+        await prefs.setString('auth_token', _authToken!);
+      }
+      _successMessage = "Registration successful! Welcome to ProGold.";
+      fetchTenantDbOverview();
+      notifyListeners();
+      return true;
+    } else {
+      _errorMessage = res['message'] ?? "Registration failed.";
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Login Tenant
+  Future<bool> login({
+    required String email,
+    required String password,
+  }) async {
+    _isLoading = true;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+
+    final res = await _api.login(email: email, password: password);
+    _isLoading = false;
+
+    if (res['success'] == true) {
+      _authToken = res['token'];
+      if (res['tenant'] != null) {
+        _currentTenant = Tenant.fromJson(res['tenant']);
+      }
+      final prefs = await SharedPreferences.getInstance();
+      if (_authToken != null) {
+        await prefs.setString('auth_token', _authToken!);
+      }
+      _successMessage = "Welcome back!";
+      fetchTenantDbOverview();
+      notifyListeners();
+      return true;
+    } else {
+      _errorMessage = res['message'] ?? "Login failed.";
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Refresh Tenant DB Overview
+  Future<void> fetchTenantDbOverview() async {
+    if (_authToken == null) return;
+    _isLoadingTables = true;
+    notifyListeners();
+
+    _tenantTables = await _api.getTenantDbOverview(_authToken!);
+    _tenantDbHealth = await _api.testTenantDbHealth(_authToken!);
+
+    _isLoadingTables = false;
+    notifyListeners();
+  }
+
+  /// Execute dynamic SQL on tenant DB
+  Future<QueryResult> executeQuery(String sql) async {
+    if (_authToken == null) {
+      return QueryResult(success: false, message: "Not authenticated");
+    }
+    final result = await _api.executeTenantQuery(_authToken!, sql);
+    if (result.success) {
+      fetchTenantDbOverview(); // Refresh table stats after query
+    }
+    return result;
+  }
+
+  /// Update business name, logo, contact
+  Future<bool> updateBusinessProfile({
+    String? businessName,
+    String? businessLogo,
+    String? contactNumber,
+  }) async {
+    if (_authToken == null || _currentTenant == null) return false;
+    _isLoading = true;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+
+    final res = await _api.updateProfile(
+      _authToken!,
+      businessName: businessName,
+      businessLogo: businessLogo,
+      contactNumber: contactNumber,
+    );
+
+    _isLoading = false;
+    if (res['success'] == true) {
+      _currentTenant = _currentTenant!.copyWith(
+        businessName: businessName,
+        businessLogo: businessLogo,
+        contactNumber: contactNumber,
+      );
+      _successMessage = "Business profile updated successfully!";
+      notifyListeners();
+      return true;
+    } else {
+      _errorMessage = res['message'] ?? "Failed to update profile.";
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Logout
+  Future<void> logout() async {
+    _authToken = null;
+    _currentTenant = null;
+    _otpSent = false;
+    _otpVerified = false;
+    _tursoTestResult = null;
+    _tenantTables = [];
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+}
