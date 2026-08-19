@@ -13,7 +13,10 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json.bak
 
-# Flutter / Dart
+# Flutter / Dart / Build
+dist/
+flutter/
+_flutter/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies

@@ -1,13 +1,28 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/tenant_model.dart';
 
 class ApiService {
-  // Default to localhost, easily configurable
-  static const String defaultBaseUrl = "http://localhost:5000/api";
+  // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
+  // or falls back to http://localhost:5000/api for local testing / desktop.
+  static String get defaultBaseUrl {
+    if (kIsWeb) {
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty &&
+            !origin.startsWith('http://localhost') &&
+            !origin.startsWith('http://127.0.0.1')) {
+          return '$origin/api';
+        }
+      } catch (_) {}
+    }
+    return "http://localhost:5000/api";
+  }
+
   String baseUrl;
 
-  ApiService({this.baseUrl = defaultBaseUrl});
+  ApiService({String? baseUrl}) : baseUrl = baseUrl ?? defaultBaseUrl;
 
   Map<String, String> _headers([String? token]) {
     final headers = {'Content-Type': 'application/json'};
