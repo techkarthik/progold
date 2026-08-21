@@ -54,6 +54,39 @@ export async function initMasterSchema() {
       CREATE INDEX IF NOT EXISTS idx_otps_email ON email_otps (email);
     `);
 
+    // 3. Ensure Demo Tenant exists for instant testing
+    try {
+      const demoEmail = "tenant_test@example.com";
+      const demoCheck = await masterTurso.execute({
+        sql: `SELECT id FROM tenants WHERE email = ? LIMIT 1`,
+        args: [demoEmail],
+      });
+      if (demoCheck.rows.length === 0) {
+        const now = new Date().toISOString();
+        const demoHash = "$2b$10$e6r6r.IVNnlrHcVHta8VaOx/ZO.Oqm80BIQC8/0vbtJC6SHlEYvMa"; // Admin@123
+        await masterTurso.execute({
+          sql: `INSERT INTO tenants (
+                  email, password_hash, contact_number, turso_url, turso_token,
+                  valid_from, valid_to, status, business_name, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 'Demo Gold Enterprise', ?, ?)`,
+          args: [
+            demoEmail,
+            demoHash,
+            "+91 9876543210",
+            "libsql://gold-techkarthik.aws-ap-south-1.turso.io",
+            "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODcwNDAyMDcsImlkIjoiMDFhMDEzZTUtMWQwMS03NjMzLWExNTYtNTllMWY3NDk4YTkzIiwia2lkIjoibW9sNS1XSE1tQzE3X1BZazJza1M4cXdWOGJ1VnFmY3BQQ3BfMWphYS1nVSIsInJpZCI6Ijk4NDQ2MmE4LTNjMTItNDcyNi1hNTAzLWIzZGQ5YmMzYWRhMCJ9.LHSzWVKA6bSPEcW5deQZ7OVZVqr7Gf6UFrDIAdAiu4_wLY7I42TNKVMCkKRnjHVbtunG_LglAKxIh42pYf--DQ",
+            "2026-01-01",
+            "2027-12-31",
+            now,
+            now,
+          ],
+        });
+        console.log(" Demo Tenant account seeded (tenant_test@example.com / Admin@123)");
+      }
+    } catch (seedErr) {
+      console.warn("Notice: Demo tenant seeding skipped:", seedErr.message);
+    }
+
     console.log(" Master Turso Database Schema initialized successfully.");
   } catch (error) {
     console.error(" Error initializing Master Turso Database Schema:", error);

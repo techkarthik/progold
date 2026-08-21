@@ -170,9 +170,13 @@ export async function registerController(req, res) {
     });
   } catch (error) {
     console.error("registerController error:", error);
+    const isMissingToken = !process.env.MASTER_TURSO_AUTH_TOKEN;
     return res.status(500).json({
       success: false,
-      message: "Registration failed due to a server error. Please try again.",
+      message: isMissingToken
+        ? "Server configuration error: MASTER_TURSO_AUTH_TOKEN is missing in environment variables."
+        : `Registration failed: ${error?.message || "Server error"}`,
+      error: error?.message,
     });
   }
 }
@@ -250,6 +254,13 @@ export async function loginController(req, res) {
     });
   } catch (error) {
     console.error("loginController error:", error);
-    return res.status(500).json({ success: false, message: "Login failed due to a server error." });
+    const isMissingToken = !process.env.MASTER_TURSO_AUTH_TOKEN;
+    return res.status(500).json({
+      success: false,
+      message: isMissingToken
+        ? "Server configuration error: MASTER_TURSO_AUTH_TOKEN is missing in environment variables."
+        : `Login failed: ${error?.message || "Server error"}`,
+      error: error?.message,
+    });
   }
 }
