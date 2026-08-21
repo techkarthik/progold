@@ -18,7 +18,14 @@ import {
 } from "./controllers/tenantController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
+import path from "path";
+import { fileURLToPath } from "url";
+
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const webBuildPath = path.resolve(__dirname, "../../frontend/build/web");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -33,6 +40,9 @@ app.use(
 );
 
 app.use(express.json());
+
+// Serve compiled Flutter web app
+app.use(express.static(webBuildPath));
 
 // API Health Check
 app.get("/api/health", (req, res) => {
@@ -56,6 +66,14 @@ app.put("/api/tenant/profile", requireAuth, updateProfileController);
 app.get("/api/tenant/db/overview", requireAuth, getTenantDbOverviewController);
 app.get("/api/tenant/db/health", requireAuth, testTenantDbHealthController);
 app.post("/api/tenant/db/query", requireAuth, executeTenantQueryController);
+
+// SPA fallback to index.html
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api/")) return next();
+  res.sendFile(path.join(webBuildPath, "index.html"), (err) => {
+    if (err) next();
+  });
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

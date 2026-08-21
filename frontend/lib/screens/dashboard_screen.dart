@@ -138,7 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       borderRadius: 0,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       margin: EdgeInsets.zero,
-      borderColor: const Color(0x22FFFFFF),
+      borderColor: const Color(0xFFE2E8F0),
       child: Row(
         children: [
           // Brand Logo
@@ -160,7 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: GlassTheme.textPrimary,
                   letterSpacing: -0.5,
                 ),
               ),
@@ -177,10 +177,10 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: tenant.isActive ? GlassTheme.accentEmerald.withOpacity(0.15) : GlassTheme.accentRose.withOpacity(0.15),
+              color: tenant.isActive ? GlassTheme.accentEmerald.withValues(alpha: 0.12) : GlassTheme.accentRose.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: tenant.isActive ? GlassTheme.accentEmerald.withOpacity(0.5) : GlassTheme.accentRose.withOpacity(0.5),
+                color: tenant.isActive ? GlassTheme.accentEmerald.withValues(alpha: 0.4) : GlassTheme.accentRose.withValues(alpha: 0.4),
               ),
             ),
             child: Row(
@@ -213,17 +213,17 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: GlassTheme.primaryNeon.withOpacity(0.3),
+                backgroundColor: GlassTheme.primaryNeon.withValues(alpha: 0.15),
                 child: Text(
                   tenant.email.isNotEmpty ? tenant.email[0].toUpperCase() : 'T',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(width: 8),
               if (MediaQuery.of(context).size.width > 700)
                 Text(
                   tenant.email,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: GlassTheme.textPrimary),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: GlassTheme.textPrimary),
                 ),
             ],
           ),
@@ -248,8 +248,8 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
       gradient: LinearGradient(
         colors: [
-          GlassTheme.primaryNeon.withOpacity(0.15),
-          GlassTheme.accentCyan.withOpacity(0.08),
+          GlassTheme.primaryNeon.withValues(alpha: 0.08),
+          GlassTheme.accentCyan.withValues(alpha: 0.05),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -271,22 +271,22 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: GlassTheme.textPrimary,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
+                const Text(
                   "Connected to private Turso SQLite database • Multi-Tenant Isolation Active",
-                  style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7)),
+                  style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
                 ),
               ],
             ),
           ),
           IconButton(
             tooltip: "Refresh Database Health & Tables",
-            icon: const Icon(Icons.refresh_rounded, color: GlassTheme.accentCyan),
+            icon: const Icon(Icons.refresh_rounded, color: GlassTheme.primaryNeon),
             onPressed: () => auth.fetchTenantDbOverview(),
           ),
         ],
@@ -358,7 +358,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     return GlassContainer(
       borderRadius: 16,
       padding: const EdgeInsets.all(16),
-      borderColor: accentColor.withOpacity(0.3),
+      borderColor: accentColor.withValues(alpha: 0.3),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -373,7 +373,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.15),
+                  color: accentColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, size: 16, color: accentColor),
@@ -383,7 +383,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -413,13 +413,13 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               const SizedBox(width: 10),
               const Text(
                 "Turso Database Console",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
               ),
               const Spacer(),
               Container(
                 height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0x1AFFFFFF),
+                  color: const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: TabBar(
@@ -471,9 +471,9 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         // Editor
         Container(
           decoration: BoxDecoration(
-            color: const Color(0x0E000000),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0x33FFFFFF)),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
             children: [
@@ -481,12 +481,13 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: const BoxDecoration(
-                  color: Color(0x18FFFFFF),
+                  color: Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
+                  border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.code_rounded, size: 16, color: GlassTheme.accentCyan),
+                    const Icon(Icons.code_rounded, size: 16, color: GlassTheme.primaryNeon),
                     const SizedBox(width: 8),
                     const Text(
                       "Execute SQL on Tenant Database",
@@ -509,7 +510,8 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                 style: const TextStyle(
                   fontFamily: 'Courier',
                   fontSize: 13,
-                  color: GlassTheme.accentCyan,
+                  color: GlassTheme.primaryNeon,
+                  fontWeight: FontWeight.w600,
                   height: 1.4,
                 ),
                 decoration: const InputDecoration(
@@ -608,15 +610,15 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0x0CFFFFFF),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0x22FFFFFF)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: SingleChildScrollView(
           child: DataTable(
-            headingRowColor: WidgetStateProperty.all(const Color(0x1EFFFFFF)),
+            headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
             columns: _queryResult!.columns
                 .map(
                   (col) => DataColumn(
@@ -624,7 +626,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                       col,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: GlassTheme.accentCyan,
+                        color: GlassTheme.primaryNeon,
                         fontSize: 12,
                       ),
                     ),
@@ -693,9 +695,9 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         return Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0x0EFFFFFF),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0x22FFFFFF)),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -706,7 +708,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                   const SizedBox(width: 8),
                   Text(
                     table.name,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
                   ),
                   const Spacer(),
                   StatusBadge(
@@ -731,15 +733,16 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                   width: double.infinity,
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0x10000000),
+                    color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: Text(
                     table.sql,
                     style: const TextStyle(
                       fontFamily: 'Courier',
                       fontSize: 11,
-                      color: GlassTheme.textMuted,
+                      color: GlassTheme.textSecondary,
                     ),
                   ),
                 ),
@@ -788,14 +791,14 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0x0EFFFFFF),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x22FFFFFF)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+          Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary)),
           const SizedBox(height: 4),
           Text(desc, style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary)),
           const SizedBox(height: 10),

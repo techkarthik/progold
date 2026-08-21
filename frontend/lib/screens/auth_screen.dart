@@ -26,10 +26,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   final _regPasswordController = TextEditingController();
   final _regConfirmPasswordController = TextEditingController();
   final _regContactController = TextEditingController();
-  final _regTursoUrlController = TextEditingController(text: "libsql://gold-techkarthik.aws-ap-south-1.turso.io");
-  final _regTursoTokenController = TextEditingController(
-    text: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODcwNDAyMDcsImlkIjoiMDFhMDEzZTUtMWQwMS03NjMzLWExNTYtNTllMWY3NDk4YTkzIiwia2lkIjoibW9sNS1XSE1tQzE3X1BZazJza1M4cXdWOGJ1VnFmY3BQQ3BfMWphYS1nVSIsInJpZCI6Ijk4NDQ2MmE4LTNjMTItNDcyNi1hNTAzLWIzZGQ5YmMzYWRhMCJ9.LHSzWVKA6bSPEcW5deQZ7OVZVqr7Gf6UFrDIAdAiu4_wLY7I42TNKVMCkKRnjHVbtunG_LglAKxIh42pYf--DQ"
-  );
+  final _regTursoUrlController = TextEditingController();
+  final _regTursoTokenController = TextEditingController();
 
   bool _regObscure = true;
   bool _regConfirmObscure = true;
@@ -107,53 +105,44 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     final isDesktop = size.width > 900;
 
     return Scaffold(
+      backgroundColor: GlassTheme.bgDark,
       body: Stack(
         children: [
-          // Background ambient gradient mesh
-          Container(
-            color: GlassTheme.bgDark,
-            child: Stack(
-              children: [
-                // Top Left Orb
-                Positioned(
-                  top: -120,
-                  left: -100,
-                  child: Container(
-                    width: 500,
-                    height: 500,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: GlassTheme.primaryNeon.withOpacity(0.18),
-                    ),
-                  ),
-                ),
-                // Bottom Right Orb
-                Positioned(
-                  bottom: -150,
-                  right: -100,
-                  child: Container(
-                    width: 550,
-                    height: 550,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: GlassTheme.accentEmerald.withOpacity(0.14),
-                    ),
-                  ),
-                ),
-                // Center Violet Aura
-                Positioned(
-                  top: size.height * 0.3,
-                  left: size.width * 0.3,
-                  child: Container(
-                    width: 400,
-                    height: 400,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: GlassTheme.accentCyan.withOpacity(0.1),
-                    ),
-                  ),
-                ),
-              ],
+          // Background ambient luxury pastel gradient mesh
+          Positioned(
+            top: -120,
+            left: -100,
+            child: Container(
+              width: 550,
+              height: 550,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: GlassTheme.primaryNeon.withValues(alpha: 0.07),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -150,
+            right: -100,
+            child: Container(
+              width: 600,
+              height: 600,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: GlassTheme.accentAmber.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          Positioned(
+            top: size.height * 0.35,
+            left: size.width * 0.3,
+            child: Container(
+              width: 450,
+              height: 450,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: GlassTheme.accentCyan.withValues(alpha: 0.05),
+              ),
             ),
           ),
 
@@ -214,6 +203,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                       style: TextStyle(
                         color: GlassTheme.textMuted,
                         fontSize: 12,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -232,9 +222,16 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: GlassTheme.glassFillHover,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: GlassTheme.primaryNeon.withOpacity(0.4)),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0x080F172A),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
@@ -246,8 +243,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                 style: TextStyle(
                   color: GlassTheme.textPrimary,
                   fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
                 ),
               ),
             ],
@@ -259,7 +256,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           child: const Text(
             "ProGold",
             style: TextStyle(
-              fontSize: 38,
+              fontSize: 40,
               fontWeight: FontWeight.w800,
               color: Colors.white,
               letterSpacing: -0.5,
@@ -268,9 +265,11 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         ),
         const SizedBox(height: 4),
         const Text(
-          "Next-Gen Database Platform for Modern Web & Desktop",
+          "Next-Gen Gold & ERP Database Platform for Modern Web",
+          textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 14,
+            fontWeight: FontWeight.w500,
             color: GlassTheme.textSecondary,
           ),
         ),
@@ -283,9 +282,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       height: 48,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0x1AFFFFFF),
+        color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x2AFFFFFF)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: TabBar(
         controller: _tabController,
@@ -298,7 +297,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
-              color: GlassTheme.primaryNeon.withOpacity(0.4),
+              color: GlassTheme.primaryNeon.withValues(alpha: 0.35),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -324,9 +323,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,7 +335,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           Expanded(
             child: Text(
               message,
-              style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500),
+              style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -474,9 +473,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                     ? Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: GlassTheme.accentEmerald.withOpacity(0.18),
+                          color: GlassTheme.accentEmerald.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: GlassTheme.accentEmerald),
+                          border: Border.all(color: GlassTheme.accentEmerald.withValues(alpha: 0.5)),
                         ),
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -587,13 +586,13 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0x0FFFFFFF),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0x24FFFFFF)),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.calendar_today_rounded, size: 16, color: GlassTheme.accentCyan),
+                      const Icon(Icons.calendar_today_rounded, size: 16, color: GlassTheme.primaryNeon),
                       const SizedBox(width: 8),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -618,9 +617,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0x0FFFFFFF),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0x24FFFFFF)),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: Row(
                     children: [
@@ -649,9 +648,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0x0AFFFFFF),
+            color: const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: GlassTheme.primaryNeon.withOpacity(0.3)),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -661,7 +660,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.storage_rounded, size: 18, color: GlassTheme.accentCyan),
+                      Icon(Icons.storage_rounded, size: 18, color: GlassTheme.primaryNeon),
                       SizedBox(width: 8),
                       Text(
                         "Tenant Turso SQLite DB",
@@ -711,8 +710,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                 children: [
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: GlassTheme.accentCyan,
-                      side: const BorderSide(color: GlassTheme.accentCyan),
+                      foregroundColor: GlassTheme.primaryNeon,
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      backgroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     ),
@@ -720,7 +720,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                         ? const SizedBox(
                             width: 14,
                             height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: GlassTheme.accentCyan),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: GlassTheme.primaryNeon),
                           )
                         : const Icon(Icons.cable_rounded, size: 16),
                     label: const Text("Test Connection", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),

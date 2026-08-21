@@ -22,7 +22,7 @@ class ProGoldApp extends StatelessWidget {
       child: MaterialApp(
         title: 'ProGold Multi-Tenant Turso Platform',
         debugShowCheckedModeBanner: false,
-        theme: GlassTheme.darkTheme,
+        theme: GlassTheme.lightTheme,
         home: Consumer<AuthProvider>(
           builder: (context, auth, _) {
             return AnimatedSwitcher(

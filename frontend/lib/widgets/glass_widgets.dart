@@ -40,14 +40,14 @@ class GlassContainer extends StatelessWidget {
         boxShadow: shadows ??
             [
               BoxShadow(
-                color: Colors.black.withOpacity(0.35),
-                blurRadius: 30,
-                offset: const Offset(0, 15),
+                color: const Color(0x0C0F172A),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
               ),
               BoxShadow(
-                color: GlassTheme.primaryNeon.withOpacity(0.04),
-                blurRadius: 20,
-                spreadRadius: 2,
+                color: GlassTheme.primaryNeon.withValues(alpha: 0.04),
+                blurRadius: 16,
+                spreadRadius: 1,
               ),
             ],
       ),
@@ -62,7 +62,7 @@ class GlassContainer extends StatelessWidget {
               borderRadius: BorderRadius.circular(borderRadius),
               border: Border.all(
                 color: borderColor ?? GlassTheme.glassBorder,
-                width: 1.2,
+                width: 1.0,
               ),
             ),
             child: child,
@@ -134,19 +134,19 @@ class GlassTextField extends StatelessWidget {
             hintText: hint,
             hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13),
             filled: true,
-            fillColor: const Color(0x0FFFFFFF), // Translucent
+            fillColor: Colors.white,
             prefixIcon: prefixIcon != null
-                ? Icon(prefixIcon, color: GlassTheme.primaryNeon.withOpacity(0.8), size: 18)
+                ? Icon(prefixIcon, color: GlassTheme.primaryNeon.withValues(alpha: 0.8), size: 18)
                 : null,
             suffixIcon: suffixIcon,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0x24FFFFFF)),
+              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0x24FFFFFF)),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -191,15 +191,15 @@ class GlassButton extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         gradient: onPressed == null ? null : gradient,
-        color: onPressed == null ? Colors.white.withOpacity(0.1) : null,
+        color: onPressed == null ? Colors.black.withValues(alpha: 0.08) : null,
         borderRadius: BorderRadius.circular(12),
         boxShadow: onPressed == null
             ? []
             : [
                 BoxShadow(
-                  color: GlassTheme.primaryNeon.withOpacity(0.35),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
+                  color: GlassTheme.primaryNeon.withValues(alpha: 0.3),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
                 ),
               ],
       ),
@@ -262,9 +262,9 @@ class StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.5)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -281,8 +281,8 @@ class StatusBadge extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.8),
-                    blurRadius: 6,
+                    color: color.withValues(alpha: 0.6),
+                    blurRadius: 4,
                   ),
                 ],
               ),

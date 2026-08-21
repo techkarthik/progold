@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../constants/menu_registry.dart';
 import '../models/tenant_model.dart';
 import '../providers/auth_provider.dart';
 import '../theme/glass_theme.dart';
@@ -77,11 +76,16 @@ class _HomeScreenState extends State<HomeScreen> {
   // ================= APP BAR =================
   PreferredSizeWidget _buildAppBar(BuildContext context, AuthProvider auth, Tenant tenant) {
     return AppBar(
-      backgroundColor: GlassTheme.bgDark.withValues(alpha: 0.8),
+      backgroundColor: Colors.white.withValues(alpha: 0.95),
       elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(color: const Color(0xFFE2E8F0), height: 1),
+      ),
       leading: Builder(
         builder: (ctx) => IconButton(
-          icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 26),
+          icon: const Icon(Icons.menu_rounded, color: GlassTheme.textPrimary, size: 26),
           tooltip: "Open Navigation Menu",
           onPressed: () => Scaffold.of(ctx).openDrawer(),
         ),
@@ -97,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: GlassTheme.primaryNeon.withValues(alpha: 0.4),
+                  color: GlassTheme.primaryNeon.withValues(alpha: 0.3),
                   blurRadius: 10,
                 ),
               ],
@@ -126,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: GlassTheme.textPrimary,
                   letterSpacing: -0.3,
                 ),
               ),
@@ -154,7 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
       actions: [
         if (_selectedModule != "HOME")
           TextButton.icon(
-            style: TextButton.styleFrom(foregroundColor: GlassTheme.accentCyan),
+            style: TextButton.styleFrom(foregroundColor: GlassTheme.primaryNeon),
             icon: const Icon(Icons.apps_rounded, size: 18),
             label: const Text("Main Menu"),
             onPressed: () {
@@ -166,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         IconButton(
           tooltip: "Business Profile",
-          icon: const Icon(Icons.account_circle_outlined, color: Colors.white, size: 24),
+          icon: const Icon(Icons.account_circle_outlined, color: GlassTheme.textPrimary, size: 24),
           onPressed: () => _showProfileDialog(context, auth, tenant),
         ),
         const SizedBox(width: 8),
@@ -177,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ================= LEFT DRAWER WITH BUSINESS PROFILE & SUBMENUS =================
   Widget _buildLeftDrawer(BuildContext context, AuthProvider auth, Tenant tenant) {
     return Drawer(
-      backgroundColor: GlassTheme.bgDarkSecondary,
+      backgroundColor: Colors.white,
       child: Column(
         children: [
           // Drawer Header: Business Profile & Logo
@@ -186,14 +190,14 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  GlassTheme.primaryNeon.withValues(alpha: 0.25),
-                  GlassTheme.bgDarkSecondary,
+                  GlassTheme.primaryNeon.withValues(alpha: 0.08),
+                  Colors.white,
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
               border: const Border(
-                bottom: BorderSide(color: Color(0x22FFFFFF)),
+                bottom: BorderSide(color: Color(0xFFE2E8F0)),
               ),
             ),
             child: Column(
@@ -210,9 +214,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         gradient: GlassTheme.primaryGradient,
                         boxShadow: [
                           BoxShadow(
-                            color: GlassTheme.primaryNeon.withValues(alpha: 0.5),
-                            blurRadius: 16,
-                            spreadRadius: 2,
+                            color: GlassTheme.primaryNeon.withValues(alpha: 0.35),
+                            blurRadius: 14,
+                            spreadRadius: 1,
                           ),
                         ],
                       ),
@@ -240,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: Colors.white,
+                              color: GlassTheme.textPrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -256,9 +260,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: GlassTheme.accentEmerald.withValues(alpha: 0.2),
+                              color: GlassTheme.accentEmerald.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: GlassTheme.accentEmerald.withValues(alpha: 0.5)),
+                              border: Border.all(color: GlassTheme.accentEmerald.withValues(alpha: 0.4)),
                             ),
                             child: Text(
                               "Active • ${tenant.daysRemaining} Days",
@@ -472,15 +476,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       decoration: BoxDecoration(
-        color: selected ? color.withValues(alpha: 0.15) : Colors.transparent,
+        color: selected ? color.withValues(alpha: 0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
-        border: selected ? Border.all(color: color.withValues(alpha: 0.4)) : null,
+        border: selected ? Border.all(color: color.withValues(alpha: 0.3)) : null,
       ),
       child: ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: color, size: 20),
@@ -488,8 +492,8 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text(
           title,
           style: TextStyle(
-            color: selected ? Colors.white : GlassTheme.textPrimary,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? color : GlassTheme.textPrimary,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
             fontSize: 14,
           ),
         ),
@@ -505,7 +509,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       margin: const EdgeInsets.only(left: 36, right: 12, bottom: 4),
       decoration: BoxDecoration(
-        color: isSelected ? GlassTheme.primaryNeon.withValues(alpha: 0.2) : Colors.transparent,
+        color: isSelected ? GlassTheme.primaryNeon.withValues(alpha: 0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       child: ListTile(
@@ -514,9 +518,9 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text(
           title,
           style: TextStyle(
-            color: isSelected ? Colors.white : GlassTheme.textSecondary,
+            color: isSelected ? GlassTheme.primaryNeon : GlassTheme.textSecondary,
             fontSize: 13,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
         onTap: onTap,
