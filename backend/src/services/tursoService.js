@@ -181,6 +181,26 @@ export async function syncTenantDatabaseSchema(url, token) {
       );
     `);
 
+    // 2c. Branch Master Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS branches (
+        branchid TEXT PRIMARY KEY NOT NULL,
+        branchname TEXT NOT NULL,
+        companyid TEXT NOT NULL,
+        accountname TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        state_id INTEGER DEFAULT 0,
+        country TEXT DEFAULT 'India',
+        country_id INTEGER DEFAULT 1,
+        address TEXT DEFAULT '',
+        mobile TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
     // 3. Live Gold & Silver Rates Table
     await client.execute(`
       CREATE TABLE IF NOT EXISTS gold_rates (
@@ -396,6 +416,9 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE organization_profile ADD COLUMN currency_symbol TEXT DEFAULT '₹';`,
       `ALTER TABLE company ADD COLUMN state_id INTEGER DEFAULT 0;`,
       `ALTER TABLE company ADD COLUMN country_id INTEGER DEFAULT 1;`,
+      `ALTER TABLE branches ADD COLUMN state_id INTEGER DEFAULT 0;`,
+      `ALTER TABLE branches ADD COLUMN country_id INTEGER DEFAULT 1;`,
+      `ALTER TABLE branches ADD COLUMN is_active INTEGER DEFAULT 1;`,
     ];
 
     for (const alterSql of safeAddColumns) {

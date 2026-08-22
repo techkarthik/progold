@@ -120,6 +120,8 @@ class LocationData {
     return states.where((s) => s.countryId == countryId).toList();
   }
 
+  static List<StateItem> get indianStates => getStatesForCountry(1);
+
   static CountryItem? getCountryById(int countryId) {
     try {
       return countries.firstWhere((c) => c.id == countryId);

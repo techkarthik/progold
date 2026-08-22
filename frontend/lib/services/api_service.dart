@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/tenant_model.dart';
 import '../models/company_model.dart';
+import '../models/branch_model.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -305,6 +306,71 @@ class ApiService {
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Failed to delete company: $e'};
+    }
+  }
+
+  // ================= BRANCH MASTER API METHODS =================
+
+  /// Fetches all branch records for the tenant
+  Future<List<Branch>> getBranches(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/branches'),
+        headers: _headers(token),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['branches'] != null) {
+          return (data['branches'] as List)
+              .map((item) => Branch.fromJson(item))
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("getBranches error: $e");
+      return [];
+    }
+  }
+
+  /// Creates a new branch record
+  Future<Map<String, dynamic>> createBranch(String token, Branch branch) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/branches'),
+        headers: _headers(token),
+        body: jsonEncode(branch.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create branch: $e'};
+    }
+  }
+
+  /// Updates an existing branch record
+  Future<Map<String, dynamic>> updateBranch(String token, String branchId, Branch branch) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/branches/$branchId'),
+        headers: _headers(token),
+        body: jsonEncode(branch.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update branch: $e'};
+    }
+  }
+
+  /// Deletes a branch record
+  Future<Map<String, dynamic>> deleteBranch(String token, String branchId) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/branches/$branchId'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete branch: $e'};
     }
   }
 }

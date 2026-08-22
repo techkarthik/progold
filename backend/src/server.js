@@ -23,6 +23,12 @@ import {
   updateCompanyController,
   deleteCompanyController,
 } from "./controllers/companyController.js";
+import {
+  getBranchesController,
+  createBranchController,
+  updateBranchController,
+  deleteBranchController,
+} from "./controllers/branchController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -80,6 +86,12 @@ app.get("/api/tenant/companies", requireAuth, getCompaniesController);
 app.post("/api/tenant/companies", requireAuth, createCompanyController);
 app.put("/api/tenant/companies/:id", requireAuth, updateCompanyController);
 app.delete("/api/tenant/companies/:id", requireAuth, deleteCompanyController);
+
+// Tenant Branch Master CRUD Routes
+app.get("/api/tenant/branches", requireAuth, getBranchesController);
+app.post("/api/tenant/branches", requireAuth, createBranchController);
+app.put("/api/tenant/branches/:id", requireAuth, updateBranchController);
+app.delete("/api/tenant/branches/:id", requireAuth, deleteBranchController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

@@ -24,6 +24,12 @@ import {
   updateCompanyController,
   deleteCompanyController,
 } from "../backend/src/controllers/companyController.js";
+import {
+  getBranchesController,
+  createBranchController,
+  updateBranchController,
+  deleteBranchController,
+} from "../backend/src/controllers/branchController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -136,6 +142,12 @@ router.get("/tenant/companies", requireAuth, getCompaniesController);
 router.post("/tenant/companies", requireAuth, createCompanyController);
 router.put("/tenant/companies/:id", requireAuth, updateCompanyController);
 router.delete("/tenant/companies/:id", requireAuth, deleteCompanyController);
+
+// Tenant Branch Master CRUD Routes
+router.get("/tenant/branches", requireAuth, getBranchesController);
+router.post("/tenant/branches", requireAuth, createBranchController);
+router.put("/tenant/branches/:id", requireAuth, updateBranchController);
+router.delete("/tenant/branches/:id", requireAuth, deleteBranchController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);
