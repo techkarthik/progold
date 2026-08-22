@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/location_data.dart';
 import '../models/company_model.dart';
+import '../models/branch_model.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/glass_theme.dart';
@@ -22,20 +23,12 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
 
   List<Company> _companies = [];
   List<Company> _filteredCompanies = [];
+  List<Branch> _dbBranches = [];
   bool _isLoading = false;
   String _searchQuery = '';
   bool _isTableView = false;
 
   final TextEditingController _searchController = TextEditingController();
-
-  // Pre-configured standard branch options for multi-selection
-  final List<String> _availableBranches = [
-    'BR-01 Main Showroom',
-    'BR-02 City Counter',
-    'BR-03 Wholesale Depot',
-    'BR-04 Bullion Vault',
-    'BR-05 Karigar Workshop',
-  ];
 
   @override
   void initState() {
@@ -55,11 +48,15 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
     if (token == null) return;
 
     setState(() => _isLoading = true);
-    final list = await _api.getCompanies(token);
+    final results = await Future.wait([
+      _api.getCompanies(token),
+      _api.getBranches(token),
+    ]);
 
     if (mounted) {
       setState(() {
-        _companies = list;
+        _companies = results[0] as List<Company>;
+        _dbBranches = results[1] as List<Branch>;
         _applyFilter(_searchQuery);
         _isLoading = false;
       });
@@ -1126,7 +1123,7 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                                         Icon(Icons.storefront_rounded, size: 16, color: GlassTheme.primaryNeon),
                                         SizedBox(width: 8),
                                         Text(
-                                          "Assign Branches (Multi-Selection)",
+                                          "Assign Branches from Branch Master (Multi-Selection)",
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w700,
@@ -1137,46 +1134,86 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     const Text(
-                                      "Select multiple branches where this company entity operates:",
+                                      "Select branches registered in your Branch Master:",
                                       style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary),
                                     ),
                                     const SizedBox(height: 12),
 
-                                    // Interactive Multi-Selection Chips
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: _availableBranches.map((branch) {
-                                        final isSelected = selectedBranches.contains(branch);
-                                        return FilterChip(
-                                          label: Text(branch),
-                                          selected: isSelected,
-                                          selectedColor: GlassTheme.primaryNeon.withValues(alpha: 0.15),
-                                          checkmarkColor: GlassTheme.primaryNeon,
-                                          labelStyle: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                            color: isSelected ? GlassTheme.primaryNeon : GlassTheme.textPrimary,
-                                          ),
-                                          backgroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(
+                                    // Dynamic Branch Options from Branch Master
+                                    () {
+                                      // Build branch options list from Branch Master
+                                      final List<String> branchOptions = [];
+                                      for (final b in _dbBranches) {
+                                        final label = "${b.branchId} - ${b.branchName}";
+                                        if (!branchOptions.contains(label)) {
+                                          branchOptions.add(label);
+                                        }
+                                      }
+                                      // Include existing company branches if not in options
+                                      for (final b in selectedBranches) {
+                                        if (!branchOptions.contains(b)) {
+                                          branchOptions.add(b);
+                                        }
+                                      }
+
+                                      if (branchOptions.isEmpty) {
+                                        return Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF1F5F9),
                                             borderRadius: BorderRadius.circular(8),
-                                            side: BorderSide(
-                                              color: isSelected ? GlassTheme.primaryNeon : const Color(0xFFCBD5E1),
-                                            ),
+                                            border: Border.all(color: const Color(0xFFE2E8F0)),
                                           ),
-                                          onSelected: (selected) {
-                                            setDialogState(() {
-                                              if (selected) {
-                                                selectedBranches.add(branch);
-                                              } else {
-                                                selectedBranches.remove(branch);
-                                              }
-                                            });
-                                          },
+                                          child: const Row(
+                                            children: [
+                                              Icon(Icons.info_outline_rounded, size: 16, color: GlassTheme.accentAmber),
+                                              SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  "No branches found in Branch Master. Please create branches under Master > Organization > Branches or add custom below.",
+                                                  style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         );
-                                      }).toList(),
-                                    ),
+                                      }
+
+                                      return Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: branchOptions.map((branch) {
+                                          final isSelected = selectedBranches.contains(branch);
+                                          return FilterChip(
+                                            label: Text(branch),
+                                            selected: isSelected,
+                                            selectedColor: GlassTheme.primaryNeon.withValues(alpha: 0.15),
+                                            checkmarkColor: GlassTheme.primaryNeon,
+                                            labelStyle: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                              color: isSelected ? GlassTheme.primaryNeon : GlassTheme.textPrimary,
+                                            ),
+                                            backgroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                              side: BorderSide(
+                                                color: isSelected ? GlassTheme.primaryNeon : const Color(0xFFCBD5E1),
+                                              ),
+                                            ),
+                                            onSelected: (selected) {
+                                              setDialogState(() {
+                                                if (selected) {
+                                                  selectedBranches.add(branch);
+                                                } else {
+                                                  selectedBranches.remove(branch);
+                                                }
+                                              });
+                                            },
+                                          );
+                                        }).toList(),
+                                      );
+                                    }(),
 
                                     const SizedBox(height: 12),
 
@@ -1188,7 +1225,7 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                                             controller: customBranchController,
                                             style: const TextStyle(fontSize: 12),
                                             decoration: InputDecoration(
-                                              hintText: "Add custom branch (e.g. BR-06 Airport Outlet)",
+                                              hintText: "Add custom branch name (e.g. BR02 - City Counter)",
                                               hintStyle: const TextStyle(fontSize: 11, color: GlassTheme.textMuted),
                                               isDense: true,
                                               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1213,9 +1250,6 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                                             final custom = customBranchController.text.trim();
                                             if (custom.isNotEmpty && !selectedBranches.contains(custom)) {
                                               setDialogState(() {
-                                                if (!_availableBranches.contains(custom)) {
-                                                  _availableBranches.add(custom);
-                                                }
                                                 selectedBranches.add(custom);
                                                 customBranchController.clear();
                                               });
