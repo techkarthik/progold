@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { masterTurso } from "../config/turso.js";
 import { sendOtp, verifyOtp, isEmailVerified } from "../services/otpService.js";
-import { testTursoConnection } from "../services/tursoService.js";
+import { testTursoConnection, syncTenantDatabaseSchema } from "../services/tursoService.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "progold_super_secure_jwt_secret_key_2026_turso_multitenant";
 
@@ -146,7 +146,14 @@ export async function registerController(req, res) {
 
     const tenantId = Number(insertResult.lastInsertRowid);
 
-    // 6. Generate JWT token
+    // 6. Automatically Initialize & Provision the tenant's private Turso database schema
+    try {
+      await syncTenantDatabaseSchema(turso_url.trim(), turso_token.trim());
+    } catch (schemaErr) {
+      console.warn("Notice: Non-fatal schema sync warning on register:", schemaErr.message);
+    }
+
+    // 7. Generate JWT token
     const token = jwt.sign(
       { id: tenantId, email: normalizedEmail },
       JWT_SECRET,
@@ -170,12 +177,9 @@ export async function registerController(req, res) {
     });
   } catch (error) {
     console.error("registerController error:", error);
-    const isMissingToken = !process.env.MASTER_TURSO_AUTH_TOKEN;
     return res.status(500).json({
       success: false,
-      message: isMissingToken
-        ? "Server configuration error: MASTER_TURSO_AUTH_TOKEN is missing in environment variables."
-        : `Registration failed: ${error?.message || "Server error"}`,
+      message: `Registration failed: ${error?.message || "Internal server error"}`,
       error: error?.message,
     });
   }
@@ -254,12 +258,9 @@ export async function loginController(req, res) {
     });
   } catch (error) {
     console.error("loginController error:", error);
-    const isMissingToken = !process.env.MASTER_TURSO_AUTH_TOKEN;
     return res.status(500).json({
       success: false,
-      message: isMissingToken
-        ? "Server configuration error: MASTER_TURSO_AUTH_TOKEN is missing in environment variables."
-        : `Login failed: ${error?.message || "Server error"}`,
+      message: `Login failed: ${error?.message || "Internal server error"}`,
       error: error?.message,
     });
   }

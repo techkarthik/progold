@@ -15,7 +15,14 @@ import {
   getTenantDbOverviewController,
   executeTenantQueryController,
   testTenantDbHealthController,
+  reinstallTenantDbController,
 } from "./controllers/tenantController.js";
+import {
+  getCompaniesController,
+  createCompanyController,
+  updateCompanyController,
+  deleteCompanyController,
+} from "./controllers/companyController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -66,6 +73,13 @@ app.put("/api/tenant/profile", requireAuth, updateProfileController);
 app.get("/api/tenant/db/overview", requireAuth, getTenantDbOverviewController);
 app.get("/api/tenant/db/health", requireAuth, testTenantDbHealthController);
 app.post("/api/tenant/db/query", requireAuth, executeTenantQueryController);
+app.post("/api/tenant/db/reinstall", requireAuth, reinstallTenantDbController);
+
+// Tenant Company Master CRUD Routes
+app.get("/api/tenant/companies", requireAuth, getCompaniesController);
+app.post("/api/tenant/companies", requireAuth, createCompanyController);
+app.put("/api/tenant/companies/:id", requireAuth, updateCompanyController);
+app.delete("/api/tenant/companies/:id", requireAuth, deleteCompanyController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

@@ -113,3 +113,387 @@ export async function executeTenantQuery(url, token, sql, args = []) {
     };
   }
 }
+
+/**
+ * Initializes or Reinstalls / Synchronizes the latest ProGold ERP database structure
+ * on a tenant's private Turso database.
+ * Safe & Non-Destructive: Never drops or truncates existing user data.
+ * @param {string} url - Tenant's Turso URL
+ * @param {string} token - Tenant's Turso Auth Token
+ * @returns {Promise<{success: boolean, message: string, tablesCount?: number, executionTimeMs?: number, appliedAt?: string}>}
+ */
+export async function syncTenantDatabaseSchema(url, token) {
+  if (!url || !token) {
+    return { success: false, message: "Turso database URL and Auth Token are required." };
+  }
+
+  const startTime = Date.now();
+  const client = createTenantClient(url, token);
+
+  try {
+    // 1. Schema Migrations Log Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        version TEXT NOT NULL,
+        migration_name TEXT NOT NULL,
+        applied_at TEXT NOT NULL
+      );
+    `);
+
+    // 2. Organization / Business Settings Profile
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS organization_profile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_name TEXT DEFAULT 'ProGold Enterprise',
+        tagline TEXT DEFAULT 'Fine Gold & Bullion Jewelers',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        pincode TEXT DEFAULT '',
+        gstin TEXT DEFAULT '',
+        pan_number TEXT DEFAULT '',
+        currency_symbol TEXT DEFAULT '₹',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 2b. Company Master Table (VARCHAR(5) Manual Company ID)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS company (
+        companyid TEXT PRIMARY KEY NOT NULL,
+        companyname TEXT NOT NULL,
+        gstno TEXT DEFAULT '',
+        mobilenumber TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        state_id INTEGER DEFAULT 0,
+        country TEXT DEFAULT 'India',
+        country_id INTEGER DEFAULT 1,
+        accountname TEXT DEFAULT '',
+        branchid TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 3. Live Gold & Silver Rates Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS gold_rates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        purity_name TEXT NOT NULL,
+        purity_karat INTEGER NOT NULL,
+        purity_percent REAL NOT NULL,
+        buy_rate REAL NOT NULL,
+        sell_rate REAL NOT NULL,
+        silver_rate REAL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 4. Jewellery Categories Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        code TEXT UNIQUE,
+        default_purity TEXT DEFAULT '22K',
+        hsn_code TEXT DEFAULT '7113',
+        description TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    // 5. Products & Inventory Items Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        sku TEXT UNIQUE NOT NULL,
+        category_id INTEGER,
+        purity TEXT DEFAULT '22K',
+        gross_weight REAL DEFAULT 0.0,
+        stone_weight REAL DEFAULT 0.0,
+        net_weight REAL DEFAULT 0.0,
+        making_charges REAL DEFAULT 0.0,
+        wastage_percent REAL DEFAULT 0.0,
+        price REAL DEFAULT 0.0,
+        stock INTEGER DEFAULT 0,
+        description TEXT DEFAULT '',
+        image_url TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 6. Inventory Stock Ledger / Audit
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS inventory_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        change_type TEXT NOT NULL,
+        change_amount INTEGER NOT NULL,
+        reason TEXT DEFAULT '',
+        reference_id TEXT DEFAULT '',
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    // 7. Customers / Clients Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT DEFAULT '',
+        phone TEXT NOT NULL,
+        address TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        pan_number TEXT DEFAULT '',
+        gstin TEXT DEFAULT '',
+        opening_balance REAL DEFAULT 0.0,
+        current_balance REAL DEFAULT 0.0,
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 8. Suppliers / Karigars / Smiths
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        contact_person TEXT DEFAULT '',
+        phone TEXT NOT NULL,
+        email TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        gstin TEXT DEFAULT '',
+        balance_gold REAL DEFAULT 0.0,
+        balance_cash REAL DEFAULT 0.0,
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 9. Invoices / Sales Bills
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_number TEXT UNIQUE NOT NULL,
+        customer_id INTEGER,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT DEFAULT '',
+        subtotal REAL DEFAULT 0.0,
+        making_charges REAL DEFAULT 0.0,
+        gst_percent REAL DEFAULT 3.0,
+        gst_amount REAL DEFAULT 0.0,
+        discount REAL DEFAULT 0.0,
+        total_amount REAL NOT NULL,
+        payment_mode TEXT DEFAULT 'CASH',
+        payment_status TEXT DEFAULT 'PAID',
+        issue_date TEXT NOT NULL,
+        due_date TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 10. Invoice Items Details
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS invoice_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id INTEGER NOT NULL,
+        product_id INTEGER,
+        title TEXT NOT NULL,
+        sku TEXT DEFAULT '',
+        purity TEXT DEFAULT '22K',
+        gross_weight REAL DEFAULT 0.0,
+        net_weight REAL DEFAULT 0.0,
+        gold_rate REAL DEFAULT 0.0,
+        making_charge REAL DEFAULT 0.0,
+        total_price REAL NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    // 11. Customer Payments / Receipts Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        invoice_id INTEGER,
+        amount REAL NOT NULL,
+        payment_mode TEXT DEFAULT 'CASH',
+        reference_number TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        payment_date TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    // 12. Quotations / Estimates
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS estimates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        estimate_number TEXT UNIQUE NOT NULL,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT DEFAULT '',
+        total_amount REAL NOT NULL,
+        issue_date TEXT NOT NULL,
+        valid_until TEXT DEFAULT '',
+        status TEXT DEFAULT 'PENDING',
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    // 13. Karigar Orders
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS orders_karigar (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_number TEXT UNIQUE NOT NULL,
+        supplier_id INTEGER,
+        customer_id INTEGER,
+        item_description TEXT NOT NULL,
+        purity TEXT DEFAULT '22K',
+        issued_gold_weight REAL DEFAULT 0.0,
+        expected_delivery_date TEXT DEFAULT '',
+        status TEXT DEFAULT 'IN_PROGRESS',
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    // 14. Audit Activity Logs
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT DEFAULT '',
+        details TEXT DEFAULT '',
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    // --- SAFE NON-DESTRUCTIVE COLUMN MIGRATIONS ---
+    const safeAddColumns = [
+      `ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1;`,
+      `ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT '';`,
+      `ALTER TABLE customers ADD COLUMN pan_number TEXT DEFAULT '';`,
+      `ALTER TABLE customers ADD COLUMN gstin TEXT DEFAULT '';`,
+      `ALTER TABLE customers ADD COLUMN current_balance REAL DEFAULT 0.0;`,
+      `ALTER TABLE invoices ADD COLUMN customer_phone TEXT DEFAULT '';`,
+      `ALTER TABLE organization_profile ADD COLUMN currency_symbol TEXT DEFAULT '₹';`,
+      `ALTER TABLE company ADD COLUMN state_id INTEGER DEFAULT 0;`,
+      `ALTER TABLE company ADD COLUMN country_id INTEGER DEFAULT 1;`,
+    ];
+
+    for (const alterSql of safeAddColumns) {
+      try {
+        await client.execute(alterSql);
+      } catch (_) {
+        // Ignored if column already exists in SQLite
+      }
+    }
+
+    // --- PERFORMANCE INDEXES ---
+    const indexes = [
+      `CREATE INDEX IF NOT EXISTS idx_products_sku ON products (sku);`,
+      `CREATE INDEX IF NOT EXISTS idx_products_category ON products (category_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers (phone);`,
+      `CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices (invoice_number);`,
+      `CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices (customer_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_invoice_items_inv ON invoice_items (invoice_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments (customer_id);`,
+    ];
+
+    for (const indexSql of indexes) {
+      try {
+        await client.execute(indexSql);
+      } catch (_) { }
+    }
+
+    // --- INITIAL SEED DATA (If empty) ---
+    const now = new Date().toISOString();
+
+    // Seed Organization Profile
+    try {
+      const orgCheck = await client.execute(`SELECT COUNT(*) as cnt FROM organization_profile;`);
+      if (Number(orgCheck.rows[0]?.cnt || 0) === 0) {
+        await client.execute({
+          sql: `INSERT INTO organization_profile (business_name, tagline, currency_symbol, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+          args: ["ProGold Enterprise", "Fine Gold & Bullion Jewelers", "₹", now, now],
+        });
+      }
+    } catch (_) { }
+
+    // Seed Categories
+    try {
+      const catCheck = await client.execute(`SELECT COUNT(*) as cnt FROM categories;`);
+      if (Number(catCheck.rows[0]?.cnt || 0) === 0) {
+        await client.execute(`
+          INSERT INTO categories (name, code, default_purity, hsn_code, created_at) VALUES
+          ('Gold Necklaces', 'GNK-01', '22K', '7113', '${now}'),
+          ('Gold Bangles & Bracelets', 'GBG-02', '22K', '7113', '${now}'),
+          ('Gold Rings', 'GRG-03', '22K', '7113', '${now}'),
+          ('Gold Chains', 'GCH-04', '22K', '7113', '${now}'),
+          ('Silver Articles & Utensils', 'SUT-05', 'SILVER', '7114', '${now}'),
+          ('Diamond & Precious Stones', 'DIA-06', '18K', '7113', '${now}');
+        `);
+      }
+    } catch (_) { }
+
+    // Seed Default Gold Rates
+    try {
+      const rateCheck = await client.execute(`SELECT COUNT(*) as cnt FROM gold_rates;`);
+      if (Number(rateCheck.rows[0]?.cnt || 0) === 0) {
+        await client.execute(`
+          INSERT INTO gold_rates (purity_name, purity_karat, purity_percent, buy_rate, sell_rate, silver_rate, updated_at) VALUES
+          ('24K Fine Gold (99.9%)', 24, 99.9, 7450.0, 7550.0, 92.5, '${now}'),
+          ('22K Standard Gold (91.6%)', 22, 91.6, 6830.0, 6925.0, 92.5, '${now}'),
+          ('18K Hallmarked Gold (75.0%)', 18, 75.0, 5585.0, 5660.0, 92.5, '${now}');
+        `);
+      }
+    } catch (_) { }
+
+    // Record migration entry
+    try {
+      await client.execute({
+        sql: `INSERT INTO schema_migrations (version, migration_name, applied_at) VALUES (?, ?, ?)`,
+        args: ["2.0.0", "ProGold ERP Full Schema & Index Sync", now],
+      });
+    } catch (_) { }
+
+    // Count installed tables
+    const tableOverview = await getTenantDatabaseOverview(url, token);
+    const tablesCount = tableOverview.tables.length;
+    const executionTimeMs = Date.now() - startTime;
+
+    return {
+      success: true,
+      message: `ProGold ERP database schema successfully installed and synchronized! (${tablesCount} tables ready, ${executionTimeMs}ms)`,
+      tablesCount,
+      executionTimeMs,
+      appliedAt: now,
+      tables: tableOverview.tables,
+    };
+  } catch (error) {
+    console.error("syncTenantDatabaseSchema error:", error);
+    return {
+      success: false,
+      message: `Failed to install schema: ${error?.message || "Internal database error"}`,
+      error: error?.message,
+    };
+  }
+}
+

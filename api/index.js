@@ -16,7 +16,14 @@ import {
   getTenantDbOverviewController,
   executeTenantQueryController,
   testTenantDbHealthController,
+  reinstallTenantDbController,
 } from "../backend/src/controllers/tenantController.js";
+import {
+  getCompaniesController,
+  createCompanyController,
+  updateCompanyController,
+  deleteCompanyController,
+} from "../backend/src/controllers/companyController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -41,10 +48,6 @@ let schemaInitialized = false;
 let schemaPromise = null;
 
 async function ensureSchema() {
-  if (!process.env.MASTER_TURSO_AUTH_TOKEN) {
-    console.warn("[WARNING] MASTER_TURSO_AUTH_TOKEN is not set in environment variables.");
-    return;
-  }
   if (!schemaInitialized) {
     if (!schemaPromise) {
       schemaPromise = initMasterSchema()
@@ -52,7 +55,7 @@ async function ensureSchema() {
           schemaInitialized = true;
         })
         .catch((err) => {
-          console.error("Master DB Schema initialization failed:", err.message);
+          console.error("Master DB Schema initialization notice:", err?.message || err);
           schemaPromise = null;
         });
     }
@@ -66,7 +69,9 @@ const router = express.Router();
 // Middleware to ensure schema is initialized before handling route
 router.use(async (req, res, next) => {
   if (req.path !== "/health" && req.path !== "/api/health") {
-    await ensureSchema();
+    try {
+      await ensureSchema();
+    } catch (_) {}
   }
   next();
 });
@@ -77,22 +82,14 @@ router.get("/health", async (req, res) => {
   let dbError = null;
   let dbLatencyMs = null;
 
-  const hasToken = !!process.env.MASTER_TURSO_AUTH_TOKEN;
-  const hasUrl = !!process.env.MASTER_TURSO_URL;
-
-  if (!hasToken) {
-    dbStatus = "missing_environment_variables";
-    dbError = "MASTER_TURSO_AUTH_TOKEN is missing in Vercel Environment Variables.";
-  } else {
-    try {
-      const start = Date.now();
-      await masterTurso.execute("SELECT 1 AS ping;");
-      dbLatencyMs = Date.now() - start;
-      dbStatus = "connected";
-    } catch (err) {
-      dbStatus = "connection_failed";
-      dbError = err.message;
-    }
+  try {
+    const start = Date.now();
+    await masterTurso.execute("SELECT 1 AS ping;");
+    dbLatencyMs = Date.now() - start;
+    dbStatus = "connected";
+  } catch (err) {
+    dbStatus = "connection_failed";
+    dbError = err?.message || String(err);
   }
 
   const isHealthy = dbStatus === "connected";
@@ -101,14 +98,12 @@ router.get("/health", async (req, res) => {
     status: isHealthy ? "online" : "degraded",
     message: isHealthy
       ? "ProGold Multi-Tenant Turso Backend API is running smoothly on Vercel."
-      : "ProGold API is running, but database connection needs configuration.",
+      : `ProGold API error: ${dbError}`,
     diagnostics: {
       database: {
         status: dbStatus,
         latencyMs: dbLatencyMs,
         error: dbError,
-        urlConfigured: hasUrl,
-        tokenConfigured: hasToken,
       },
       smtp: {
         configured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
@@ -134,6 +129,13 @@ router.put("/tenant/profile", requireAuth, updateProfileController);
 router.get("/tenant/db/overview", requireAuth, getTenantDbOverviewController);
 router.get("/tenant/db/health", requireAuth, testTenantDbHealthController);
 router.post("/tenant/db/query", requireAuth, executeTenantQueryController);
+router.post("/tenant/db/reinstall", requireAuth, reinstallTenantDbController);
+
+// Tenant Company Master CRUD Routes
+router.get("/tenant/companies", requireAuth, getCompaniesController);
+router.post("/tenant/companies", requireAuth, createCompanyController);
+router.put("/tenant/companies/:id", requireAuth, updateCompanyController);
+router.delete("/tenant/companies/:id", requireAuth, deleteCompanyController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);
@@ -142,12 +144,9 @@ app.use("/", router);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("Unhandled server error:", err);
-  const isMissingToken = !process.env.MASTER_TURSO_AUTH_TOKEN;
   res.status(500).json({
     success: false,
-    message: isMissingToken
-      ? "Server configuration error: MASTER_TURSO_AUTH_TOKEN is missing in Vercel environment variables."
-      : err?.message || "Internal server error.",
+    message: err?.message || "Internal server error.",
     error: err?.message,
   });
 });

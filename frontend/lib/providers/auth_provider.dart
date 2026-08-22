@@ -27,6 +27,7 @@ class AuthProvider with ChangeNotifier {
   // Database Management State
   List<TableOverview> _tenantTables = [];
   bool _isLoadingTables = false;
+  bool _isReinstallingDb = false;
   TursoTestResult? _tenantDbHealth;
 
   // Getters
@@ -47,6 +48,7 @@ class AuthProvider with ChangeNotifier {
 
   List<TableOverview> get tenantTables => _tenantTables;
   bool get isLoadingTables => _isLoadingTables;
+  bool get isReinstallingDb => _isReinstallingDb;
   TursoTestResult? get tenantDbHealth => _tenantDbHealth;
 
   AuthProvider() {
@@ -277,6 +279,29 @@ class AuthProvider with ChangeNotifier {
     if (result.success) {
       fetchTenantDbOverview(); // Refresh table stats after query
     }
+    return result;
+  }
+
+  /// Reinstall & Synchronize latest ProGold ERP schema into tenant's private database
+  Future<Map<String, dynamic>> reinstallDatabase() async {
+    if (_authToken == null) {
+      return {'success': false, 'message': 'Not authenticated.'};
+    }
+    _isReinstallingDb = true;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+
+    final result = await _api.reinstallTenantDatabase(_authToken!);
+    _isReinstallingDb = false;
+
+    if (result['success'] == true) {
+      _successMessage = result['message'] ?? "Database schema reinstalled successfully!";
+      await fetchTenantDbOverview();
+    } else {
+      _errorMessage = result['message'] ?? "Failed to reinstall database schema.";
+    }
+    notifyListeners();
     return result;
   }
 

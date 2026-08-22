@@ -407,39 +407,75 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header & Tab Bar
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: WrapAlignment.spaceBetween,
             children: [
-              const Icon(Icons.storage_rounded, color: GlassTheme.primaryNeon, size: 22),
-              const SizedBox(width: 10),
-              const Text(
-                "Turso Database Console",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
-              ),
-              const Spacer(),
-              Container(
-                height: 38,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  isScrollable: true,
-                  indicator: BoxDecoration(
-                    gradient: GlassTheme.primaryGradient,
-                    borderRadius: BorderRadius.circular(8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.storage_rounded, color: GlassTheme.primaryNeon, size: 22),
+                  const SizedBox(width: 10),
+                  const Text(
+                    "Turso Database Console",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
                   ),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: GlassTheme.textSecondary,
-                  labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  tabs: const [
-                    Tab(text: "SQL Query Editor"),
-                    Tab(text: "Tables & Schema"),
-                    Tab(text: "Quick Templates"),
-                  ],
-                ),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Reinstall DB Schema Button
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF059669),
+                      side: const BorderSide(color: Color(0xFF10B981)),
+                      backgroundColor: const Color(0xFFECFDF5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    icon: auth.isReinstallingDb
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF059669)),
+                          )
+                        : const Icon(Icons.published_with_changes_rounded, size: 16),
+                    label: Text(
+                      auth.isReinstallingDb ? "Reinstalling..." : "Reinstall / Sync Schema",
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    onPressed: auth.isReinstallingDb ? null : () => _showReinstallSchemaDialog(context, auth),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      isScrollable: true,
+                      indicator: BoxDecoration(
+                        gradient: GlassTheme.primaryGradient,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      dividerColor: Colors.transparent,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: GlassTheme.textSecondary,
+                      labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      tabs: const [
+                        Tab(text: "SQL Query Editor"),
+                        Tab(text: "Tables & Schema"),
+                        Tab(text: "Quick Templates"),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -676,10 +712,22 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               "No tables found in this tenant database.",
               style: TextStyle(color: GlassTheme.textSecondary, fontSize: 14),
             ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              icon: const Icon(Icons.published_with_changes_rounded, size: 16),
+              label: const Text("Install Complete ProGold ERP Schema", style: TextStyle(fontWeight: FontWeight.w700)),
+              onPressed: () => _showReinstallSchemaDialog(context, auth),
+            ),
             const SizedBox(height: 8),
             TextButton.icon(
               icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text("Create sample tables from Quick Templates"),
+              label: const Text("Or browse sample templates"),
               onPressed: () => _tabController.animateTo(2),
             ),
           ],
@@ -829,6 +877,100 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                 },
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReinstallSchemaDialog(BuildContext context, AuthProvider auth) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0xFFE2E8F0)),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.published_with_changes_rounded, color: GlassTheme.accentEmerald, size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              "Reinstall Database Schema",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "This will verify and synchronize your private Turso database with the full ProGold ERP structure (products, categories, live gold rates, inventory, customers, invoices, and payments).",
+              style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.shield_outlined, size: 18, color: GlassTheme.accentEmerald),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "Safe & Non-destructive: Existing tenant data (invoices, clients, custom records) will NOT be deleted.",
+                      style: TextStyle(fontSize: 11.5, color: GlassTheme.textPrimary, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text("Cancel", style: TextStyle(color: GlassTheme.textSecondary)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            icon: const Icon(Icons.build_circle_rounded, size: 16),
+            label: const Text("Reinstall Schema Now", style: TextStyle(fontWeight: FontWeight.w700)),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final result = await auth.reinstallDatabase();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: result['success'] == true ? const Color(0xFF059669) : const Color(0xFFE11D48),
+                    content: Text(
+                      result['message'] ?? (result['success'] == true ? "Schema reinstalled successfully!" : "Reinstall failed."),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              }
+            },
           ),
         ],
       ),

@@ -1,5 +1,10 @@
 import { masterTurso } from "../config/turso.js";
-import { getTenantDatabaseOverview, executeTenantQuery, testTursoConnection } from "../services/tursoService.js";
+import {
+  getTenantDatabaseOverview,
+  executeTenantQuery,
+  testTursoConnection,
+  syncTenantDatabaseSchema,
+} from "../services/tursoService.js";
 
 /**
  * Get tenant profile and validity metadata
@@ -112,5 +117,23 @@ export async function testTenantDbHealthController(req, res) {
   } catch (error) {
     console.error("testTenantDbHealthController error:", error);
     return res.status(500).json({ success: false, message: "Database health check failed." });
+  }
+}
+
+/**
+ * Reinstall & Synchronize latest ProGold ERP schema into tenant's database on demand
+ */
+export async function reinstallTenantDbController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const syncResult = await syncTenantDatabaseSchema(turso_url, turso_token);
+    return res.json(syncResult);
+  } catch (error) {
+    console.error("reinstallTenantDbController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: `Failed to reinstall schema: ${error?.message || "Internal server error"}`,
+      error: error?.message,
+    });
   }
 }

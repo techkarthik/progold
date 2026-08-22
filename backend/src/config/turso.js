@@ -3,22 +3,69 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+try {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+  dotenv.config();
+} catch (_) {}
 
-const MASTER_URL = process.env.MASTER_TURSO_URL || "libsql://gold-techkarthik.aws-ap-south-1.turso.io";
-const MASTER_TOKEN = process.env.MASTER_TURSO_AUTH_TOKEN || "";
-
-if (!MASTER_TOKEN) {
-  console.warn("WARNING: MASTER_TURSO_AUTH_TOKEN is not set in environment.");
+function getMasterUrl() {
+  const url = (
+    process.env.MASTER_TURSO_URL ||
+    process.env.TURSO_DATABASE_URL ||
+    process.env.TURSO_URL ||
+    "libsql://gold-techkarthik.aws-ap-south-1.turso.io"
+  ).trim();
+  if (!url.startsWith("libsql://") && !url.startsWith("https://") && !url.startsWith("http://")) {
+    return `libsql://${url}`;
+  }
+  return url;
 }
 
-// Master Turso Database Client
-export const masterTurso = createClient({
-  url: MASTER_URL,
-  authToken: MASTER_TOKEN,
-});
+function getMasterToken() {
+  return (
+    process.env.MASTER_TURSO_AUTH_TOKEN ||
+    process.env.TURSO_AUTH_TOKEN ||
+    process.env.TURSO_TOKEN ||
+    process.env.TURSO_MASTER_TOKEN ||
+    process.env.MASTER_TOKEN ||
+    "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODcwNDAyMDcsImlkIjoiMDFhMDEzZTUtMWQwMS03NjMzLWExNTYtNTllMWY3NDk4YTkzIiwia2lkIjoibW9sNS1XSE1tQzE3X1BZazJza1M4cXdWOGJ1VnFmY3BQQ3BfMWphYS1nVSIsInJpZCI6Ijk4NDQ2MmE4LTNjMTItNDcyNi1hNTAzLWIzZGQ5YmMzYWRhMCJ9.LHSzWVKA6bSPEcW5deQZ7OVZVqr7Gf6UFrDIAdAiu4_wLY7I42TNKVMCkKRnjHVbtunG_LglAKxIh42pYf--DQ"
+  ).trim();
+}
+
+let _masterTursoClient = null;
+let _lastToken = null;
+let _lastUrl = null;
+
+export function getMasterClient() {
+  const url = getMasterUrl();
+  const token = getMasterToken();
+  if (!_masterTursoClient || _lastToken !== token || _lastUrl !== url) {
+    _lastUrl = url;
+    _lastToken = token;
+    _masterTursoClient = createClient({
+      url: url,
+      authToken: token,
+    });
+  }
+  return _masterTursoClient;
+}
+
+// Master Turso Database Client Proxy
+export const masterTurso = new Proxy(
+  {},
+  {
+    get(target, prop) {
+      const client = getMasterClient();
+      const val = client[prop];
+      if (typeof val === "function") {
+        return val.bind(client);
+      }
+      return val;
+    },
+  }
+);
 
 /**
  * Creates a dynamic Turso client for a specific tenant database.
@@ -27,13 +74,12 @@ export const masterTurso = createClient({
  * @returns {Client}
  */
 export function createTenantClient(url, authToken) {
-  let formattedUrl = url.trim();
-  // Ensure valid protocol
+  let formattedUrl = (url || "").trim();
   if (!formattedUrl.startsWith("libsql://") && !formattedUrl.startsWith("https://") && !formattedUrl.startsWith("http://")) {
     formattedUrl = `libsql://${formattedUrl}`;
   }
   return createClient({
     url: formattedUrl,
-    authToken: authToken.trim(),
+    authToken: (authToken || "").trim(),
   });
 }

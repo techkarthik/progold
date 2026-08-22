@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/tenant_model.dart';
+import '../models/company_model.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -222,6 +223,88 @@ class ApiService {
       return QueryResult.fromJson(data);
     } catch (e) {
       return QueryResult(success: false, message: 'Query execution error: $e');
+    }
+  }
+
+  /// Reinstalls & Synchronizes the latest ProGold ERP schema into tenant's database
+  Future<Map<String, dynamic>> reinstallTenantDatabase(String token) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/db/reinstall'),
+        headers: _headers(token),
+      );
+      final data = jsonDecode(res.body);
+      return data;
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to reinstall database schema: $e',
+      };
+    }
+  }
+
+  // ================= COMPANY MASTER CRUD =================
+
+  /// Fetches all company records for tenant
+  Future<List<Company>> getCompanies(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/companies'),
+        headers: _headers(token),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['companies'] is List) {
+          return (data['companies'] as List)
+              .map((item) => Company.fromJson(item))
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error fetching companies: $e");
+      return [];
+    }
+  }
+
+  /// Creates a new company record
+  Future<Map<String, dynamic>> createCompany(String token, Company company) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/companies'),
+        headers: _headers(token),
+        body: jsonEncode(company.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create company: $e'};
+    }
+  }
+
+  /// Updates an existing company record
+  Future<Map<String, dynamic>> updateCompany(String token, String companyId, Company company) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/companies/$companyId'),
+        headers: _headers(token),
+        body: jsonEncode(company.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update company: $e'};
+    }
+  }
+
+  /// Deletes a company record
+  Future<Map<String, dynamic>> deleteCompany(String token, String companyId) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/companies/$companyId'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete company: $e'};
     }
   }
 }

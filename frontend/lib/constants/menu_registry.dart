@@ -20,6 +20,7 @@ class MenuRegistry {
   // 2. SUB-MENUS UNDER MASTER (M_MASTER)
   // ==========================================
   static const String MASTER_ORGANIZATION = "M_MASTER.ORGANIZATION";
+  static const String MASTER_ORGANIZATION_COMPANY = "M_MASTER.ORGANIZATION.COMPANY";
   static const String MASTER_INVENTORY = "M_MASTER.INVENTORY";
   static const String MASTER_SALES_AND_PRICE = "M_MASTER.SALES_AND_PRICE";
   static const String MASTER_LOGIN_USERS = "M_MASTER.LOGIN_USERS";
