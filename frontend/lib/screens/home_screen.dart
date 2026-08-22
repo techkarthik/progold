@@ -16,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String _selectedModule = "HOME"; // e.g. MenuRegistry.MENU_MASTER, etc.
   String _masterSubmenu = "HUB"; // e.g. MenuRegistry.MASTER_ORGANIZATION, etc.
+  int _organizationTab = 0; // 0 = Company Master, 1 = Store Profile & Setup
 
   // Live gold & silver rate states
   double _gold24k = 7250.0;
@@ -938,7 +939,7 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (_masterSubmenu) {
       case "COMPANY":
         return CompanyMasterScreen(
-          onBack: () => setState(() => _masterSubmenu = "ORGANIZATION"),
+          onBack: () => setState(() => _masterSubmenu = "HUB"),
         );
       case "ORGANIZATION":
         return _buildOrganizationSubmenu(auth, tenant);
@@ -962,10 +963,11 @@ class _HomeScreenState extends State<HomeScreen> {
       {
         "id": "ORGANIZATION",
         "name": "ORGANIZATION",
-        "title": "Store & Company Master",
-        "desc": "Manage Store Branches, Counters, GSTIN & Hallmarking details",
+        "title": "Company & Store Master",
+        "desc": "Add & manage Corporate Companies (GSTIN, Address, Bank, Branches) & Store Setup",
         "icon": Icons.business_rounded,
         "color": GlassTheme.primaryNeon,
+        "isCompany": true,
       },
       {
         "id": "INVENTORY",
@@ -1010,11 +1012,24 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.account_balance_rounded, color: GlassTheme.primaryNeon, size: 24),
-                  SizedBox(width: 10),
-                  Text("MASTER CONFIGURATION", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const Icon(Icons.account_balance_rounded, color: GlassTheme.primaryNeon, size: 24),
+                  const SizedBox(width: 10),
+                  const Text("MASTER CONFIGURATION", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const Spacer(),
+                  // Quick Direct Company Master button
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: GlassTheme.primaryNeon,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.apartment_rounded, size: 16),
+                    label: const Text("🏛️ Company Master", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    onPressed: () => setState(() => _masterSubmenu = "COMPANY"),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -1033,57 +1048,119 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (context, index) {
                   final item = submenus[index];
                   final Color col = item["color"];
+                  final bool isOrg = item["isCompany"] == true;
 
-                  return InkWell(
-                    onTap: () => setState(() => _masterSubmenu = item["id"]),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0x10FFFFFF),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: col.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: col.withValues(alpha: 0.18),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: col.withValues(alpha: 0.4)),
-                            ),
-                            child: Icon(item["icon"], color: col, size: 24),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0x10FFFFFF),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: col.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      children: [
+                        InkWell(
+                          onTap: () => setState(() => _masterSubmenu = item["id"]),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
                               children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      item["name"],
-                                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: col, letterSpacing: 0.5),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      "• ${item["title"]}",
-                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
-                                    ),
-                                  ],
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: col.withValues(alpha: 0.18),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: col.withValues(alpha: 0.4)),
+                                  ),
+                                  child: Icon(item["icon"], color: col, size: 24),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  item["desc"],
-                                  style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            item["name"],
+                                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: col, letterSpacing: 0.5),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            "• ${item["title"]}",
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+                                          ),
+                                          if (isOrg) ...[
+                                            const SizedBox(width: 8),
+                                            const StatusBadge(label: "Company CRUD", color: GlassTheme.accentEmerald),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        item["desc"],
+                                        style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.arrow_forward_ios_rounded, size: 16, color: col),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // If ORGANIZATION, show quick action chips directly on the card
+                        if (isOrg) ...[
+                          const Divider(height: 1, color: Color(0x18FFFFFF)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            child: Row(
+                              children: [
+                                const Text("Quick Launch: ", style: TextStyle(fontSize: 12, color: GlassTheme.textMuted, fontWeight: FontWeight.w600)),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => setState(() => _masterSubmenu = "COMPANY"),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: GlassTheme.primaryNeon.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: GlassTheme.primaryNeon.withValues(alpha: 0.5)),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.add_business_rounded, size: 14, color: GlassTheme.primaryNeon),
+                                        SizedBox(width: 6),
+                                        Text("🏛️ Company Master (+ Add)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => setState(() {
+                                    _masterSubmenu = "ORGANIZATION";
+                                    _organizationTab = 1;
+                                  }),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0x15FFFFFF),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0x33FFFFFF)),
+                                    ),
+                                    child: const Text("🏬 Store Profile", style: TextStyle(fontSize: 12, color: Colors.white)),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          Icon(Icons.arrow_forward_ios_rounded, size: 16, color: col),
                         ],
-                      ),
+                      ],
                     ),
                   );
                 },
@@ -1097,6 +1174,125 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 1. SUBMENU: ORGANIZATION
   Widget _buildOrganizationSubmenu(AuthProvider auth, Tenant tenant) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Navigation Tabs Bar: [ 🏛️ Company Master | 🏬 Store Profile & Counters ]
+        GlassContainer(
+          borderRadius: 14,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                tooltip: "Back to Master Hub",
+                onPressed: () => setState(() => _masterSubmenu = "HUB"),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                "ORGANIZATION",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+              ),
+              const SizedBox(width: 16),
+              Container(height: 24, width: 1, color: const Color(0x22FFFFFF)),
+              const SizedBox(width: 16),
+
+              // Tab 0: Company Master
+              InkWell(
+                onTap: () => setState(() => _organizationTab = 0),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _organizationTab == 0
+                        ? GlassTheme.primaryNeon
+                        : Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _organizationTab == 0
+                          ? GlassTheme.primaryNeon
+                          : const Color(0x22FFFFFF),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.apartment_rounded,
+                        size: 16,
+                        color: _organizationTab == 0 ? Colors.white : GlassTheme.primaryNeon,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Company Master",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _organizationTab == 0 ? Colors.white : Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+
+              // Tab 1: Store Profile & Counters
+              InkWell(
+                onTap: () => setState(() => _organizationTab = 1),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _organizationTab == 1
+                        ? GlassTheme.primaryNeon
+                        : Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _organizationTab == 1
+                          ? GlassTheme.primaryNeon
+                          : const Color(0x22FFFFFF),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.storefront_rounded,
+                        size: 16,
+                        color: _organizationTab == 1 ? Colors.white : GlassTheme.accentCyan,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Store Profile & Counters",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _organizationTab == 1 ? Colors.white : Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Active Tab Content
+        if (_organizationTab == 0)
+          CompanyMasterScreen(
+            onBack: () => setState(() => _masterSubmenu = "HUB"),
+          )
+        else
+          _buildStoreProfileContent(tenant),
+      ],
+    );
+  }
+
+  // Store Profile & Counters Content
+  Widget _buildStoreProfileContent(Tenant tenant) {
     return GlassContainer(
       borderRadius: 18,
       padding: const EdgeInsets.all(22),
@@ -1105,103 +1301,23 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.business_rounded, color: GlassTheme.primaryNeon, size: 24),
+              const Icon(Icons.storefront_rounded, color: GlassTheme.accentCyan, size: 24),
               const SizedBox(width: 10),
-              const Text("ORGANIZATION MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              const Text("STORE & BILLING COUNTER SETUP", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
               const Spacer(),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: GlassTheme.primaryNeon,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                icon: const Icon(Icons.apartment_rounded, size: 16),
-                label: const Text("Open Company Master"),
-                onPressed: () => setState(() => _masterSubmenu = "COMPANY"),
-              ),
+              const StatusBadge(label: "Head Office", color: GlassTheme.accentEmerald),
             ],
           ),
           const SizedBox(height: 16),
           const Text(
-            "Manage your jewellery store organization profile, companies, branches, billing counters, and GST registration.",
+            "Overview of default head office store details, contact information, and billing terminal configuration:",
             style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
           ),
           const SizedBox(height: 20),
 
-          // Dedicated Company Master Action Banner
-          InkWell(
-            onTap: () => setState(() => _masterSubmenu = "COMPANY"),
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    GlassTheme.primaryNeon.withValues(alpha: 0.15),
-                    GlassTheme.accentCyan.withValues(alpha: 0.08),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: GlassTheme.primaryNeon.withValues(alpha: 0.4), width: 1.5),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: GlassTheme.primaryGradient,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: GlassTheme.primaryNeon.withValues(alpha: 0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(Icons.apartment_rounded, color: Colors.white, size: 26),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              "Company Master",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: -0.2,
-                              ),
-                            ),
-                            SizedBox(width: 8),
-                            StatusBadge(label: "CRUD Active", color: GlassTheme.accentEmerald),
-                          ],
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          "Add, View, Edit & Delete corporate companies with GSTIN, mobile, address, bank accounts & multi-branch linkages.",
-                          style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.arrow_forward_ios_rounded, color: GlassTheme.primaryNeon, size: 18),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Current Tenant Store Overview
+          // Current Tenant Store Overview Card
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: const Color(0x0EFFFFFF),
               borderRadius: BorderRadius.circular(12),
@@ -1213,32 +1329,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(tenant.businessName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-                    const StatusBadge(label: "Head Office / Main Store", color: GlassTheme.accentEmerald),
+                    Text(tenant.businessName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+                    StatusBadge(label: "ID #${tenant.id}", color: GlassTheme.accentCyan),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text("Contact: ${tenant.contactNumber}", style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary)),
-                Text("Registered Email: ${tenant.email}", style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary)),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(Icons.phone_rounded, size: 14, color: GlassTheme.textMuted),
+                    const SizedBox(width: 6),
+                    Text("Contact: ${tenant.contactNumber}", style: const TextStyle(fontSize: 12, color: Colors.white)),
+                    const SizedBox(width: 20),
+                    const Icon(Icons.email_rounded, size: 14, color: GlassTheme.textMuted),
+                    const SizedBox(width: 6),
+                    Text("Registered Email: ${tenant.email}", style: const TextStyle(fontSize: 12, color: Colors.white)),
+                  ],
+                ),
+                const SizedBox(height: 14),
                 const Divider(color: Color(0x18FFFFFF)),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 const Row(
                   children: [
                     Icon(Icons.point_of_sale_rounded, size: 16, color: GlassTheme.accentCyan),
-                    SizedBox(width: 6),
-                    Text("Configured Counters: Counter 01 (Gold/Diamond), Counter 02 (Silver/Coins)", style: TextStyle(fontSize: 12, color: Colors.white)),
+                    SizedBox(width: 8),
+                    Text("Configured Billing Counters: Counter 01 (Gold/Diamond), Counter 02 (Silver/Coins)", style: TextStyle(fontSize: 12, color: Colors.white70)),
                   ],
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 20),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: GlassTheme.accentCyan, side: const BorderSide(color: GlassTheme.accentCyan)),
-            icon: const Icon(Icons.arrow_back_rounded, size: 16),
-            label: const Text("Back to Master Menu"),
-            onPressed: () => setState(() => _masterSubmenu = "HUB"),
           ),
         ],
       ),
