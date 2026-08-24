@@ -201,6 +201,23 @@ export async function syncTenantDatabaseSchema(url, token) {
       );
     `);
 
+    // 2d. Tenant User Master Table (with menu permissions & central login)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        userid TEXT PRIMARY KEY NOT NULL,
+        username TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        email TEXT DEFAULT '',
+        branchid TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        centlogin TEXT DEFAULT 'NO',
+        profile_image TEXT DEFAULT '',
+        allowed_menus TEXT DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
     // 3. Live Gold & Silver Rates Table
     await client.execute(`
       CREATE TABLE IF NOT EXISTS gold_rates (

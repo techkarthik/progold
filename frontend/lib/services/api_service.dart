@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/tenant_model.dart';
 import '../models/company_model.dart';
 import '../models/branch_model.dart';
+import '../models/user_model.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -371,6 +372,102 @@ class ApiService {
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Failed to delete branch: $e'};
+    }
+  }
+
+  // ================= USER MASTER API METHODS =================
+
+  /// Fetches all user accounts for tenant
+  Future<List<AppUser>> getUsers(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/users'),
+        headers: _headers(token),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['users'] is List) {
+          return (data['users'] as List)
+              .map((item) => AppUser.fromJson(item))
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("getUsers error: $e");
+      return [];
+    }
+  }
+
+  /// Creates a new user record with password & menu permissions
+  Future<Map<String, dynamic>> createUser(String token, AppUser user, String password) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/users'),
+        headers: _headers(token),
+        body: jsonEncode(user.toJson(password: password)),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create user: $e'};
+    }
+  }
+
+  /// Updates an existing user record & menu permissions
+  Future<Map<String, dynamic>> updateUser(String token, String userId, AppUser user) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/users/$userId'),
+        headers: _headers(token),
+        body: jsonEncode(user.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update user: $e'};
+    }
+  }
+
+  /// Changes a user's password
+  Future<Map<String, dynamic>> changeUserPassword(String token, String userId, String newPassword) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/users/$userId/change-password'),
+        headers: _headers(token),
+        body: jsonEncode({'new_password': newPassword}),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to change password: $e'};
+    }
+  }
+
+  /// Deletes a user record
+  Future<Map<String, dynamic>> deleteUser(String token, String userId) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/users/$userId'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete user: $e'};
+    }
+  }
+
+  /// Initiates password recovery via Email OTP
+  Future<Map<String, dynamic>> recoverUserPassword(String emailOrUserId) async {
+    try {
+      final isEmail = emailOrUserId.contains('@');
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/users/recover-password'),
+        headers: _headers(),
+        body: jsonEncode({
+          if (isEmail) 'email': emailOrUserId.trim() else 'userid': emailOrUserId.trim(),
+        }),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to initiate password recovery: $e'};
     }
   }
 }

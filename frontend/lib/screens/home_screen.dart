@@ -6,6 +6,7 @@ import '../theme/glass_theme.dart';
 import '../widgets/glass_widgets.dart';
 import 'company_master_screen.dart';
 import 'branch_master_screen.dart';
+import 'user_master_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -960,7 +961,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "SALESANDPRICE":
         return _buildSalesAndPriceSubmenu(auth);
       case "LOGINUSERS":
-        return _buildLoginUsersSubmenu(auth);
+        return UserMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "HUB"),
+        );
       case "EMPLOYEES":
         return _buildEmployeesSubmenu(auth);
       case "HUB":
@@ -1053,6 +1056,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: const Icon(Icons.storefront_rounded, size: 15),
                     label: const Text("Branch Master", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                     onPressed: () => setState(() => _masterSubmenu = "BRANCHES"),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: GlassTheme.accentCyan,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.admin_panel_settings_rounded, size: 15),
+                    label: const Text("User Master", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                    onPressed: () => setState(() => _masterSubmenu = "LOGINUSERS"),
                   ),
                 ],
               ),
@@ -1595,72 +1610,6 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(label, style: const TextStyle(fontSize: 12, color: GlassTheme.textMuted)),
           const SizedBox(height: 4),
           Text("₹${val.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-        ],
-      ),
-    );
-  }
-
-  // 4. SUBMENU: LOGIN USERS
-  Widget _buildLoginUsersSubmenu(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.admin_panel_settings_rounded, color: GlassTheme.accentCyan, size: 24),
-              const SizedBox(width: 10),
-              const Text("LOGIN USERS MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Spacer(),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: GlassTheme.accentCyan, foregroundColor: Colors.black),
-                icon: const Icon(Icons.person_add_rounded, size: 16),
-                label: const Text("Create User Account"),
-                onPressed: () {},
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            "Manage software login credentials, roles (Store Admin, Billing Cashier, Appraiser, Manager), and feature access rights.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0x0EFFFFFF),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: GlassTheme.accentCyan,
-                  child: Icon(Icons.security_rounded, color: Colors.black),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Super Administrator (Master Account)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      Text("Full access to billing, inventory, price changes, and reports", style: TextStyle(color: GlassTheme.textMuted, fontSize: 12)),
-                    ],
-                  ),
-                ),
-                StatusBadge(label: "Active Admin", color: GlassTheme.accentEmerald),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: GlassTheme.accentCyan, side: const BorderSide(color: GlassTheme.accentCyan)),
-            icon: const Icon(Icons.arrow_back_rounded, size: 16),
-            label: const Text("Back to Master Menu"),
-            onPressed: () => setState(() => _masterSubmenu = "HUB"),
-          ),
         ],
       ),
     );

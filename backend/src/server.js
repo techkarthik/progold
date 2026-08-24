@@ -29,6 +29,14 @@ import {
   updateBranchController,
   deleteBranchController,
 } from "./controllers/branchController.js";
+import {
+  getUsersController,
+  createUserController,
+  updateUserController,
+  changePasswordController,
+  deleteUserController,
+  recoverPasswordOtpController,
+} from "./controllers/userController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -92,6 +100,14 @@ app.get("/api/tenant/branches", requireAuth, getBranchesController);
 app.post("/api/tenant/branches", requireAuth, createBranchController);
 app.put("/api/tenant/branches/:id", requireAuth, updateBranchController);
 app.delete("/api/tenant/branches/:id", requireAuth, deleteBranchController);
+
+// Tenant User Master CRUD & Password Management Routes
+app.get("/api/tenant/users", requireAuth, getUsersController);
+app.post("/api/tenant/users", requireAuth, createUserController);
+app.put("/api/tenant/users/:id", requireAuth, updateUserController);
+app.delete("/api/tenant/users/:id", requireAuth, deleteUserController);
+app.post("/api/tenant/users/:id/change-password", requireAuth, changePasswordController);
+app.post("/api/tenant/users/recover-password", requireAuth, recoverPasswordOtpController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

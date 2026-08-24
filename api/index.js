@@ -30,6 +30,14 @@ import {
   updateBranchController,
   deleteBranchController,
 } from "../backend/src/controllers/branchController.js";
+import {
+  getUsersController,
+  createUserController,
+  updateUserController,
+  changePasswordController,
+  deleteUserController,
+  recoverPasswordOtpController,
+} from "../backend/src/controllers/userController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -148,6 +156,14 @@ router.get("/tenant/branches", requireAuth, getBranchesController);
 router.post("/tenant/branches", requireAuth, createBranchController);
 router.put("/tenant/branches/:id", requireAuth, updateBranchController);
 router.delete("/tenant/branches/:id", requireAuth, deleteBranchController);
+
+// Tenant User Master CRUD & Password Management Routes
+router.get("/tenant/users", requireAuth, getUsersController);
+router.post("/tenant/users", requireAuth, createUserController);
+router.put("/tenant/users/:id", requireAuth, updateUserController);
+router.delete("/tenant/users/:id", requireAuth, deleteUserController);
+router.post("/tenant/users/:id/change-password", requireAuth, changePasswordController);
+router.post("/tenant/users/recover-password", requireAuth, recoverPasswordOtpController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);
