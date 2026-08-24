@@ -7,6 +7,7 @@ import '../widgets/glass_widgets.dart';
 import 'company_master_screen.dart';
 import 'branch_master_screen.dart';
 import 'user_master_screen.dart';
+import 'user_menu_rights_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -364,6 +365,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         });
                         Navigator.pop(context);
                       }, _selectedModule == "MASTER" && _masterSubmenu == "BRANCHES"),
+                      _buildDrawerSubTile("    🔐 USER MENU RIGHTS", () {
+                        setState(() {
+                          _selectedModule = "MASTER";
+                          _masterSubmenu = "USER_RIGHTS";
+                        });
+                        Navigator.pop(context);
+                      }, _selectedModule == "MASTER" && _masterSubmenu == "USER_RIGHTS"),
                       _buildDrawerSubTile("📦 INVENTORY", () {
                         setState(() {
                           _selectedModule = "MASTER";
@@ -954,6 +962,10 @@ class _HomeScreenState extends State<HomeScreen> {
         return BranchMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "HUB"),
         );
+      case "USER_RIGHTS":
+        return UserMenuRightsScreen(
+          onBack: () => setState(() => _masterSubmenu = "HUB"),
+        );
       case "ORGANIZATION":
         return _buildOrganizationSubmenu(auth, tenant);
       case "INVENTORY":
@@ -1197,6 +1209,26 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                                 InkWell(
+                                  onTap: () => setState(() => _masterSubmenu = "USER_RIGHTS"),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.security_rounded, size: 14, color: Color(0xFF8B5CF6)),
+                                        SizedBox(width: 6),
+                                        Text("🔐 User Rights", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                InkWell(
                                   onTap: () => setState(() {
                                     _masterSubmenu = "ORGANIZATION";
                                     _organizationTab = 2;
@@ -1335,7 +1367,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 10),
 
-                // Tab 2: Store Profile & Counters
+                // Tab 2: User Menu Rights (Assign Menus to User)
                 InkWell(
                   onTap: () => setState(() => _organizationTab = 2),
                   borderRadius: BorderRadius.circular(10),
@@ -1343,11 +1375,51 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: _organizationTab == 2
-                          ? GlassTheme.primaryNeon
+                          ? const Color(0xFF8B5CF6)
                           : Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: _organizationTab == 2
+                            ? const Color(0xFF8B5CF6)
+                            : const Color(0x22FFFFFF),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.security_rounded,
+                          size: 16,
+                          color: _organizationTab == 2 ? Colors.white : const Color(0xFF8B5CF6),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Assign Menus (User Rights)",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _organizationTab == 2 ? Colors.white : Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Tab 3: Store Profile & Counters
+                InkWell(
+                  onTap: () => setState(() => _organizationTab = 3),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _organizationTab == 3
+                          ? GlassTheme.primaryNeon
+                          : Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _organizationTab == 3
                             ? GlassTheme.primaryNeon
                             : const Color(0x22FFFFFF),
                       ),
@@ -1358,7 +1430,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Icon(
                           Icons.settings_suggest_rounded,
                           size: 16,
-                          color: _organizationTab == 2 ? Colors.white : GlassTheme.accentCyan,
+                          color: _organizationTab == 3 ? Colors.white : GlassTheme.accentCyan,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -1366,7 +1438,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: _organizationTab == 2 ? Colors.white : Colors.white70,
+                            color: _organizationTab == 3 ? Colors.white : Colors.white70,
                           ),
                         ),
                       ],
@@ -1386,6 +1458,10 @@ class _HomeScreenState extends State<HomeScreen> {
           )
         else if (_organizationTab == 1)
           BranchMasterScreen(
+            onBack: () => setState(() => _masterSubmenu = "HUB"),
+          )
+        else if (_organizationTab == 2)
+          UserMenuRightsScreen(
             onBack: () => setState(() => _masterSubmenu = "HUB"),
           )
         else

@@ -59,6 +59,13 @@ class MenuTreeRegistry {
           color: Color(0xFF10B981),
         ),
         MenuTreeNode(
+          code: MenuRegistry.MASTER_ORGANIZATION_USER_RIGHTS,
+          title: "User Menu Rights",
+          subtitle: "Assign .NET tree view menu permissions to users",
+          icon: Icons.security_rounded,
+          color: Color(0xFF8B5CF6),
+        ),
+        MenuTreeNode(
           code: MenuRegistry.MASTER_INVENTORY,
           title: "Item & Ornament Master",
           subtitle: "Metal types, 24K/22K 916 purities & ornament categories",
