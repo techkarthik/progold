@@ -335,7 +335,9 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
 
   // Single Company Card
   Widget _buildCompanyCard(BuildContext context, AuthProvider auth, Company company) {
-    final branches = company.branchList;
+    final linkedBranches = _dbBranches
+        .where((b) => b.companyId.trim().toUpperCase() == company.companyId.trim().toUpperCase())
+        .toList();
     final countryItem = LocationData.getCountryById(company.countryId ?? 1) ??
         LocationData.getCountryByNameOrCode(company.country);
     final stateItem = (company.stateId != null && company.stateId! > 0)
@@ -470,19 +472,19 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                     _buildInfoRow(Icons.account_balance_rounded, "Account", "Default Account", color: GlassTheme.textMuted),
                   const SizedBox(height: 10),
 
-                  // Branch Chips Multi-Selection View
+                  // Linked Branches from Branch Master
                   const Text(
-                    "Assigned Branches:",
+                    "Linked Branches (Branch Master):",
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: GlassTheme.textSecondary),
                   ),
                   const SizedBox(height: 4),
-                  if (branches.isEmpty)
-                    const Text("All Branches (Global)", style: TextStyle(fontSize: 11, color: GlassTheme.textMuted, fontStyle: FontStyle.italic))
+                  if (linkedBranches.isEmpty)
+                    const Text("No branches linked yet", style: TextStyle(fontSize: 11, color: GlassTheme.textMuted, fontStyle: FontStyle.italic))
                   else
                     Wrap(
                       spacing: 4,
                       runSpacing: 4,
-                      children: branches.take(3).map((branch) {
+                      children: linkedBranches.take(3).map((branch) {
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
@@ -491,13 +493,13 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                             border: Border.all(color: GlassTheme.primaryNeon.withValues(alpha: 0.25)),
                           ),
                           child: Text(
-                            branch,
+                            "${branch.branchId} - ${branch.branchName}",
                             style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: GlassTheme.primaryNeon),
                           ),
                         );
                       }).toList()
                         ..addAll(
-                          branches.length > 3
+                          linkedBranches.length > 3
                               ? [
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -506,7 +508,7 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
-                                      "+${branches.length - 3} more",
+                                      "+${linkedBranches.length - 3} more",
                                       style: const TextStyle(fontSize: 10, color: GlassTheme.textMuted),
                                     ),
                                   )
@@ -664,7 +666,19 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                   ),
                   DataCell(Text(c.accountName.isNotEmpty ? c.accountName : '-', style: const TextStyle(fontSize: 12))),
                   DataCell(
-                    Text(c.branchId.isNotEmpty ? c.branchId : 'All Branches', style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary)),
+                    () {
+                      final linkedCount = _dbBranches
+                          .where((b) => b.companyId.trim().toUpperCase() == c.companyId.trim().toUpperCase())
+                          .length;
+                      return Text(
+                        linkedCount > 0 ? "$linkedCount Branch${linkedCount > 1 ? 'es' : ''}" : "0 Branches",
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: linkedCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                          color: linkedCount > 0 ? GlassTheme.primaryNeon : GlassTheme.textMuted,
+                        ),
+                      );
+                    }(),
                   ),
                   DataCell(
                     Row(
@@ -767,7 +781,6 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
     final addressController = TextEditingController(text: existingCompany?.address ?? '');
     final cityController = TextEditingController(text: existingCompany?.city ?? '');
     final accountController = TextEditingController(text: existingCompany?.accountName ?? '');
-    final customBranchController = TextEditingController();
 
     // Initial country ID: default to 1 (India) or existing
     int selectedCountryId = existingCompany?.countryId ?? 1;
@@ -790,8 +803,6 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
       selectedStateId = 33;
     }
 
-    // Selected branches set
-    final List<String> selectedBranches = List.from(existingCompany?.branchList ?? []);
     bool isSaving = false;
 
     showDialog(
@@ -1105,162 +1116,6 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                                 icon: Icons.account_balance_rounded,
                                 hintText: "e.g. HDFC Current Acc - 50200012345678",
                               ),
-                              const SizedBox(height: 20),
-
-                              // 6. Branch ID with Multi-Selection
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Row(
-                                      children: [
-                                        Icon(Icons.storefront_rounded, size: 16, color: GlassTheme.primaryNeon),
-                                        SizedBox(width: 8),
-                                        Text(
-                                          "Assign Branches from Branch Master (Multi-Selection)",
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w700,
-                                            color: GlassTheme.textPrimary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    const Text(
-                                      "Select branches registered in your Branch Master:",
-                                      style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary),
-                                    ),
-                                    const SizedBox(height: 12),
-
-                                    // Dynamic Branch Options from Branch Master
-                                    () {
-                                      // Build branch options list from Branch Master
-                                      final List<String> branchOptions = [];
-                                      for (final b in _dbBranches) {
-                                        final label = "${b.branchId} - ${b.branchName}";
-                                        if (!branchOptions.contains(label)) {
-                                          branchOptions.add(label);
-                                        }
-                                      }
-                                      // Include existing company branches if not in options
-                                      for (final b in selectedBranches) {
-                                        if (!branchOptions.contains(b)) {
-                                          branchOptions.add(b);
-                                        }
-                                      }
-
-                                      if (branchOptions.isEmpty) {
-                                        return Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                                          ),
-                                          child: const Row(
-                                            children: [
-                                              Icon(Icons.info_outline_rounded, size: 16, color: GlassTheme.accentAmber),
-                                              SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  "No branches found in Branch Master. Please create branches under Master > Organization > Branches or add custom below.",
-                                                  style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      }
-
-                                      return Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: branchOptions.map((branch) {
-                                          final isSelected = selectedBranches.contains(branch);
-                                          return FilterChip(
-                                            label: Text(branch),
-                                            selected: isSelected,
-                                            selectedColor: GlassTheme.primaryNeon.withValues(alpha: 0.15),
-                                            checkmarkColor: GlassTheme.primaryNeon,
-                                            labelStyle: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                              color: isSelected ? GlassTheme.primaryNeon : GlassTheme.textPrimary,
-                                            ),
-                                            backgroundColor: Colors.white,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(8),
-                                              side: BorderSide(
-                                                color: isSelected ? GlassTheme.primaryNeon : const Color(0xFFCBD5E1),
-                                              ),
-                                            ),
-                                            onSelected: (selected) {
-                                              setDialogState(() {
-                                                if (selected) {
-                                                  selectedBranches.add(branch);
-                                                } else {
-                                                  selectedBranches.remove(branch);
-                                                }
-                                              });
-                                            },
-                                          );
-                                        }).toList(),
-                                      );
-                                    }(),
-
-                                    const SizedBox(height: 12),
-
-                                    // Add Custom Branch Input
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: TextField(
-                                            controller: customBranchController,
-                                            style: const TextStyle(fontSize: 12),
-                                            decoration: InputDecoration(
-                                              hintText: "Add custom branch name (e.g. BR02 - City Counter)",
-                                              hintStyle: const TextStyle(fontSize: 11, color: GlassTheme.textMuted),
-                                              isDense: true,
-                                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                              filled: true,
-                                              fillColor: Colors.white,
-                                              border: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(8),
-                                                borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        OutlinedButton.icon(
-                                          style: OutlinedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          ),
-                                          icon: const Icon(Icons.add_rounded, size: 14),
-                                          label: const Text("Add", style: TextStyle(fontSize: 12)),
-                                          onPressed: () {
-                                            final custom = customBranchController.text.trim();
-                                            if (custom.isNotEmpty && !selectedBranches.contains(custom)) {
-                                              setDialogState(() {
-                                                selectedBranches.add(custom);
-                                                customBranchController.clear();
-                                              });
-                                            }
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
                             ],
                           ),
                         ),
@@ -1340,7 +1195,7 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                                       country: countryObj?.name ?? 'India',
                                       countryId: selectedCountryId,
                                       accountName: accountController.text.trim(),
-                                      branchId: selectedBranches.join(', '),
+                                      branchId: existingCompany?.branchId ?? '',
                                     );
 
                                     Map<String, dynamic> res;
@@ -1554,23 +1409,28 @@ class _CompanyMasterScreenState extends State<CompanyMasterScreen> {
                 _buildDetailTile("Account Name / Bank", company.accountName.isNotEmpty ? company.accountName : "Default", Icons.account_balance_rounded),
 
                 const SizedBox(height: 12),
-                const Text("Assigned Branches:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: GlassTheme.textSecondary)),
+                const Text("Linked Branches (Branch Master):", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: GlassTheme.textSecondary)),
                 const SizedBox(height: 6),
-                if (company.branchList.isEmpty)
-                  const Text("All Branches (Global access)", style: TextStyle(fontSize: 12, color: GlassTheme.textMuted))
-                else
-                  Wrap(
+                () {
+                  final linkedBranches = _dbBranches
+                      .where((b) => b.companyId.trim().toUpperCase() == company.companyId.trim().toUpperCase())
+                      .toList();
+                  if (linkedBranches.isEmpty) {
+                    return const Text("No branches currently linked to this company.", style: TextStyle(fontSize: 12, color: GlassTheme.textMuted));
+                  }
+                  return Wrap(
                     spacing: 6,
                     runSpacing: 6,
-                    children: company.branchList.map((b) {
+                    children: linkedBranches.map((b) {
                       return Chip(
-                        label: Text(b, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: GlassTheme.primaryNeon)),
+                        label: Text("${b.branchId} - ${b.branchName}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: GlassTheme.primaryNeon)),
                         backgroundColor: GlassTheme.primaryNeon.withValues(alpha: 0.08),
                         side: BorderSide(color: GlassTheme.primaryNeon.withValues(alpha: 0.3)),
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                       );
                     }).toList(),
-                  ),
+                  );
+                }(),
 
                 const SizedBox(height: 20),
                 Align(

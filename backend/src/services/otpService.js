@@ -6,12 +6,27 @@ import { masterTurso } from "../config/turso.js";
  * Returns a configured Nodemailer transporter
  */
 function getTransporter() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const user = (process.env.SMTP_USER || "").trim();
+  // Auto-strip spaces if user pasted a 16-char Google App Password with spaces (e.g. "abcd efgh ijkl mnop")
+  const pass = process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/\s+/g, "").trim() : "";
   const port = parseInt(process.env.SMTP_PORT || "465", 10);
 
-  if (host && user && pass) {
+  if (user && pass) {
+    // If using Gmail SMTP, service: 'gmail' is much more reliable across AWS/Vercel serverless nodes
+    if (host.includes("gmail") || process.env.SMTP_SERVICE === "gmail") {
+      return nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user,
+          pass,
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+      });
+    }
+
     return nodemailer.createTransport({
       host,
       port,
@@ -20,6 +35,9 @@ function getTransporter() {
         user,
         pass,
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
   }
   return null;
@@ -52,11 +70,10 @@ export async function sendOtp(email) {
     args: [normalizedEmail, otpCode, expiresAt.toISOString(), now.toISOString()],
   });
 
-  // In production, never log the sensitive OTP code to logs
   if (isProduction) {
-    console.log(`[OTP SERVICE] Verification code dispatched to ${normalizedEmail} (Expires: ${expiresAt.toISOString()})`);
+    console.log(`[OTP SERVICE] Verification code generated for ${normalizedEmail} (Expires: ${expiresAt.toISOString()})`);
   } else {
-    console.log(`[OTP SERVICE] Generated code for ${normalizedEmail} (Development Mode)`);
+    console.log(`[OTP SERVICE] Generated code for ${normalizedEmail} (Development Mode: ${otpCode})`);
   }
 
   const transporter = getTransporter();
@@ -111,18 +128,38 @@ export async function sendOtp(email) {
     console.warn("[OTP SERVICE] SMTP not configured. OTP stored in database.");
   }
 
-  // Strictly secure response: NEVER expose OTP if email was sent or in production
-  const shouldExposeDevOtp = !isProduction && !emailSent && !transporter;
+  // If email was successfully sent
+  if (emailSent) {
+    return {
+      success: true,
+      message: `Verification code has been sent to ${normalizedEmail}. Please check your inbox.`,
+      emailSent: true,
+    };
+  }
 
+  // If SMTP is not configured
+  if (!transporter) {
+    if (isProduction) {
+      return {
+        success: false,
+        message: "Email service (SMTP) is not configured in Vercel environment variables. Please set SMTP_USER and SMTP_PASS in Vercel Project Settings.",
+        emailSent: false,
+      };
+    }
+    // In local development mode without SMTP, allow devOtp for convenience
+    return {
+      success: true,
+      message: `Development mode: OTP generated (${otpCode})`,
+      devOtp: otpCode,
+      emailSent: false,
+    };
+  }
+
+  // Transporter was configured but sending failed (e.g. invalid app password, timeout, or auth error)
   return {
-    success: true,
-    message: emailSent
-      ? `Verification code has been sent to ${normalizedEmail}. Please check your inbox.`
-      : shouldExposeDevOtp
-          ? `Development mode: OTP generated (${otpCode})`
-          : `Verification code dispatched to ${normalizedEmail}.`,
-    ...(shouldExposeDevOtp ? { devOtp: otpCode } : {}),
-    emailSent,
+    success: false,
+    message: `Failed to deliver email: ${emailError || "SMTP connection failed"}. Please verify your Google App Password and SMTP settings on Vercel.`,
+    emailSent: false,
   };
 }
 

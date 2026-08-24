@@ -17,10 +17,13 @@ export async function sendOtpController(req, res) {
     }
 
     const result = await sendOtp(email);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
     return res.json(result);
   } catch (error) {
     console.error("sendOtpController error:", error);
-    return res.status(500).json({ success: false, message: "Failed to send verification code." });
+    return res.status(500).json({ success: false, message: `Failed to send verification code: ${error.message}` });
   }
 }
 
