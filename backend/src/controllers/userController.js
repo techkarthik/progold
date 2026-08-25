@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { createTenantClient } from "../config/turso.js";
+import { createTenantClient, masterTurso } from "../config/turso.js";
 import { sendOtp } from "../services/otpService.js";
 
 /**
@@ -143,6 +143,35 @@ export async function createUserController(req, res) {
       });
     }
 
+    // Check global email uniqueness if email is provided
+    if (email && String(email).trim().includes("@")) {
+      const normalizedUserEmail = String(email).trim().toLowerCase();
+      
+      // Check in master tenants table
+      const masterTenantCheck = await masterTurso.execute({
+        sql: `SELECT id FROM tenants WHERE email = ? LIMIT 1`,
+        args: [normalizedUserEmail]
+      });
+      if (masterTenantCheck.rows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: `The email "${normalizedUserEmail}" is already used by a tenant administrator. Please use a different email.`
+        });
+      }
+      
+      // Check in global user lookup
+      const globalLookupCheck = await masterTurso.execute({
+        sql: `SELECT email FROM tenant_users_lookup WHERE email = ? LIMIT 1`,
+        args: [normalizedUserEmail]
+      });
+      if (globalLookupCheck.rows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: `The email "${normalizedUserEmail}" is already registered. Please use a unique email.`
+        });
+      }
+    }
+
     // Check if User ID already exists
     const checkExists = await client.execute({
       sql: `SELECT userid FROM users WHERE userid = ? LIMIT 1;`,
@@ -189,6 +218,16 @@ export async function createUserController(req, res) {
         now,
       ],
     });
+
+    // Sync to tenant_users_lookup in master DB
+    if (email && String(email).trim().includes("@")) {
+      const normalizedUserEmail = String(email).trim().toLowerCase();
+      const tenantId = req.tenant.id;
+      await masterTurso.execute({
+        sql: `INSERT OR REPLACE INTO tenant_users_lookup (email, tenant_id, userid, username) VALUES (?, ?, ?, ?)`,
+        args: [normalizedUserEmail, tenantId, cleanUserId, String(username).trim()]
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -241,6 +280,51 @@ export async function updateUserController(req, res) {
     } = req.body;
 
     const cleanUserId = String(userId).trim().toUpperCase();
+
+    // Fetch current user details first
+    const userCheck = await client.execute({
+      sql: `SELECT email, username FROM users WHERE userid = ? LIMIT 1;`,
+      args: [cleanUserId],
+    });
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `User "${cleanUserId}" not found.`,
+      });
+    }
+    const oldEmail = (userCheck.rows[0].email || "").trim().toLowerCase();
+    const oldUsername = userCheck.rows[0].username || "";
+
+    // Validate global uniqueness if email is changed
+    if (email !== undefined && String(email).trim().toLowerCase() !== oldEmail) {
+      const normalizedNewEmail = String(email).trim().toLowerCase();
+      if (normalizedNewEmail.includes("@")) {
+        // Check in master tenants table
+        const masterTenantCheck = await masterTurso.execute({
+          sql: `SELECT id FROM tenants WHERE email = ? LIMIT 1`,
+          args: [normalizedNewEmail]
+        });
+        if (masterTenantCheck.rows.length > 0) {
+          return res.status(409).json({
+            success: false,
+            message: `The email "${normalizedNewEmail}" is already used by a tenant administrator. Please use a different email.`
+          });
+        }
+        
+        // Check in global user lookup
+        const globalLookupCheck = await masterTurso.execute({
+          sql: `SELECT email FROM tenant_users_lookup WHERE email = ? LIMIT 1`,
+          args: [normalizedNewEmail]
+        });
+        if (globalLookupCheck.rows.length > 0) {
+          return res.status(409).json({
+            success: false,
+            message: `The email "${normalizedNewEmail}" is already registered by another user.`
+          });
+        }
+      }
+    }
+
     const now = new Date().toISOString();
 
     let menusJson = undefined;
@@ -287,6 +371,28 @@ export async function updateUserController(req, res) {
         cleanUserId,
       ],
     });
+
+    // Sync lookup changes
+    const updatedEmail = email !== undefined ? String(email).trim() : oldEmail;
+    const updatedUsername = username !== undefined ? String(username).trim() : oldUsername;
+    
+    // 1. Delete old email from lookup if changed
+    if (oldEmail && oldEmail !== updatedEmail.trim().toLowerCase()) {
+      await masterTurso.execute({
+        sql: `DELETE FROM tenant_users_lookup WHERE email = ?`,
+        args: [oldEmail]
+      });
+    }
+    
+    // 2. Insert or update new email lookup
+    const normalizedUpdatedEmail = updatedEmail.trim().toLowerCase();
+    if (normalizedUpdatedEmail.includes("@")) {
+      const tenantId = req.tenant.id;
+      await masterTurso.execute({
+        sql: `INSERT OR REPLACE INTO tenant_users_lookup (email, tenant_id, userid, username) VALUES (?, ?, ?, ?)`,
+        args: [normalizedUpdatedEmail, tenantId, cleanUserId, updatedUsername]
+      });
+    }
 
     return res.json({
       success: true,
@@ -371,10 +477,27 @@ export async function deleteUserController(req, res) {
     await ensureUserTable(client);
 
     const cleanUserId = String(userId).trim().toUpperCase();
+    
+    // Fetch user details first to get the email
+    const userCheck = await client.execute({
+      sql: `SELECT email FROM users WHERE userid = ? LIMIT 1;`,
+      args: [cleanUserId],
+    });
+
     const result = await client.execute({
       sql: `DELETE FROM users WHERE userid = ?;`,
       args: [cleanUserId],
     });
+
+    if (userCheck.rows.length > 0) {
+      const userEmail = (userCheck.rows[0].email || "").trim().toLowerCase();
+      if (userEmail) {
+        await masterTurso.execute({
+          sql: `DELETE FROM tenant_users_lookup WHERE email = ?`,
+          args: [userEmail]
+        });
+      }
+    }
 
     return res.json({
       success: true,

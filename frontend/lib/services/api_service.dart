@@ -136,8 +136,24 @@ class ApiService {
     }
   }
 
-  /// Fetches authenticated tenant profile & validity days remaining
-  Future<Tenant?> getProfile(String token) async {
+  /// Verifies if an email exists globally
+  Future<Map<String, dynamic>> verifyEmail(String email) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/auth/verify-email'),
+        headers: _headers(),
+        body: jsonEncode({
+          'email': email.trim(),
+        }),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Verification error: $e'};
+    }
+  }
+
+  /// Fetches authenticated tenant profile, role, & user details
+  Future<Map<String, dynamic>?> getProfile(String token) async {
     try {
       final res = await http.get(
         Uri.parse('$baseUrl/tenant/profile'),
@@ -145,8 +161,8 @@ class ApiService {
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        if (data['success'] == true && data['tenant'] != null) {
-          return Tenant.fromJson(data['tenant']);
+        if (data['success'] == true) {
+          return data;
         }
       }
       return null;

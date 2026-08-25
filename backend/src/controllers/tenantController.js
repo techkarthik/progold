@@ -21,6 +21,8 @@ export async function getProfileController(req, res) {
 
     return res.json({
       success: true,
+      role: req.user ? req.user.role : "ADMIN",
+      user: req.user || null,
       tenant: {
         id: tenant.id,
         email: tenant.email,

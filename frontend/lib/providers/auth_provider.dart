@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/tenant_model.dart';
+import '../models/user_model.dart';
 import '../services/api_service.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -30,6 +31,14 @@ class AuthProvider with ChangeNotifier {
   bool _isReinstallingDb = false;
   TursoTestResult? _tenantDbHealth;
 
+  // Verification-First Login State
+  String? _userRole; // "ADMIN" or "USER"
+  AppUser? _currentUser; // populated if role is USER
+  String? _verifiedEmail;
+  String? _verifiedEmailUsername;
+  String? _verifiedEmailRole;
+  bool _isEmailVerifiedForLogin = false;
+
   // Getters
   Tenant? get currentTenant => _currentTenant;
   String? get authToken => _authToken;
@@ -51,6 +60,14 @@ class AuthProvider with ChangeNotifier {
   bool get isReinstallingDb => _isReinstallingDb;
   TursoTestResult? get tenantDbHealth => _tenantDbHealth;
 
+  String? get userRole => _userRole;
+  AppUser? get currentUser => _currentUser;
+  String? get verifiedEmail => _verifiedEmail;
+  String? get verifiedEmailUsername => _verifiedEmailUsername;
+  String? get verifiedEmailRole => _verifiedEmailRole;
+  bool get isEmailVerifiedForLogin => _isEmailVerifiedForLogin;
+  bool get isAdmin => _userRole == 'ADMIN';
+
   AuthProvider() {
     _loadSavedSession();
   }
@@ -66,12 +83,21 @@ class AuthProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _authToken = prefs.getString('auth_token');
     if (_authToken != null) {
-      final profile = await _api.getProfile(_authToken!);
-      if (profile != null) {
-        _currentTenant = profile;
+      final profileData = await _api.getProfile(_authToken!);
+      if (profileData != null && profileData['tenant'] != null) {
+        _currentTenant = Tenant.fromJson(profileData['tenant']);
+        _userRole = profileData['role'] ?? 'ADMIN';
+        if (profileData['user'] != null && _userRole == 'USER') {
+          _currentUser = AppUser.fromJson(profileData['user']);
+        } else {
+          _currentUser = null;
+        }
         fetchTenantDbOverview();
       } else {
         _authToken = null;
+        _currentTenant = null;
+        _userRole = null;
+        _currentUser = null;
         await prefs.remove('auth_token');
       }
       notifyListeners();
@@ -239,9 +265,16 @@ class AuthProvider with ChangeNotifier {
 
     if (res['success'] == true) {
       _authToken = res['token'];
+      _userRole = res['role'] ?? 'ADMIN';
       if (res['tenant'] != null) {
         _currentTenant = Tenant.fromJson(res['tenant']);
       }
+      if (res['user'] != null && _userRole == 'USER') {
+        _currentUser = AppUser.fromJson(res['user']);
+      } else {
+        _currentUser = null;
+      }
+      
       final prefs = await SharedPreferences.getInstance();
       if (_authToken != null) {
         await prefs.setString('auth_token', _authToken!);
@@ -255,6 +288,52 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// Verify email before prompting for password
+  Future<bool> verifyEmailForLogin(String email) async {
+    if (email.isEmpty || !email.contains('@')) {
+      _errorMessage = "Please enter a valid email address.";
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+
+    final res = await _api.verifyEmail(email);
+    _isLoading = false;
+
+    if (res['success'] == true && res['exists'] == true) {
+      _isEmailVerifiedForLogin = true;
+      _verifiedEmail = res['email'];
+      _verifiedEmailUsername = res['username'];
+      _verifiedEmailRole = res['role'];
+      _successMessage = "Email verified! Please enter password.";
+      notifyListeners();
+      return true;
+    } else {
+      _isEmailVerifiedForLogin = false;
+      _verifiedEmail = null;
+      _verifiedEmailUsername = null;
+      _verifiedEmailRole = null;
+      _errorMessage = res['message'] ?? "Email address not found.";
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Reset the verification-first login state
+  void resetLoginVerification() {
+    _isEmailVerifiedForLogin = false;
+    _verifiedEmail = null;
+    _verifiedEmailUsername = null;
+    _verifiedEmailRole = null;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
   }
 
   /// Refresh Tenant DB Overview
@@ -345,10 +424,16 @@ class AuthProvider with ChangeNotifier {
   Future<void> logout() async {
     _authToken = null;
     _currentTenant = null;
+    _userRole = null;
+    _currentUser = null;
     _otpSent = false;
     _otpVerified = false;
     _tursoTestResult = null;
     _tenantTables = [];
+    _isEmailVerifiedForLogin = false;
+    _verifiedEmail = null;
+    _verifiedEmailUsername = null;
+    _verifiedEmailRole = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     notifyListeners();

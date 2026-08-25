@@ -345,65 +345,155 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
 
   // ================= LOGIN FORM =================
   Widget _buildLoginForm(AuthProvider auth) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        GlassTextField(
-          controller: _loginEmailController,
-          label: "Tenant Email",
-          hint: "tenant@example.com",
-          prefixIcon: Icons.email_outlined,
-          keyboardType: TextInputType.emailAddress,
-        ),
-        const SizedBox(height: 18),
-        GlassTextField(
-          controller: _loginPasswordController,
-          label: "Password",
-          hint: "••••••••",
-          prefixIcon: Icons.lock_outline_rounded,
-          obscureText: _loginObscure,
-          suffixIcon: IconButton(
-            icon: Icon(
-              _loginObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-              color: GlassTheme.textMuted,
-              size: 20,
-            ),
-            onPressed: () => setState(() => _loginObscure = !_loginObscure),
+    if (!auth.isEmailVerifiedForLogin) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GlassTextField(
+            controller: _loginEmailController,
+            label: "Login Email",
+            hint: "user@domain.com or admin@domain.com",
+            prefixIcon: Icons.email_outlined,
+            keyboardType: TextInputType.emailAddress,
           ),
-        ),
-        const SizedBox(height: 24),
-        GlassButton(
-          label: "Sign In to Tenant Portal",
-          icon: Icons.login_rounded,
-          isLoading: auth.isLoading,
-          onPressed: () async {
-            final email = _loginEmailController.text.trim();
-            final password = _loginPasswordController.text;
-            if (email.isEmpty || password.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Please fill in email and password")),
-              );
-              return;
-            }
-            await auth.login(email: email, password: password);
-          },
-        ),
-        const SizedBox(height: 16),
-        Center(
-          child: TextButton.icon(
-            icon: const Icon(Icons.bolt_rounded, size: 16, color: GlassTheme.accentAmber),
-            label: const Text(
-              "Quick Demo Auto-Fill (Registered Account)",
-              style: TextStyle(color: GlassTheme.accentAmber, fontSize: 12),
-            ),
-            onPressed: () {
-              _loginEmailController.text = "tenant_test@example.com";
-              _loginPasswordController.text = "Admin@123";
+          const SizedBox(height: 24),
+          GlassButton(
+            label: "Next",
+            icon: Icons.arrow_forward_rounded,
+            isLoading: auth.isLoading,
+            onPressed: () async {
+              final email = _loginEmailController.text.trim();
+              if (email.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Please enter your email address")),
+                );
+                return;
+              }
+              await auth.verifyEmailForLogin(email);
             },
           ),
-        ),
-      ],
-    );
+          const SizedBox(height: 16),
+          Center(
+            child: TextButton.icon(
+              icon: const Icon(Icons.bolt_rounded, size: 16, color: GlassTheme.accentAmber),
+              label: const Text(
+                "Quick Demo Auto-Fill (Registered Account)",
+                style: TextStyle(color: GlassTheme.accentAmber, fontSize: 12),
+              ),
+              onPressed: () {
+                _loginEmailController.text = "tenant_test@example.com";
+              },
+            ),
+          ),
+        ],
+      );
+    } else {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: GlassTheme.primaryNeon.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: GlassTheme.primaryNeon.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.account_circle_rounded, color: GlassTheme.primaryNeon, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Welcome, ${auth.verifiedEmailUsername}!",
+                        style: const TextStyle(
+                          color: GlassTheme.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "${auth.verifiedEmail} • Role: ${auth.verifiedEmailRole}",
+                        style: const TextStyle(
+                          color: GlassTheme.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          GlassTextField(
+            controller: _loginPasswordController,
+            label: "Enter Password",
+            hint: "••••••••",
+            prefixIcon: Icons.lock_outline_rounded,
+            obscureText: _loginObscure,
+            suffixIcon: IconButton(
+              icon: Icon(
+                _loginObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                color: GlassTheme.textMuted,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _loginObscure = !_loginObscure),
+            ),
+          ),
+          const SizedBox(height: 24),
+          GlassButton(
+            label: "Sign In",
+            icon: Icons.login_rounded,
+            isLoading: auth.isLoading,
+            onPressed: () async {
+              final email = auth.verifiedEmail!;
+              final password = _loginPasswordController.text;
+              if (password.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Please enter your password")),
+                );
+                return;
+              }
+              final loggedIn = await auth.login(email: email, password: password);
+              if (loggedIn) {
+                _loginPasswordController.clear();
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.arrow_back_rounded, size: 16, color: GlassTheme.textMuted),
+                label: const Text(
+                  "Use a different email",
+                  style: TextStyle(color: GlassTheme.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                onPressed: () {
+                  auth.resetLoginVerification();
+                  _loginPasswordController.clear();
+                },
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.bolt_rounded, size: 16, color: GlassTheme.accentAmber),
+                label: const Text(
+                  "Auto-Fill Password",
+                  style: TextStyle(color: GlassTheme.accentAmber, fontSize: 12),
+                ),
+                onPressed: () {
+                  _loginPasswordController.text = "Admin@123";
+                },
+              ),
+            ],
+          ),
+        ],
+      );
+    }
   }
 
   // ================= REGISTER FORM =================

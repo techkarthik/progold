@@ -46,6 +46,12 @@ export async function requireAuth(req, res, next) {
     }
 
     req.tenant = tenant;
+    req.user = {
+      role: decoded.role || "ADMIN",
+      userId: decoded.userId || "ADMIN",
+      username: decoded.username || tenant.business_name || "Admin",
+      email: decoded.email || tenant.email,
+    };
     next();
   } catch (error) {
     if (error.name === "TokenExpiredError") {

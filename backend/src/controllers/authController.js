@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { masterTurso } from "../config/turso.js";
+import { masterTurso, createTenantClient } from "../config/turso.js";
 import { sendOtp, verifyOtp, isEmailVerified } from "../services/otpService.js";
 import { testTursoConnection, syncTenantDatabaseSchema } from "../services/tursoService.js";
 
@@ -189,6 +189,67 @@ export async function registerController(req, res) {
 }
 
 /**
+ * Verify if email exists globally (either as admin tenant or limited user)
+ * POST /api/auth/verify-email
+ */
+export async function verifyEmailController(req, res) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required." });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // 1. Check in tenants table (Admin)
+    const adminCheck = await masterTurso.execute({
+      sql: `SELECT id, email, business_name FROM tenants WHERE email = ? LIMIT 1`,
+      args: [normalizedEmail],
+    });
+
+    if (adminCheck.rows.length > 0) {
+      const admin = adminCheck.rows[0];
+      return res.json({
+        success: true,
+        exists: true,
+        role: "ADMIN",
+        username: admin.business_name || "Admin",
+        email: admin.email
+      });
+    }
+
+    // 2. Check in tenant_users_lookup table (Limited User)
+    const userCheck = await masterTurso.execute({
+      sql: `SELECT email, tenant_id, userid, username FROM tenant_users_lookup WHERE email = ? LIMIT 1`,
+      args: [normalizedEmail],
+    });
+
+    if (userCheck.rows.length > 0) {
+      const user = userCheck.rows[0];
+      return res.json({
+        success: true,
+        exists: true,
+        role: "USER",
+        username: user.username,
+        email: user.email
+      });
+    }
+
+    return res.json({
+      success: false,
+      exists: false,
+      message: "Email address not registered."
+    });
+  } catch (error) {
+    console.error("verifyEmailController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: `Verification failed: ${error?.message || "Internal server error"}`
+    });
+  }
+}
+
+/**
  * Tenant login handler
  */
 export async function loginController(req, res) {
@@ -200,30 +261,86 @@ export async function loginController(req, res) {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // 1. Fetch tenant
-    const result = await masterTurso.execute({
+    // 1. Fetch tenant from master first (to see if it's admin)
+    const tenantResult = await masterTurso.execute({
       sql: `SELECT * FROM tenants WHERE email = ? LIMIT 1`,
       args: [normalizedEmail],
     });
 
-    if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: "Invalid email or password." });
+    let tenant = null;
+    let role = "ADMIN";
+    let userId = "ADMIN";
+    let username = "";
+    let isMatch = false;
+    let dbUser = null;
+
+    if (tenantResult.rows.length > 0) {
+      tenant = tenantResult.rows[0];
+      role = "ADMIN";
+      userId = "ADMIN";
+      username = tenant.business_name || "Admin";
+
+      // Compare password using tenants.password_hash
+      isMatch = await bcrypt.compare(password, tenant.password_hash);
+    } else {
+      // 2. Not found in tenants, check global lookup
+      const lookupResult = await masterTurso.execute({
+        sql: `SELECT email, tenant_id, userid, username FROM tenant_users_lookup WHERE email = ? LIMIT 1`,
+        args: [normalizedEmail],
+      });
+
+      if (lookupResult.rows.length === 0) {
+        return res.status(401).json({ success: false, message: "Invalid email or password." });
+      }
+
+      const lookupRow = lookupResult.rows[0];
+      
+      // Load tenant information
+      const tenantInfoResult = await masterTurso.execute({
+        sql: `SELECT * FROM tenants WHERE id = ? LIMIT 1`,
+        args: [lookupRow.tenant_id],
+      });
+
+      if (tenantInfoResult.rows.length === 0) {
+        return res.status(401).json({ success: false, message: "Tenant account not found." });
+      }
+
+      tenant = tenantInfoResult.rows[0];
+      role = "USER";
+      userId = lookupRow.userid;
+      username = lookupRow.username;
+
+      // Connect to tenant database to verify password and status
+      const tenantClient = createTenantClient(tenant.turso_url, tenant.turso_token);
+      
+      const userResult = await tenantClient.execute({
+        sql: `SELECT * FROM users WHERE userid = ? LIMIT 1`,
+        args: [userId],
+      });
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({ success: false, message: "User account not found." });
+      }
+
+      dbUser = userResult.rows[0];
+      if (Number(dbUser.is_active) !== 1) {
+        return res.status(403).json({ success: false, message: "Your user account is inactive." });
+      }
+
+      // Compare password against tenant user's password_hash
+      isMatch = await bcrypt.compare(password, dbUser.password_hash);
     }
 
-    const tenant = result.rows[0];
-
-    // 2. Compare password
-    const isMatch = await bcrypt.compare(password, tenant.password_hash);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
-    // 3. Check status
+    // 3. Check status of tenant
     if (tenant.status !== "ACTIVE") {
       return res.status(403).json({ success: false, message: "Your tenant account is inactive or suspended." });
     }
 
-    // 4. Check validity period
+    // 4. Check validity period of tenant subscription
     const today = new Date().toISOString().split("T")[0];
     const isExpired = today < tenant.valid_from || today > tenant.valid_to;
 
@@ -237,17 +354,25 @@ export async function loginController(req, res) {
       });
     }
 
-    // 5. Generate JWT token
+    // 5. Generate JWT token with tenant id, email, role, userId, and username
     const token = jwt.sign(
-      { id: tenant.id, email: tenant.email },
+      {
+        id: tenant.id,
+        email: normalizedEmail,
+        role: role,
+        userId: userId,
+        username: username
+      },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    return res.json({
+    // Prepare response payload
+    const responseData = {
       success: true,
       message: "Login successful!",
       token,
+      role: role,
       tenant: {
         id: tenant.id,
         email: tenant.email,
@@ -257,8 +382,24 @@ export async function loginController(req, res) {
         valid_to: tenant.valid_to,
         status: tenant.status,
         created_at: tenant.created_at,
-      },
-    });
+        business_name: tenant.business_name || "ProGold Business",
+        business_logo: tenant.business_logo || "",
+        username: username, // For UI display
+      }
+    };
+
+    if (role === "USER" && dbUser) {
+      responseData.user = {
+        userid: dbUser.userid,
+        username: dbUser.username,
+        email: dbUser.email,
+        branchid: dbUser.branchid,
+        centlogin: dbUser.centlogin,
+        allowed_menus: typeof dbUser.allowed_menus === "string" ? JSON.parse(dbUser.allowed_menus || "[]") : dbUser.allowed_menus,
+      };
+    }
+
+    return res.json(responseData);
   } catch (error) {
     console.error("loginController error:", error);
     return res.status(500).json({

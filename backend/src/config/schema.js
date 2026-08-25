@@ -1,4 +1,5 @@
 import { masterTurso } from "./turso.js";
+import { createClient } from "@libsql/client";
 
 /**
  * Initializes the required database tables in Master Turso DB.
@@ -53,6 +54,65 @@ export async function initMasterSchema() {
     await masterTurso.execute(`
       CREATE INDEX IF NOT EXISTS idx_otps_email ON email_otps (email);
     `);
+
+    // 4. Create tenant_users_lookup table
+    await masterTurso.execute(`
+      CREATE TABLE IF NOT EXISTS tenant_users_lookup (
+        email TEXT PRIMARY KEY NOT NULL,
+        tenant_id INTEGER NOT NULL,
+        userid TEXT NOT NULL,
+        username TEXT NOT NULL
+      );
+    `);
+
+    await masterTurso.execute(`
+      CREATE INDEX IF NOT EXISTS idx_tenant_users_lookup_tenant ON tenant_users_lookup (tenant_id);
+    `);
+
+    // Sync existing users from tenant databases to the master lookup table
+    try {
+      console.log("Synchronizing tenant users to global lookup table...");
+      const tenantsRes = await masterTurso.execute("SELECT id, turso_url, turso_token FROM tenants");
+      for (const tenantRow of tenantsRes.rows) {
+        const tenantId = tenantRow.id;
+        const url = tenantRow.turso_url;
+        const token = tenantRow.turso_token;
+        if (!url || !token) continue;
+        
+        try {
+          let formattedUrl = (url || "").trim();
+          if (!formattedUrl.startsWith("libsql://") && !formattedUrl.startsWith("https://") && !formattedUrl.startsWith("http://")) {
+            formattedUrl = `libsql://${formattedUrl}`;
+          }
+          const client = createClient({
+            url: formattedUrl,
+            authToken: (token || "").trim(),
+          });
+          
+          const tableCheck = await client.execute(`
+            SELECT name FROM sqlite_master WHERE type='table' AND name='users'
+          `);
+          if (tableCheck.rows.length > 0) {
+            const usersRes = await client.execute("SELECT userid, username, email FROM users");
+            for (const userRow of usersRes.rows) {
+              const uEmail = (userRow.email || "").trim().toLowerCase();
+              if (uEmail && uEmail.includes("@")) {
+                await masterTurso.execute({
+                  sql: `INSERT OR IGNORE INTO tenant_users_lookup (email, tenant_id, userid, username) VALUES (?, ?, ?, ?)`,
+                  args: [uEmail, tenantId, userRow.userid, userRow.username || ""]
+                });
+              }
+            }
+          }
+          await client.close();
+        } catch (err) {
+          console.warn(`[Sync] Could not sync users for tenant ${tenantId}:`, err.message);
+        }
+      }
+      console.log("Sync complete!");
+    } catch (syncErr) {
+      console.warn("[Sync] Notice: Syncing tenant users to global lookup failed on init:", syncErr.message);
+    }
 
     // 3. Ensure Demo Tenant exists for instant testing
     try {

@@ -8,6 +8,7 @@ import {
   testTursoController,
   registerController,
   loginController,
+  verifyEmailController,
 } from "./controllers/authController.js";
 import {
   getProfileController,
@@ -79,6 +80,7 @@ app.post("/api/auth/send-otp", sendOtpController);
 app.post("/api/auth/verify-otp", verifyOtpController);
 app.post("/api/auth/test-turso", testTursoController);
 app.post("/api/auth/register", registerController);
+app.post("/api/auth/verify-email", verifyEmailController);
 app.post("/api/auth/login", loginController);
 
 // Authenticated Tenant Routes
