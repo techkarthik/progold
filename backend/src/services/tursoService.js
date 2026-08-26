@@ -428,6 +428,23 @@ export async function syncTenantDatabaseSchema(url, token) {
       );
     `);
 
+    // 13c. Tax Master Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS tax_master (
+        taxid INTEGER PRIMARY KEY AUTOINCREMENT,
+        taxcode TEXT NOT NULL UNIQUE,
+        taxname TEXT NOT NULL,
+        sgst_per REAL DEFAULT 0.0,
+        sgstacname TEXT DEFAULT '',
+        cgst_per REAL DEFAULT 0.0,
+        cgstacname TEXT DEFAULT '',
+        igst_per REAL DEFAULT 0.0,
+        igstacname TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
     // 14. Audit Activity Logs
     await client.execute(`
       CREATE TABLE IF NOT EXISTS audit_logs (
@@ -474,6 +491,7 @@ export async function syncTenantDatabaseSchema(url, token) {
       `CREATE INDEX IF NOT EXISTS idx_invoice_items_inv ON invoice_items (invoice_id);`,
       `CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments (customer_id);`,
       `CREATE INDEX IF NOT EXISTS idx_account_heads_accode ON account_heads (accode);`,
+      `CREATE INDEX IF NOT EXISTS idx_tax_master_taxcode ON tax_master (taxcode);`,
     ];
 
     for (const indexSql of indexes) {

@@ -44,6 +44,12 @@ import {
   updateAccountHeadController,
   deleteAccountHeadController,
 } from "./controllers/accountHeadController.js";
+import {
+  getTaxMasterController,
+  createTaxMasterController,
+  updateTaxMasterController,
+  deleteTaxMasterController,
+} from "./controllers/taxMasterController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -122,6 +128,12 @@ app.get("/api/tenant/account-heads", requireAuth, getAccountHeadsController);
 app.post("/api/tenant/account-heads", requireAuth, createAccountHeadController);
 app.put("/api/tenant/account-heads/:id", requireAuth, updateAccountHeadController);
 app.delete("/api/tenant/account-heads/:id", requireAuth, deleteAccountHeadController);
+
+// Tenant Tax Master CRUD Routes
+app.get("/api/tenant/tax-master", requireAuth, getTaxMasterController);
+app.post("/api/tenant/tax-master", requireAuth, createTaxMasterController);
+app.put("/api/tenant/tax-master/:id", requireAuth, updateTaxMasterController);
+app.delete("/api/tenant/tax-master/:id", requireAuth, deleteTaxMasterController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

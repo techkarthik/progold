@@ -6,6 +6,7 @@ import '../models/company_model.dart';
 import '../models/branch_model.dart';
 import '../models/user_model.dart';
 import '../models/account_head_model.dart';
+import '../models/tax_model.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -550,6 +551,71 @@ class ApiService {
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Failed to delete account head: $e'};
+    }
+  }
+
+  // ================= TAX MASTER CRUD =================
+
+  /// Fetches all tax master records for tenant
+  Future<List<TaxRecord>> getTaxRecords(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/tax-master'),
+        headers: _headers(token),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['taxRecords'] is List) {
+          return (data['taxRecords'] as List)
+              .map((item) => TaxRecord.fromJson(item))
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error fetching tax records: $e");
+      return [];
+    }
+  }
+
+  /// Creates a new tax master record
+  Future<Map<String, dynamic>> createTaxRecord(String token, TaxRecord tax) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/tax-master'),
+        headers: _headers(token),
+        body: jsonEncode(tax.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create tax master record: $e'};
+    }
+  }
+
+  /// Updates an existing tax master record
+  Future<Map<String, dynamic>> updateTaxRecord(String token, int id, TaxRecord tax) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/tax-master/$id'),
+        headers: _headers(token),
+        body: jsonEncode(tax.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update tax master record: $e'};
+    }
+  }
+
+  /// Deletes a tax master record
+  Future<Map<String, dynamic>> deleteTaxRecord(String token, int id) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/tax-master/$id'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete tax master record: $e'};
     }
   }
 }

@@ -9,6 +9,7 @@ import 'branch_master_screen.dart';
 import 'user_master_screen.dart';
 import 'user_menu_rights_screen.dart';
 import 'account_head_master_screen.dart';
+import 'tax_master_screen.dart';
 import '../constants/menu_registry.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -426,6 +427,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             });
                             Navigator.pop(context);
                           }, _selectedModule == "MASTER" && _masterSubmenu == "ACCOUNTHEAD"),
+                        if (_hasAccess(auth, MenuRegistry.MASTER_TAX_MASTER))
+                          _buildDrawerSubTile("📋 TAX MASTER", () {
+                            setState(() {
+                              _selectedModule = "MASTER";
+                              _masterSubmenu = "TAXMASTER";
+                            });
+                            Navigator.pop(context);
+                          }, _selectedModule == "MASTER" && _masterSubmenu == "TAXMASTER"),
                       ],
                     ),
                   ),
@@ -1091,6 +1100,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "ACCOUNTHEAD":
         submenuCode = MenuRegistry.MASTER_ACCOUNT_HEAD;
         break;
+      case "TAXMASTER":
+        submenuCode = MenuRegistry.MASTER_TAX_MASTER;
+        break;
     }
     
     if (submenuCode.isNotEmpty && !_hasAccess(auth, submenuCode)) {
@@ -1139,6 +1151,10 @@ class _HomeScreenState extends State<HomeScreen> {
         return _buildEmployeesSubmenu(auth);
       case "ACCOUNTHEAD":
         return AccountHeadMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "HUB"),
+        );
+      case "TAXMASTER":
+        return TaxMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "HUB"),
         );
       case "HUB":
@@ -1198,6 +1214,14 @@ class _HomeScreenState extends State<HomeScreen> {
         "icon": Icons.account_balance_wallet_rounded,
         "color": GlassTheme.accentRose,
       },
+      {
+        "id": "TAXMASTER",
+        "name": "TAX MASTER",
+        "title": "Tax Master Setup",
+        "desc": "Configure SGST, CGST, IGST rates & posting accounts",
+        "icon": Icons.percent_rounded,
+        "color": GlassTheme.accentEmerald,
+      },
     ];
 
     final filteredSubmenus = submenus.where((submenu) {
@@ -1220,6 +1244,9 @@ class _HomeScreenState extends State<HomeScreen> {
           break;
         case "ACCOUNTHEAD":
           code = MenuRegistry.MASTER_ACCOUNT_HEAD;
+          break;
+        case "TAXMASTER":
+          code = MenuRegistry.MASTER_TAX_MASTER;
           break;
         default:
           return false;

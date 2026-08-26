@@ -100,6 +100,13 @@ class MenuTreeRegistry {
           icon: Icons.account_balance_wallet_rounded,
           color: Color(0xFFEF4444),
         ),
+        MenuTreeNode(
+          code: MenuRegistry.MASTER_TAX_MASTER,
+          title: "Tax Master",
+          subtitle: "Configure SGST, CGST, IGST rates & posting accounts",
+          icon: Icons.percent_rounded,
+          color: Color(0xFF10B981),
+        ),
       ],
     ),
 

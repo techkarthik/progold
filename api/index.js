@@ -45,6 +45,12 @@ import {
   updateAccountHeadController,
   deleteAccountHeadController,
 } from "../backend/src/controllers/accountHeadController.js";
+import {
+  getTaxMasterController,
+  createTaxMasterController,
+  updateTaxMasterController,
+  deleteTaxMasterController,
+} from "../backend/src/controllers/taxMasterController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -178,6 +184,12 @@ router.get("/tenant/account-heads", requireAuth, getAccountHeadsController);
 router.post("/tenant/account-heads", requireAuth, createAccountHeadController);
 router.put("/tenant/account-heads/:id", requireAuth, updateAccountHeadController);
 router.delete("/tenant/account-heads/:id", requireAuth, deleteAccountHeadController);
+
+// Tenant Tax Master CRUD Routes
+router.get("/tenant/tax-master", requireAuth, getTaxMasterController);
+router.post("/tenant/tax-master", requireAuth, createTaxMasterController);
+router.put("/tenant/tax-master/:id", requireAuth, updateTaxMasterController);
+router.delete("/tenant/tax-master/:id", requireAuth, deleteTaxMasterController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);
