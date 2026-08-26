@@ -9,6 +9,7 @@ import {
   testTursoController,
   registerController,
   loginController,
+  verifyEmailController,
 } from "../backend/src/controllers/authController.js";
 import {
   getProfileController,
@@ -135,6 +136,7 @@ router.post("/auth/send-otp", sendOtpController);
 router.post("/auth/verify-otp", verifyOtpController);
 router.post("/auth/test-turso", testTursoController);
 router.post("/auth/register", registerController);
+router.post("/auth/verify-email", verifyEmailController);
 router.post("/auth/login", loginController);
 
 // Authenticated Tenant Routes
