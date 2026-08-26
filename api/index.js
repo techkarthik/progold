@@ -39,6 +39,12 @@ import {
   deleteUserController,
   recoverPasswordOtpController,
 } from "../backend/src/controllers/userController.js";
+import {
+  getAccountHeadsController,
+  createAccountHeadController,
+  updateAccountHeadController,
+  deleteAccountHeadController,
+} from "../backend/src/controllers/accountHeadController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -166,6 +172,12 @@ router.put("/tenant/users/:id", requireAuth, updateUserController);
 router.delete("/tenant/users/:id", requireAuth, deleteUserController);
 router.post("/tenant/users/:id/change-password", requireAuth, changePasswordController);
 router.post("/tenant/users/recover-password", requireAuth, recoverPasswordOtpController);
+
+// Tenant Account Head CRUD Routes
+router.get("/tenant/account-heads", requireAuth, getAccountHeadsController);
+router.post("/tenant/account-heads", requireAuth, createAccountHeadController);
+router.put("/tenant/account-heads/:id", requireAuth, updateAccountHeadController);
+router.delete("/tenant/account-heads/:id", requireAuth, deleteAccountHeadController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);

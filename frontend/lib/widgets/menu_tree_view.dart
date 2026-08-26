@@ -93,6 +93,13 @@ class MenuTreeRegistry {
           icon: Icons.badge_rounded,
           color: Color(0xFF8B5CF6),
         ),
+        MenuTreeNode(
+          code: MenuRegistry.MASTER_ACCOUNT_HEAD,
+          title: "Account Head Master",
+          subtitle: "Ledgers, groupings, and contact info",
+          icon: Icons.account_balance_wallet_rounded,
+          color: Color(0xFFEF4444),
+        ),
       ],
     ),
 

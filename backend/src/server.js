@@ -38,6 +38,12 @@ import {
   deleteUserController,
   recoverPasswordOtpController,
 } from "./controllers/userController.js";
+import {
+  getAccountHeadsController,
+  createAccountHeadController,
+  updateAccountHeadController,
+  deleteAccountHeadController,
+} from "./controllers/accountHeadController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -110,6 +116,12 @@ app.put("/api/tenant/users/:id", requireAuth, updateUserController);
 app.delete("/api/tenant/users/:id", requireAuth, deleteUserController);
 app.post("/api/tenant/users/:id/change-password", requireAuth, changePasswordController);
 app.post("/api/tenant/users/recover-password", requireAuth, recoverPasswordOtpController);
+
+// Tenant Account Head CRUD Routes
+app.get("/api/tenant/account-heads", requireAuth, getAccountHeadsController);
+app.post("/api/tenant/account-heads", requireAuth, createAccountHeadController);
+app.put("/api/tenant/account-heads/:id", requireAuth, updateAccountHeadController);
+app.delete("/api/tenant/account-heads/:id", requireAuth, deleteAccountHeadController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

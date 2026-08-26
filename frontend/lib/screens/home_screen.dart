@@ -8,6 +8,7 @@ import 'company_master_screen.dart';
 import 'branch_master_screen.dart';
 import 'user_master_screen.dart';
 import 'user_menu_rights_screen.dart';
+import 'account_head_master_screen.dart';
 import '../constants/menu_registry.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -417,6 +418,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             });
                             Navigator.pop(context);
                           }, _selectedModule == "MASTER" && _masterSubmenu == "EMPLOYEES"),
+                        if (_hasAccess(auth, MenuRegistry.MASTER_ACCOUNT_HEAD))
+                          _buildDrawerSubTile("💳 ACCOUNT HEAD", () {
+                            setState(() {
+                              _selectedModule = "MASTER";
+                              _masterSubmenu = "ACCOUNTHEAD";
+                            });
+                            Navigator.pop(context);
+                          }, _selectedModule == "MASTER" && _masterSubmenu == "ACCOUNTHEAD"),
                       ],
                     ),
                   ),
@@ -1079,6 +1088,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "EMPLOYEES":
         submenuCode = MenuRegistry.MASTER_EMPLOYEES;
         break;
+      case "ACCOUNTHEAD":
+        submenuCode = MenuRegistry.MASTER_ACCOUNT_HEAD;
+        break;
     }
     
     if (submenuCode.isNotEmpty && !_hasAccess(auth, submenuCode)) {
@@ -1125,6 +1137,10 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       case "EMPLOYEES":
         return _buildEmployeesSubmenu(auth);
+      case "ACCOUNTHEAD":
+        return AccountHeadMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "HUB"),
+        );
       case "HUB":
       default:
         return _buildMasterSubmenuGrid(auth);
@@ -1174,6 +1190,14 @@ class _HomeScreenState extends State<HomeScreen> {
         "icon": Icons.badge_rounded,
         "color": GlassTheme.secondaryNeon,
       },
+      {
+        "id": "ACCOUNTHEAD",
+        "name": "ACCOUNT HEAD",
+        "title": "Account Head Master",
+        "desc": "Manage ledger accounts, groupings, and contact info",
+        "icon": Icons.account_balance_wallet_rounded,
+        "color": GlassTheme.accentRose,
+      },
     ];
 
     final filteredSubmenus = submenus.where((submenu) {
@@ -1193,6 +1217,9 @@ class _HomeScreenState extends State<HomeScreen> {
           break;
         case "EMPLOYEES":
           code = MenuRegistry.MASTER_EMPLOYEES;
+          break;
+        case "ACCOUNTHEAD":
+          code = MenuRegistry.MASTER_ACCOUNT_HEAD;
           break;
         default:
           return false;

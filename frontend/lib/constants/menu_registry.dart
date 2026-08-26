@@ -27,6 +27,7 @@ class MenuRegistry {
   static const String MASTER_SALES_AND_PRICE = "M_MASTER.SALES_AND_PRICE";
   static const String MASTER_LOGIN_USERS = "M_MASTER.LOGIN_USERS";
   static const String MASTER_EMPLOYEES = "M_MASTER.EMPLOYEES";
+  static const String MASTER_ACCOUNT_HEAD = "M_MASTER.ACCOUNT_HEAD";
 
   // ==========================================
   // 3. SUB-MENUS UNDER STOCK (M_STOCK) - Extensible

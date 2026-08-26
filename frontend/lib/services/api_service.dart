@@ -5,6 +5,7 @@ import '../models/tenant_model.dart';
 import '../models/company_model.dart';
 import '../models/branch_model.dart';
 import '../models/user_model.dart';
+import '../models/account_head_model.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -484,6 +485,71 @@ class ApiService {
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Failed to initiate password recovery: $e'};
+    }
+  }
+
+  // ================= ACCOUNT HEAD CRUD =================
+
+  /// Fetches all account head records for tenant
+  Future<List<AccountHead>> getAccountHeads(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/account-heads'),
+        headers: _headers(token),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['accountHeads'] is List) {
+          return (data['accountHeads'] as List)
+              .map((item) => AccountHead.fromJson(item))
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error fetching account heads: $e");
+      return [];
+    }
+  }
+
+  /// Creates a new account head record
+  Future<Map<String, dynamic>> createAccountHead(String token, AccountHead head) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/account-heads'),
+        headers: _headers(token),
+        body: jsonEncode(head.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create account head: $e'};
+    }
+  }
+
+  /// Updates an existing account head record
+  Future<Map<String, dynamic>> updateAccountHead(String token, int id, AccountHead head) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/account-heads/$id'),
+        headers: _headers(token),
+        body: jsonEncode(head.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update account head: $e'};
+    }
+  }
+
+  /// Deletes an account head record
+  Future<Map<String, dynamic>> deleteAccountHead(String token, int id) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/account-heads/$id'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete account head: $e'};
     }
   }
 }

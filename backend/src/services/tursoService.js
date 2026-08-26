@@ -410,6 +410,24 @@ export async function syncTenantDatabaseSchema(url, token) {
       );
     `);
 
+    // 13b. Account Heads Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS account_heads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        accode TEXT UNIQUE NOT NULL,
+        groupname TEXT NOT NULL,
+        accountname TEXT NOT NULL,
+        state TEXT DEFAULT '',
+        country TEXT DEFAULT 'India',
+        pincode TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        gstno TEXT DEFAULT '',
+        panno TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
     // 14. Audit Activity Logs
     await client.execute(`
       CREATE TABLE IF NOT EXISTS audit_logs (
@@ -455,6 +473,7 @@ export async function syncTenantDatabaseSchema(url, token) {
       `CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices (customer_id);`,
       `CREATE INDEX IF NOT EXISTS idx_invoice_items_inv ON invoice_items (invoice_id);`,
       `CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments (customer_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_account_heads_accode ON account_heads (accode);`,
     ];
 
     for (const indexSql of indexes) {
