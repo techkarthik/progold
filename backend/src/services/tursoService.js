@@ -232,17 +232,48 @@ export async function syncTenantDatabaseSchema(url, token) {
       );
     `);
 
-    // 4. Jewellery Categories Table
+    // 3b. Metal Master Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS metals (
+        metalid TEXT PRIMARY KEY NOT NULL,
+        metalname TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 3c. Purity Master Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS purities (
+        purityid INTEGER PRIMARY KEY AUTOINCREMENT,
+        metalid TEXT NOT NULL,
+        purityname TEXT NOT NULL,
+        purityshortname TEXT NOT NULL,
+        purity REAL NOT NULL,
+        type TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (metalid) REFERENCES metals(metalid)
+      );
+    `);
+
+    // 4. Jewellery Categories Table (Refactored)
     await client.execute(`
       CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
-        code TEXT UNIQUE,
-        default_purity TEXT DEFAULT '22K',
-        hsn_code TEXT DEFAULT '7113',
-        description TEXT DEFAULT '',
-        is_active INTEGER DEFAULT 1,
-        created_at TEXT NOT NULL
+        metalid TEXT NOT NULL,
+        catcode TEXT UNIQUE NOT NULL,
+        catname TEXT NOT NULL,
+        categorytype TEXT NOT NULL,
+        sgst_per REAL DEFAULT 0.0,
+        cgst_per REAL DEFAULT 0.0,
+        igst_per REAL DEFAULT 0.0,
+        sgstacname TEXT DEFAULT '',
+        cgstacname TEXT DEFAULT '',
+        igstacname TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (metalid) REFERENCES metals(metalid)
       );
     `);
 
@@ -514,18 +545,34 @@ export async function syncTenantDatabaseSchema(url, token) {
       }
     } catch (_) { }
 
-    // Seed Categories
+    // Seed Metals, Purities, and Categories
     try {
-      const catCheck = await client.execute(`SELECT COUNT(*) as cnt FROM categories;`);
-      if (Number(catCheck.rows[0]?.cnt || 0) === 0) {
+      const metalCheck = await client.execute(`SELECT COUNT(*) as cnt FROM metals;`);
+      if (Number(metalCheck.rows[0]?.cnt || 0) === 0) {
+        // Seed metals
         await client.execute(`
-          INSERT INTO categories (name, code, default_purity, hsn_code, created_at) VALUES
-          ('Gold Necklaces', 'GNK-01', '22K', '7113', '${now}'),
-          ('Gold Bangles & Bracelets', 'GBG-02', '22K', '7113', '${now}'),
-          ('Gold Rings', 'GRG-03', '22K', '7113', '${now}'),
-          ('Gold Chains', 'GCH-04', '22K', '7113', '${now}'),
-          ('Silver Articles & Utensils', 'SUT-05', 'SILVER', '7114', '${now}'),
-          ('Diamond & Precious Stones', 'DIA-06', '18K', '7113', '${now}');
+          INSERT INTO metals (metalid, metalname, created_at, updated_at) VALUES
+          ('G', 'Gold', '${now}', '${now}'),
+          ('S', 'Silver', '${now}', '${now}'),
+          ('P', 'Platinum', '${now}', '${now}');
+        `);
+
+        // Seed purities
+        await client.execute(`
+          INSERT INTO purities (metalid, purityname, purityshortname, purity, type, created_at, updated_at) VALUES
+          ('G', '24K Gold', '24K', 99.9, 'METAL', '${now}', '${now}'),
+          ('G', '22K Gold', '22K', 91.6, 'ORNAMENT', '${now}', '${now}'),
+          ('G', '18K Gold', '18K', 75.0, 'ORNAMENT', '${now}', '${now}'),
+          ('S', 'Fine Silver', 'Fine', 99.9, 'METAL', '${now}', '${now}'),
+          ('S', 'Standard Silver', '92.5', 92.5, 'ORNAMENT', '${now}', '${now}');
+        `);
+
+        // Seed categories
+        await client.execute(`
+          INSERT INTO categories (metalid, catcode, catname, categorytype, sgst_per, cgst_per, igst_per, created_at, updated_at) VALUES
+          ('G', 'GO00001', 'Gold Ornaments GST', 'ORNAMENTS/STONE', 1.5, 1.5, 3.0, '${now}', '${now}'),
+          ('G', 'GM00001', 'Gold Bar', 'METAL', 1.5, 1.5, 3.0, '${now}', '${now}'),
+          ('S', 'SO00001', 'Silver Articles', 'ORNAMENTS/STONE', 1.5, 1.5, 3.0, '${now}', '${now}');
         `);
       }
     } catch (_) { }

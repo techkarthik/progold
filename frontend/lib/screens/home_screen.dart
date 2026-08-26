@@ -10,6 +10,9 @@ import 'user_master_screen.dart';
 import 'user_menu_rights_screen.dart';
 import 'account_head_master_screen.dart';
 import 'tax_master_screen.dart';
+import 'metal_master_screen.dart';
+import 'purity_master_screen.dart';
+import 'category_master_screen.dart';
 import '../constants/menu_registry.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -388,13 +391,37 @@ class _HomeScreenState extends State<HomeScreen> {
                             Navigator.pop(context);
                           }, _selectedModule == "MASTER" && _masterSubmenu == "USER_RIGHTS"),
                         if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY))
-                          _buildDrawerSubTile("📦 INVENTORY", () {
+                          _buildDrawerSubTile("📦 INVENTORY MASTER", () {
                             setState(() {
                               _selectedModule = "MASTER";
                               _masterSubmenu = "INVENTORY";
                             });
                             Navigator.pop(context);
                           }, _selectedModule == "MASTER" && _masterSubmenu == "INVENTORY"),
+                        if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_METAL))
+                          _buildDrawerSubTile("    🔘 METAL MASTER", () {
+                            setState(() {
+                              _selectedModule = "MASTER";
+                              _masterSubmenu = "METAL";
+                            });
+                            Navigator.pop(context);
+                          }, _selectedModule == "MASTER" && _masterSubmenu == "METAL"),
+                        if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_PURITY))
+                          _buildDrawerSubTile("    ⭐ PURITY MASTER", () {
+                            setState(() {
+                              _selectedModule = "MASTER";
+                              _masterSubmenu = "PURITY";
+                            });
+                            Navigator.pop(context);
+                          }, _selectedModule == "MASTER" && _masterSubmenu == "PURITY"),
+                        if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_CATEGORY))
+                          _buildDrawerSubTile("    🛍️ CATEGORY MASTER", () {
+                            setState(() {
+                              _selectedModule = "MASTER";
+                              _masterSubmenu = "CATEGORY";
+                            });
+                            Navigator.pop(context);
+                          }, _selectedModule == "MASTER" && _masterSubmenu == "CATEGORY"),
                         if (_hasAccess(auth, MenuRegistry.MASTER_SALES_AND_PRICE))
                           _buildDrawerSubTile("🏷️ SALES AND PRICE", () {
                             setState(() {
@@ -1103,6 +1130,15 @@ class _HomeScreenState extends State<HomeScreen> {
       case "TAXMASTER":
         submenuCode = MenuRegistry.MASTER_TAX_MASTER;
         break;
+      case "METAL":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_METAL;
+        break;
+      case "PURITY":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_PURITY;
+        break;
+      case "CATEGORY":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_CATEGORY;
+        break;
     }
     
     if (submenuCode.isNotEmpty && !_hasAccess(auth, submenuCode)) {
@@ -1156,6 +1192,18 @@ class _HomeScreenState extends State<HomeScreen> {
       case "TAXMASTER":
         return TaxMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "HUB"),
+        );
+      case "METAL":
+        return MetalMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
+      case "PURITY":
+        return PurityMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
+      case "CATEGORY":
+        return CategoryMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
         );
       case "HUB":
       default:
@@ -1591,44 +1639,101 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.category_rounded, color: GlassTheme.accentEmerald, size: 24),
-              const SizedBox(width: 10),
-              const Text("INVENTORY MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Spacer(),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: GlassTheme.accentEmerald, foregroundColor: Colors.white),
-                icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text("New Item / Ornament"),
-                onPressed: () {},
+              IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
+                tooltip: "Back to Master Hub",
+                onPressed: () => setState(() => _masterSubmenu = "HUB"),
+              ),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: GlassTheme.accentEmerald.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.category_rounded, color: GlassTheme.accentEmerald, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text("Inventory Configurations", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text("Configure metals, purities, and item categories", style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary)),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            "Configure metal types, Karat purities (24K, 22K 916, 18K, 14K), ornament classifications, and stone grades.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: 16,
+            runSpacing: 16,
             children: [
-              _buildCategoryPill("Bangles & Bracelets", "22K / 18K", GlassTheme.accentEmerald),
-              _buildCategoryPill("Necklaces & Harams", "22K (916)", GlassTheme.accentEmerald),
-              _buildCategoryPill("Earrings & Studs", "22K / 18K Diamond", GlassTheme.accentEmerald),
-              _buildCategoryPill("Rings & Solitaires", "18K / 14K Platinum", GlassTheme.accentCyan),
-              _buildCategoryPill("Silver Articles & Utensils", "Fine 999 / 925", GlassTheme.accentAmber),
-              _buildCategoryPill("Gold Coins & Bullion", "24K 99.9%", const Color(0xFFFFD700)),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_METAL))
+                _buildSubmenuGridCard(
+                  title: "Metal Master",
+                  desc: "Configure metals (Gold, Silver, Platinum)",
+                  icon: Icons.grid_view_rounded,
+                  color: GlassTheme.accentAmber,
+                  onTap: () => setState(() => _masterSubmenu = "METAL"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_PURITY))
+                _buildSubmenuGridCard(
+                  title: "Purity Master",
+                  desc: "Define purity percentages & Karats (e.g. 22K 91.6)",
+                  icon: Icons.star_rounded,
+                  color: GlassTheme.accentCyan,
+                  onTap: () => setState(() => _masterSubmenu = "PURITY"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_CATEGORY))
+                _buildSubmenuGridCard(
+                  title: "Category Master",
+                  desc: "Manage item categories & posting ledger accounts",
+                  icon: Icons.shopping_bag_rounded,
+                  color: GlassTheme.accentRose,
+                  onTap: () => setState(() => _masterSubmenu = "CATEGORY"),
+                ),
             ],
           ),
-          const SizedBox(height: 24),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: GlassTheme.accentEmerald, side: const BorderSide(color: GlassTheme.accentEmerald)),
-            icon: const Icon(Icons.arrow_back_rounded, size: 16),
-            label: const Text("Back to Master Menu"),
-            onPressed: () => setState(() => _masterSubmenu = "HUB"),
-          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSubmenuGridCard({
+    required String title,
+    required String desc,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: GlassContainer(
+        borderRadius: 16,
+        padding: const EdgeInsets.all(18),
+        borderColor: const Color(0x18FFFFFF),
+        child: SizedBox(
+          width: 260,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(height: 14),
+              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 4),
+              Text(desc, style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted), maxLines: 2, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
       ),
     );
   }

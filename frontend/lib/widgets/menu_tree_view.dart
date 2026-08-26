@@ -71,6 +71,29 @@ class MenuTreeRegistry {
           subtitle: "Metal types, 24K/22K 916 purities & ornament categories",
           icon: Icons.category_rounded,
           color: Color(0xFF10B981),
+          children: [
+            MenuTreeNode(
+              code: MenuRegistry.MASTER_INVENTORY_METAL,
+              title: "Metal Master",
+              subtitle: "Configure metals (Gold, Silver, Platinum)",
+              icon: Icons.grid_view_rounded,
+              color: Color(0xFFF59E0B),
+            ),
+            MenuTreeNode(
+              code: MenuRegistry.MASTER_INVENTORY_PURITY,
+              title: "Purity Master",
+              subtitle: "Define purity percentages & Karats (e.g. 22K 91.6)",
+              icon: Icons.star_rounded,
+              color: Color(0xFF10B981),
+            ),
+            MenuTreeNode(
+              code: MenuRegistry.MASTER_INVENTORY_CATEGORY,
+              title: "Category Master",
+              subtitle: "Manage item categories & tax percentages",
+              icon: Icons.shopping_bag_rounded,
+              color: Color(0xFF3B82F6),
+            ),
+          ],
         ),
         MenuTreeNode(
           code: MenuRegistry.MASTER_SALES_AND_PRICE,

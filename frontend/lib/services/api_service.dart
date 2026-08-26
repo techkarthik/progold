@@ -7,6 +7,7 @@ import '../models/branch_model.dart';
 import '../models/user_model.dart';
 import '../models/account_head_model.dart';
 import '../models/tax_model.dart';
+import '../models/inventory_models.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -616,6 +617,165 @@ class ApiService {
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Failed to delete tax master record: $e'};
+    }
+  }
+
+  // ================= METALS CRUD =================
+
+  Future<List<Metal>> getMetals(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/metals'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['metals'] is List) {
+          return (data['metals'] as List).map((i) => Metal.fromJson(i)).toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error getMetals: $e");
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> createMetal(String token, Metal metal) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/metals'),
+        headers: _headers(token),
+        body: jsonEncode(metal.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateMetal(String token, String metalid, Metal metal) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/metals/$metalid'),
+        headers: _headers(token),
+        body: jsonEncode(metal.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteMetal(String token, String metalid) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/metals/$metalid'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= PURITIES CRUD =================
+
+  Future<List<Purity>> getPurities(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/purities'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['purities'] is List) {
+          return (data['purities'] as List).map((i) => Purity.fromJson(i)).toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error getPurities: $e");
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> createPurity(String token, Purity purity) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/purities'),
+        headers: _headers(token),
+        body: jsonEncode(purity.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updatePurity(String token, int purityid, Purity purity) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/purities/$purityid'),
+        headers: _headers(token),
+        body: jsonEncode(purity.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deletePurity(String token, int purityid) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/purities/$purityid'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= CATEGORIES CRUD =================
+
+  Future<List<CategoryRecord>> getCategories(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/categories'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['categories'] is List) {
+          return (data['categories'] as List).map((i) => CategoryRecord.fromJson(i)).toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error getCategories: $e");
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> createCategory(String token, CategoryRecord category) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/categories'),
+        headers: _headers(token),
+        body: jsonEncode(category.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateCategory(String token, int id, CategoryRecord category) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/categories/$id'),
+        headers: _headers(token),
+        body: jsonEncode(category.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteCategory(String token, int id) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/categories/$id'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
     }
   }
 }

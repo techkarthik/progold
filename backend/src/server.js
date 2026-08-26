@@ -50,6 +50,20 @@ import {
   updateTaxMasterController,
   deleteTaxMasterController,
 } from "./controllers/taxMasterController.js";
+import {
+  getMetalsController,
+  createMetalController,
+  updateMetalController,
+  deleteMetalController,
+  getPuritiesController,
+  createPurityController,
+  updatePurityController,
+  deletePurityController,
+  getCategoriesController,
+  createCategoryController,
+  updateCategoryController,
+  deleteCategoryController,
+} from "./controllers/inventoryMasterController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -134,6 +148,24 @@ app.get("/api/tenant/tax-master", requireAuth, getTaxMasterController);
 app.post("/api/tenant/tax-master", requireAuth, createTaxMasterController);
 app.put("/api/tenant/tax-master/:id", requireAuth, updateTaxMasterController);
 app.delete("/api/tenant/tax-master/:id", requireAuth, deleteTaxMasterController);
+
+// Tenant Metals CRUD Routes
+app.get("/api/tenant/metals", requireAuth, getMetalsController);
+app.post("/api/tenant/metals", requireAuth, createMetalController);
+app.put("/api/tenant/metals/:id", requireAuth, updateMetalController);
+app.delete("/api/tenant/metals/:id", requireAuth, deleteMetalController);
+
+// Tenant Purities CRUD Routes
+app.get("/api/tenant/purities", requireAuth, getPuritiesController);
+app.post("/api/tenant/purities", requireAuth, createPurityController);
+app.put("/api/tenant/purities/:id", requireAuth, updatePurityController);
+app.delete("/api/tenant/purities/:id", requireAuth, deletePurityController);
+
+// Tenant Categories CRUD Routes
+app.get("/api/tenant/categories", requireAuth, getCategoriesController);
+app.post("/api/tenant/categories", requireAuth, createCategoryController);
+app.put("/api/tenant/categories/:id", requireAuth, updateCategoryController);
+app.delete("/api/tenant/categories/:id", requireAuth, deleteCategoryController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

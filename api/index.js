@@ -51,6 +51,20 @@ import {
   updateTaxMasterController,
   deleteTaxMasterController,
 } from "../backend/src/controllers/taxMasterController.js";
+import {
+  getMetalsController,
+  createMetalController,
+  updateMetalController,
+  deleteMetalController,
+  getPuritiesController,
+  createPurityController,
+  updatePurityController,
+  deletePurityController,
+  getCategoriesController,
+  createCategoryController,
+  updateCategoryController,
+  deleteCategoryController,
+} from "../backend/src/controllers/inventoryMasterController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -190,6 +204,24 @@ router.get("/tenant/tax-master", requireAuth, getTaxMasterController);
 router.post("/tenant/tax-master", requireAuth, createTaxMasterController);
 router.put("/tenant/tax-master/:id", requireAuth, updateTaxMasterController);
 router.delete("/tenant/tax-master/:id", requireAuth, deleteTaxMasterController);
+
+// Tenant Metals CRUD Routes
+router.get("/tenant/metals", requireAuth, getMetalsController);
+router.post("/tenant/metals", requireAuth, createMetalController);
+router.put("/tenant/metals/:id", requireAuth, updateMetalController);
+router.delete("/tenant/metals/:id", requireAuth, deleteMetalController);
+
+// Tenant Purities CRUD Routes
+router.get("/tenant/purities", requireAuth, getPuritiesController);
+router.post("/tenant/purities", requireAuth, createPurityController);
+router.put("/tenant/purities/:id", requireAuth, updatePurityController);
+router.delete("/tenant/purities/:id", requireAuth, deletePurityController);
+
+// Tenant Categories CRUD Routes
+router.get("/tenant/categories", requireAuth, getCategoriesController);
+router.post("/tenant/categories", requireAuth, createCategoryController);
+router.put("/tenant/categories/:id", requireAuth, updateCategoryController);
+router.delete("/tenant/categories/:id", requireAuth, deleteCategoryController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);
