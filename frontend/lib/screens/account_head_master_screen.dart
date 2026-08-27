@@ -382,7 +382,7 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                             children: [
                               Text(
                                 head.accountname,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.extrabold, color: Colors.white),
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -460,7 +460,7 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(fontSize: 12, color: Colors.white80, fontWeight: FontWeight.w500),
+            style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -498,8 +498,8 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                   DataCell(Text(head.accode, style: const TextStyle(color: Color(0xFFF43F5E), fontWeight: FontWeight.bold))),
                   DataCell(Text(head.accountname, style: const TextStyle(color: Colors.white))),
                   DataCell(Text(head.groupname, style: const TextStyle(color: GlassTheme.accentCyan))),
-                  DataCell(Text(head.state, style: const TextStyle(color: Colors.white80))),
-                  DataCell(Text(head.country, style: const TextStyle(color: Colors.white80))),
+                   DataCell(Text(head.state, style: const TextStyle(color: Colors.white70))),
+                  DataCell(Text(head.country, style: const TextStyle(color: Colors.white70))),
                   DataCell(Text(head.gstno.isEmpty ? "-" : head.gstno, style: const TextStyle(color: Colors.white70))),
                   DataCell(Text(head.panno.isEmpty ? "-" : head.panno, style: const TextStyle(color: Colors.white70))),
                   DataCell(
@@ -550,7 +550,7 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
         ? existing.groupname
         : _groupOptions.first;
 
-    CountryItem? selectedCountry = LocationData.getCountryByNameOrCode(existing?.country ?? 'India') ??
+    CountryItem selectedCountry = LocationData.getCountryByNameOrCode(existing?.country ?? 'India') ??
         LocationData.countries.first;
 
     // Load states for selected country
@@ -621,7 +621,7 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                             child: Row(
                               children: [
                                 const Text("Account Code: ", style: TextStyle(color: GlassTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold)),
-                                Text(existing.accode, style: const TextStyle(color: Color(0xFFF43F5E), fontSize: 13, fontWeight: FontWeight.extrabold)),
+                                Text(existing.accode, style: const TextStyle(color: Color(0xFFF43F5E), fontSize: 13, fontWeight: FontWeight.w800)),
                               ],
                             ),
                           ),

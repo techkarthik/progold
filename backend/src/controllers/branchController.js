@@ -26,13 +26,13 @@ async function ensureBranchesTable(client) {
   // Safe non-destructive column additions
   try {
     await client.execute(`ALTER TABLE branches ADD COLUMN state_id INTEGER DEFAULT 0;`);
-  } catch (_) {}
+  } catch (_) { }
   try {
     await client.execute(`ALTER TABLE branches ADD COLUMN country_id INTEGER DEFAULT 1;`);
-  } catch (_) {}
+  } catch (_) { }
   try {
     await client.execute(`ALTER TABLE branches ADD COLUMN is_active INTEGER DEFAULT 1;`);
-  } catch (_) {}
+  } catch (_) { }
 }
 
 /**

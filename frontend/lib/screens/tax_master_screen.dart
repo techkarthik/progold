@@ -370,7 +370,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                             children: [
                               Text(
                                 tax.taxname,
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.extrabold, color: Colors.white),
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),

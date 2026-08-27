@@ -374,7 +374,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             children: [
                               Text(
                                 c.catname,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.extrabold, color: Colors.white),
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -620,7 +620,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                               const Text("Category Code: ", style: TextStyle(color: GlassTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold)),
                               Text(
                                 existing == null ? "(Auto-generated on Save)" : existing.catcode,
-                                style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 13, fontWeight: FontWeight.extrabold),
+                                style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 13, fontWeight: FontWeight.w800),
                               ),
                             ],
                           ),
@@ -847,7 +847,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                 controller: controller,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: _inputDecoration("Rate %"),
-                keyboardType: const TextInputType.withOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
                 validator: (val) {
                   if (val == null || val.trim().isEmpty) return "Required";

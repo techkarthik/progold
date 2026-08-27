@@ -367,7 +367,7 @@ class _PurityMasterScreenState extends State<PurityMasterScreen> {
                             children: [
                               Text(
                                 purity.purityname,
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.extrabold, color: Colors.white),
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
                               ),
                               const SizedBox(height: 2),
                               Text(
@@ -422,7 +422,7 @@ class _PurityMasterScreenState extends State<PurityMasterScreen> {
         const SizedBox(width: 8),
         Text(
           text,
-          style: const TextStyle(fontSize: 12, color: Colors.white80, fontWeight: FontWeight.w500),
+          style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500),
         ),
       ],
     );
@@ -626,7 +626,7 @@ class _PurityMasterScreenState extends State<PurityMasterScreen> {
                           controller: purityValController,
                           style: const TextStyle(color: Colors.white, fontSize: 14),
                           decoration: _inputDecoration("e.g. 91.60, 75.00, 100.00"),
-                          keyboardType: const TextInputType.withOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) return "Purity value is required";

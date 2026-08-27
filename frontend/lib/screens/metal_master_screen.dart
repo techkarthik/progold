@@ -354,7 +354,7 @@ class _MetalMasterScreenState extends State<MetalMasterScreen> {
                       children: [
                         Text(
                           metal.metalname,
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.extrabold, color: Colors.white),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
                         ),
                         StatusBadge(label: metal.metalid, color: const Color(0xFFF59E0B)),
                       ],
