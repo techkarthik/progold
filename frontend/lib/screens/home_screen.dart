@@ -42,6 +42,11 @@ class _HomeScreenState extends State<HomeScreen> {
       if (user.allowedMenus.contains(parentCode)) return true;
     }
 
+    // Auto-grant access to new core Estimate module if user has POS, Stock, or Master access
+    if (menuCode.startsWith('M_ESTIMATE') && user.allowedMenus.any((c) => c.startsWith('M_POS') || c.startsWith('M_STOCK') || c.startsWith('M_MASTER'))) {
+      return true;
+    }
+
     return user.allowedMenus.any((code) => code.startsWith('$menuCode.'));
   }
 

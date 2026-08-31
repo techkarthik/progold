@@ -30,7 +30,7 @@ export async function getSystemControlsController(req, res) {
 
     // Query system controls joined with branches if matching
     const result = await client.execute(`
-      SELECT sc.*, b.branchname, b.branchcode
+      SELECT sc.*, b.branchname
       FROM system_controls sc
       LEFT JOIN branches b ON sc.branch_id = b.branchid
       ORDER BY sc.sno DESC;
