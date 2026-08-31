@@ -22,10 +22,10 @@ class GlassTheme {
   static const Color glassBorder = Color(0xFFE2E8F0); // Crisp light border
   static const Color glassBorderGlow = Color(0x334F46E5); // Indigo glow border
 
-  // Text Colors (High contrast, crisp typography)
-  static const Color textPrimary = Color(0xFF0F172A); // Obsidian Slate-900
-  static const Color textSecondary = Color(0xFF475569); // Slate-600
-  static const Color textMuted = Color(0xFF94A3B8); // Slate-400
+  // Text Colors (High contrast, crisp dark bold typography)
+  static const Color textPrimary = Color(0xFF0F172A); // Obsidian Slate-900 (ultra dark, readable)
+  static const Color textSecondary = Color(0xFF334155); // Slate-700 (dark bold secondary)
+  static const Color textMuted = Color(0xFF64748B); // Slate-500 (crisp medium slate)
 
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(
@@ -78,6 +78,7 @@ class GlassTheme {
         secondary: secondaryNeon,
         surface: bgDarkSecondary,
         error: accentRose,
+        onSurface: textPrimary,
       ),
       textTheme: GoogleFonts.plusJakartaSansTextTheme(
         ThemeData.light().textTheme,

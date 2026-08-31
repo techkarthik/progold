@@ -111,9 +111,9 @@ class GlassTextField extends StatelessWidget {
           label,
           style: const TextStyle(
             fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: GlassTheme.textSecondary,
-            letterSpacing: 0.3,
+            fontWeight: FontWeight.w700,
+            color: GlassTheme.textPrimary,
+            letterSpacing: 0.2,
           ),
         ),
         const SizedBox(height: 6),
@@ -128,33 +128,33 @@ class GlassTextField extends StatelessWidget {
           style: const TextStyle(
             color: GlassTheme.textPrimary,
             fontSize: 14,
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w600,
           ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13),
+            hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13, fontWeight: FontWeight.normal),
             filled: true,
             fillColor: Colors.white,
             prefixIcon: prefixIcon != null
-                ? Icon(prefixIcon, color: GlassTheme.primaryNeon.withValues(alpha: 0.8), size: 18)
+                ? Icon(prefixIcon, color: GlassTheme.primaryNeon, size: 18)
                 : null,
             suffixIcon: suffixIcon,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: GlassTheme.primaryNeon, width: 1.5),
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: GlassTheme.primaryNeon, width: 2.0),
             ),
             errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: GlassTheme.accentRose),
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: GlassTheme.accentRose, width: 1.5),
             ),
           ),
         ),
@@ -180,7 +180,7 @@ class GlassButton extends StatelessWidget {
     this.icon,
     this.isLoading = false,
     this.gradient = GlassTheme.primaryGradient,
-    this.height = 48,
+    this.height = 44,
     this.width,
   });
 
@@ -192,14 +192,14 @@ class GlassButton extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: onPressed == null ? null : gradient,
         color: onPressed == null ? Colors.black.withValues(alpha: 0.08) : null,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         boxShadow: onPressed == null
             ? []
             : [
                 BoxShadow(
-                  color: GlassTheme.primaryNeon.withValues(alpha: 0.3),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
+                  color: GlassTheme.primaryNeon.withValues(alpha: 0.25),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
                 ),
               ],
       ),
@@ -207,12 +207,12 @@ class GlassButton extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: isLoading ? null : onPressed,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           child: Center(
             child: isLoading
                 ? const SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: 18,
+                    height: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
                       color: Colors.white,
@@ -231,12 +231,73 @@ class GlassButton extends StatelessWidget {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.4,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.3,
                         ),
                       ),
                     ],
                   ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Crisp secondary / outline button with dark bold font
+class GlassSecondaryButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final String label;
+  final IconData? icon;
+  final double height;
+  final double? width;
+  final Color? textColor;
+
+  const GlassSecondaryButton({
+    super.key,
+    required this.onPressed,
+    required this.label,
+    this.icon,
+    this.height = 44,
+    this.width,
+    this.textColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = textColor ?? GlassTheme.textPrimary;
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(10),
+          child: Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, color: color, size: 18),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

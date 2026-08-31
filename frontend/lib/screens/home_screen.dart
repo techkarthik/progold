@@ -63,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 450,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: GlassTheme.primaryNeon.withValues(alpha: 0.12),
+                color: GlassTheme.primaryNeon.withValues(alpha: 0.08),
               ),
             ),
           ),
@@ -75,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 500,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: GlassTheme.accentEmerald.withValues(alpha: 0.1),
+                color: GlassTheme.accentEmerald.withValues(alpha: 0.06),
               ),
             ),
           ),
@@ -165,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 5),
                   Text(
                     "Billing Software • Valid until ${tenant.validTo}",
-                    style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted),
+                    style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -178,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton.icon(
             style: TextButton.styleFrom(foregroundColor: GlassTheme.primaryNeon),
             icon: const Icon(Icons.apps_rounded, size: 18),
-            label: const Text("Main Menu"),
+            label: const Text("Main Menu", style: TextStyle(fontWeight: FontWeight.w800)),
             onPressed: () {
               setState(() {
                 _selectedModule = "HOME";
@@ -263,295 +263,188 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
                               color: GlassTheme.textPrimary,
+                              letterSpacing: -0.2,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            tenant.email,
-                            style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: GlassTheme.accentEmerald.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: GlassTheme.accentEmerald.withValues(alpha: 0.4)),
-                            ),
-                            child: Text(
-                              "Active • ${tenant.daysRemaining} Days",
-                              style: const TextStyle(fontSize: 10, color: GlassTheme.accentEmerald, fontWeight: FontWeight.w700),
-                            ),
-                          ),
+                          StatusBadge(label: "Tenant ID #${tenant.id}", color: GlassTheme.primaryNeon),
                         ],
                       ),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 14),
-
-                // Edit Profile Button
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0x33FFFFFF)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                    icon: const Icon(Icons.edit_note_rounded, size: 16, color: GlassTheme.accentCyan),
-                    label: const Text("Edit Business Profile & Logo", style: TextStyle(fontSize: 12)),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showProfileDialog(context, auth, tenant);
-                    },
+                // Subscription Validity Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: GlassTheme.accentEmerald.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: GlassTheme.accentEmerald.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified_rounded, size: 16, color: GlassTheme.accentEmerald),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Active Subscription: ${tenant.daysRemaining} days remaining (Expires ${tenant.validTo})",
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: GlassTheme.accentEmerald,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
 
-          // Drawer Navigation Links
+          // Drawer Navigation Modules List
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
               children: [
-                _buildDrawerTile(
-                  icon: Icons.apps_rounded,
-                  title: "App Launcher",
-                  color: GlassTheme.accentCyan,
-                  selected: _selectedModule == "HOME",
+                _buildDrawerItem(
+                  icon: Icons.dashboard_rounded,
+                  title: "Main Dashboard",
+                  subtitle: "Mobile app launcher view",
+                  isSelected: _selectedModule == "HOME",
                   onTap: () {
+                    Navigator.pop(context);
                     setState(() {
                       _selectedModule = "HOME";
                       _masterSubmenu = "HUB";
                     });
-                    Navigator.pop(context);
                   },
                 ),
-
-                const Divider(color: Color(0x18FFFFFF), indent: 16, endIndent: 16),
-
-                // MASTER with Submenus
-                if (_hasAccess(auth, MenuRegistry.MENU_MASTER))
-                  Theme(
-                    data: ThemeData.dark().copyWith(dividerColor: Colors.transparent),
-                    child: ExpansionTile(
-                      initiallyExpanded: _selectedModule == "MASTER",
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: GlassTheme.primaryNeon.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.account_balance_rounded, color: GlassTheme.primaryNeon, size: 20),
-                      ),
-                      title: const Text(
-                        "MASTER",
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.white),
-                      ),
-                      subtitle: const Text("Organization, Inventory & Rates", style: TextStyle(fontSize: 11, color: GlassTheme.textMuted)),
-                      children: [
-                        if (_hasAccess(auth, MenuRegistry.MASTER_ORGANIZATION))
-                          _buildDrawerSubTile("🏢 ORGANIZATION", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "ORGANIZATION";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && (_masterSubmenu == "ORGANIZATION" || _masterSubmenu == "COMPANY" || _masterSubmenu == "BRANCHES")),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_ORGANIZATION_COMPANY))
-                          _buildDrawerSubTile("    🏛️ COMPANY", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "COMPANY";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "COMPANY"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_ORGANIZATION_BRANCHES))
-                          _buildDrawerSubTile("    🏬 BRANCHES", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "BRANCHES";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "BRANCHES"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_ORGANIZATION_USER_RIGHTS))
-                          _buildDrawerSubTile("    🔐 USER MENU RIGHTS", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "USER_RIGHTS";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "USER_RIGHTS"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY))
-                          _buildDrawerSubTile("📦 INVENTORY MASTER", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "INVENTORY";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "INVENTORY"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_METAL))
-                          _buildDrawerSubTile("    🔘 METAL MASTER", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "METAL";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "METAL"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_PURITY))
-                          _buildDrawerSubTile("    ⭐ PURITY MASTER", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "PURITY";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "PURITY"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_CATEGORY))
-                          _buildDrawerSubTile("    🛍️ CATEGORY MASTER", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "CATEGORY";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "CATEGORY"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_SALES_AND_PRICE))
-                          _buildDrawerSubTile("🏷️ SALES AND PRICE", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "SALESANDPRICE";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "SALESANDPRICE"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_LOGIN_USERS))
-                          _buildDrawerSubTile("🔐 LOGIN USERS", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "LOGINUSERS";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "LOGINUSERS"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_EMPLOYEES))
-                          _buildDrawerSubTile("👥 EMPLOYEES", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "EMPLOYEES";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "EMPLOYEES"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_ACCOUNT_HEAD))
-                          _buildDrawerSubTile("💳 ACCOUNT HEAD", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "ACCOUNTHEAD";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "ACCOUNTHEAD"),
-                        if (_hasAccess(auth, MenuRegistry.MASTER_TAX_MASTER))
-                          _buildDrawerSubTile("📋 TAX MASTER", () {
-                            setState(() {
-                              _selectedModule = "MASTER";
-                              _masterSubmenu = "TAXMASTER";
-                            });
-                            Navigator.pop(context);
-                          }, _selectedModule == "MASTER" && _masterSubmenu == "TAXMASTER"),
-                      ],
-                    ),
+                if (_hasAccess(auth, MenuRegistry.MENU_MASTER)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
+                    icon: Icons.folder_special_rounded,
+                    title: "Master Menu",
+                    subtitle: "5 core master sub-modules",
+                    isSelected: _selectedModule == "MASTER",
+                    onTap: () {
+                      Navigator.pop(context);
+                      setState(() {
+                        _selectedModule = "MASTER";
+                        _masterSubmenu = "HUB";
+                      });
+                    },
                   ),
-
-                if (_hasAccess(auth, MenuRegistry.MENU_STOCK))
-                  _buildDrawerTile(
+                ],
+                if (_hasAccess(auth, MenuRegistry.MENU_STOCK)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
                     icon: Icons.inventory_2_rounded,
-                    title: "STOCK",
-                    subtitle: "Live Inventory & RFID Tags",
-                    color: GlassTheme.accentEmerald,
-                    selected: _selectedModule == "STOCK",
+                    title: "Stock Management",
+                    subtitle: "Ornament tags & weights",
+                    isSelected: _selectedModule == "STOCK",
                     onTap: () {
+                      Navigator.pop(context);
                       setState(() => _selectedModule = "STOCK");
-                      Navigator.pop(context);
                     },
                   ),
-                if (_hasAccess(auth, MenuRegistry.MENU_POS))
-                  _buildDrawerTile(
+                ],
+                if (_hasAccess(auth, MenuRegistry.MENU_POS)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
                     icon: Icons.point_of_sale_rounded,
-                    title: "POS",
-                    subtitle: "Gold Billing, GST & Invoices",
-                    color: GlassTheme.accentRose,
-                    selected: _selectedModule == "POS",
+                    title: "POS Billing",
+                    subtitle: "Tax invoice & counter sales",
+                    isSelected: _selectedModule == "POS",
                     onTap: () {
+                      Navigator.pop(context);
                       setState(() => _selectedModule = "POS");
-                      Navigator.pop(context);
                     },
                   ),
-                if (_hasAccess(auth, MenuRegistry.MENU_REPORT))
-                  _buildDrawerTile(
+                ],
+                if (_hasAccess(auth, MenuRegistry.MENU_REPORT)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
                     icon: Icons.analytics_rounded,
-                    title: "REPORT",
-                    subtitle: "Sales, Day Book & Ledger",
-                    color: GlassTheme.accentAmber,
-                    selected: _selectedModule == "REPORT",
+                    title: "Reports & Day Book",
+                    subtitle: "Sales register & GST reports",
+                    isSelected: _selectedModule == "REPORT",
                     onTap: () {
+                      Navigator.pop(context);
                       setState(() => _selectedModule = "REPORT");
-                      Navigator.pop(context);
                     },
                   ),
-                if (_hasAccess(auth, MenuRegistry.MENU_DIGIGOLD))
-                  _buildDrawerTile(
+                ],
+                if (_hasAccess(auth, MenuRegistry.MENU_DIGIGOLD)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
                     icon: Icons.monetization_on_rounded,
-                    title: "DIGIGOLD",
-                    subtitle: "Digital Vault & Gold SIP",
-                    color: const Color(0xFFFFD700), // Gold
-                    selected: _selectedModule == "DIGIGOLD",
+                    title: "DigiGold Module",
+                    subtitle: "Vault, buy/sell & SIP",
+                    isSelected: _selectedModule == "DIGIGOLD",
                     onTap: () {
+                      Navigator.pop(context);
                       setState(() => _selectedModule = "DIGIGOLD");
-                      Navigator.pop(context);
                     },
                   ),
-                if (_hasAccess(auth, MenuRegistry.MENU_SETTINGS))
-                  _buildDrawerTile(
-                    icon: Icons.settings_suggest_rounded,
-                    title: "SETTINGS",
-                    subtitle: "Store Config & Print Formats",
-                    color: GlassTheme.accentCyan,
-                    selected: _selectedModule == "SETTINGS",
+                ],
+                if (_hasAccess(auth, MenuRegistry.MENU_SETTINGS)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
+                    icon: Icons.settings_rounded,
+                    title: "Settings & Config",
+                    subtitle: "System preferences & print templates",
+                    isSelected: _selectedModule == "SETTINGS",
                     onTap: () {
+                      Navigator.pop(context);
                       setState(() => _selectedModule = "SETTINGS");
-                      Navigator.pop(context);
                     },
                   ),
-                if (_hasAccess(auth, MenuRegistry.MENU_CRM))
-                  _buildDrawerTile(
+                ],
+                if (_hasAccess(auth, MenuRegistry.MENU_CRM)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
                     icon: Icons.groups_rounded,
-                    title: "CRM",
-                    subtitle: "Customers & 11M Schemes",
-                    color: GlassTheme.secondaryNeon,
-                    selected: _selectedModule == "CRM",
+                    title: "CRM & Gold Schemes",
+                    subtitle: "Customer passbooks & alerts",
+                    isSelected: _selectedModule == "CRM",
                     onTap: () {
-                      setState(() => _selectedModule = "CRM");
                       Navigator.pop(context);
+                      setState(() => _selectedModule = "CRM");
                     },
                   ),
+                ],
               ],
             ),
           ),
 
-          // Logout Footer
+          // Drawer Footer with Logout
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0x18FFFFFF))),
+              border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
             ),
-            child: ListTile(
-              leading: const Icon(Icons.logout_rounded, color: GlassTheme.accentRose),
-              title: const Text("Sign Out", style: TextStyle(color: GlassTheme.accentRose, fontWeight: FontWeight.w600)),
-              onTap: () => auth.logout(),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFF1F5F9),
+                      foregroundColor: GlassTheme.accentRose,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: const Icon(Icons.logout_rounded, size: 18),
+                    label: const Text("Sign Out", style: TextStyle(fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      auth.logout();
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -559,70 +452,41 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDrawerTile({
+  Widget _buildDrawerItem({
     required IconData icon,
     required String title,
-    String? subtitle,
-    required Color color,
-    required bool selected,
+    required String subtitle,
+    required bool isSelected,
     required VoidCallback onTap,
   }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      decoration: BoxDecoration(
-        color: selected ? color.withValues(alpha: 0.1) : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        border: selected ? Border.all(color: color.withValues(alpha: 0.3)) : null,
+    return ListTile(
+      onTap: onTap,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      tileColor: isSelected ? GlassTheme.primaryNeon.withValues(alpha: 0.1) : Colors.transparent,
+      leading: Icon(
+        icon,
+        color: isSelected ? GlassTheme.primaryNeon : GlassTheme.textSecondary,
+        size: 22,
       ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 20),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+          color: isSelected ? GlassTheme.primaryNeon : GlassTheme.textPrimary,
         ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: selected ? color : GlassTheme.textPrimary,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-            fontSize: 14,
-          ),
-        ),
-        subtitle: subtitle != null
-            ? Text(subtitle, style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted))
-            : null,
-        onTap: onTap,
       ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted, fontWeight: FontWeight.w500),
+      ),
+      trailing: isSelected
+          ? const Icon(Icons.chevron_right_rounded, color: GlassTheme.primaryNeon, size: 18)
+          : null,
     );
   }
 
-  Widget _buildDrawerSubTile(String title, VoidCallback onTap, bool isSelected) {
-    return Container(
-      margin: const EdgeInsets.only(left: 36, right: 12, bottom: 4),
-      decoration: BoxDecoration(
-        color: isSelected ? GlassTheme.primaryNeon.withValues(alpha: 0.1) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? GlassTheme.primaryNeon : GlassTheme.textSecondary,
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-          ),
-        ),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  // ================= MOBILE PHONE STYLE ROUND MENUS LAUNCHER =================
+  // ================= MOBILE PHONE STYLE ROUND MENU LAUNCHER =================
   Widget _buildMobileRoundMenuLauncher(BuildContext context, AuthProvider auth, Tenant tenant) {
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width > 900;
@@ -631,112 +495,79 @@ class _HomeScreenState extends State<HomeScreen> {
       {
         "id": "MASTER",
         "name": "MASTER",
-        "desc": "Org, Stock & Rates",
+        "desc": "Foundational Setup",
         "icon": Icons.account_balance_rounded,
-        "gradient": const LinearGradient(
-          colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        "gradient": const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF4338CA)]),
         "glow": const Color(0xFF6366F1),
-        "badge": "5 Modules",
+        "badge": "5 Hubs",
       },
       {
         "id": "STOCK",
         "name": "STOCK",
-        "desc": "Inventory & Tags",
+        "desc": "Inventory & Barcode",
         "icon": Icons.inventory_2_rounded,
-        "gradient": const LinearGradient(
-          colors: [Color(0xFF10B981), Color(0xFF059669)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        "gradient": const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF047857)]),
         "glow": const Color(0xFF10B981),
-        "badge": "Live",
+        "badge": null,
       },
       {
         "id": "POS",
-        "name": "POS",
-        "desc": "Billing & Invoices",
+        "name": "POS BILLING",
+        "desc": "Sales Counter",
         "icon": Icons.point_of_sale_rounded,
-        "gradient": const LinearGradient(
-          colors: [Color(0xFFEC4899), Color(0xFFBE185D)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        "gradient": const LinearGradient(colors: [Color(0xFFEC4899), Color(0xFFBE185D)]),
         "glow": const Color(0xFFEC4899),
-        "badge": "Fast",
+        "badge": "Quick",
       },
       {
         "id": "REPORT",
-        "name": "REPORT",
-        "desc": "Sales & Ledger",
+        "name": "REPORTS",
+        "desc": "Ledger & GST",
         "icon": Icons.analytics_rounded,
-        "gradient": const LinearGradient(
-          colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        "gradient": const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFB45309)]),
         "glow": const Color(0xFFF59E0B),
-        "badge": "GST",
+        "badge": null,
       },
       {
         "id": "DIGIGOLD",
-        "name": "DIGIGOLD",
-        "desc": "Digital Vault",
+        "name": "DIGI GOLD",
+        "desc": "Vault & SIP",
         "icon": Icons.monetization_on_rounded,
-        "gradient": const LinearGradient(
-          colors: [Color(0xFFFFD700), Color(0xFFB8860B)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        "gradient": const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFD97706)]),
         "glow": const Color(0xFFFFD700),
-        "badge": "99.9%",
+        "badge": "24K",
       },
       {
         "id": "SETTINGS",
         "name": "SETTINGS",
-        "desc": "Store & Printing",
+        "desc": "System Config",
         "icon": Icons.settings_suggest_rounded,
-        "gradient": const LinearGradient(
-          colors: [Color(0xFF06B6D4), Color(0xFF0284C7)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        "gradient": const LinearGradient(colors: [Color(0xFF06B6D4), Color(0xFF0E7490)]),
         "glow": const Color(0xFF06B6D4),
         "badge": null,
       },
       {
         "id": "CRM",
         "name": "CRM",
-        "desc": "Clients & Schemes",
+        "desc": "Customer Schemes",
         "icon": Icons.groups_rounded,
-        "gradient": const LinearGradient(
-          colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        "gradient": const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)]),
         "glow": const Color(0xFF8B5CF6),
-        "badge": "VIP",
+        "badge": null,
       },
       {
         "id": "ADD_MORE",
-        "name": "+ MORE",
-        "desc": "Add Custom App",
+        "name": "ADD MORE",
+        "desc": "Marketplace",
         "icon": Icons.add_circle_outline_rounded,
-        "gradient": const LinearGradient(
-          colors: [Color(0xFF334155), Color(0xFF1E293B)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        "gradient": const LinearGradient(colors: [Color(0xFF475569), Color(0xFF1E293B)]),
         "glow": const Color(0xFF64748B),
-        "badge": "Expand",
+        "badge": "+",
       },
     ];
 
     final filteredMenuItems = menuItems.where((item) {
-      if (item["id"] == "ADD_MORE") return auth.isAdmin;
-      
+      if (item["id"] == "ADD_MORE") return true;
       String menuCode = '';
       switch (item["id"]) {
         case "MASTER":
@@ -784,7 +615,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: GlassTheme.textPrimary,
                   letterSpacing: -0.5,
                 ),
                 textAlign: TextAlign.center,
@@ -792,7 +623,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 6),
               const Text(
                 "Jewellery Retail ERP & Multi-Tenant Billing System",
-                style: TextStyle(fontSize: 14, color: GlassTheme.textSecondary),
+                style: TextStyle(fontSize: 14, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
               ),
 
               const SizedBox(height: 36),
@@ -827,23 +658,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ================= RATE TICKER BANNER =================
   Widget _buildRateTicker() {
-    return GlassContainer(
-      borderRadius: 14,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-      gradient: LinearGradient(
-        colors: [
-          const Color(0xFFFFD700).withValues(alpha: 0.15),
-          GlassTheme.primaryNeon.withValues(alpha: 0.08),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFDE68A), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0C0F172A), blurRadius: 14, offset: Offset(0, 4)),
         ],
       ),
-      borderColor: const Color(0x33FFD700),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildRateItem("GOLD 24K", "₹${_gold24k.toStringAsFixed(0)}/g", Icons.trending_up_rounded, GlassTheme.accentEmerald),
-          Container(width: 1, height: 24, color: const Color(0x22FFFFFF)),
+          Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
           _buildRateItem("GOLD 22K (916)", "₹${_gold22k.toStringAsFixed(0)}/g", Icons.trending_up_rounded, GlassTheme.accentEmerald),
-          Container(width: 1, height: 24, color: const Color(0x22FFFFFF)),
+          Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
           _buildRateItem("SILVER", "₹${_silver.toStringAsFixed(2)}/g", Icons.trending_flat_rounded, GlassTheme.accentCyan),
         ],
       ),
@@ -854,14 +685,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, style: const TextStyle(fontSize: 10, color: GlassTheme.textMuted, fontWeight: FontWeight.bold)),
-            Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white)),
+            Text(title, style: const TextStyle(fontSize: 10, color: GlassTheme.textSecondary, fontWeight: FontWeight.w800)),
+            Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
           ],
         ),
       ],
@@ -901,20 +732,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     gradient: gradient,
                     boxShadow: [
                       BoxShadow(
-                        color: glow.withValues(alpha: 0.45),
-                        blurRadius: 20,
+                        color: glow.withValues(alpha: 0.35),
+                        blurRadius: 18,
                         spreadRadius: 1,
-                        offset: const Offset(0, 8),
+                        offset: const Offset(0, 6),
                       ),
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
+                      const BoxShadow(
+                        color: Color(0x100F172A),
                         blurRadius: 10,
-                        offset: const Offset(0, 4),
+                        offset: Offset(0, 4),
                       ),
                     ],
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      width: 1.8,
+                      color: Colors.white,
+                      width: 2.0,
                     ),
                   ),
                   child: Center(
@@ -930,9 +761,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.85),
+                        color: const Color(0xFF0F172A),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: glow, width: 1),
+                        border: Border.all(color: Colors.white, width: 1),
                       ),
                       child: Text(
                         badge,
@@ -956,8 +787,8 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.8,
+                color: GlassTheme.textPrimary,
+                letterSpacing: 0.5,
               ),
               textAlign: TextAlign.center,
             ),
@@ -967,7 +798,8 @@ class _HomeScreenState extends State<HomeScreen> {
               desc,
               style: const TextStyle(
                 fontSize: 11,
-                color: GlassTheme.textMuted,
+                color: GlassTheme.textSecondary,
+                fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
               maxLines: 1,
@@ -1005,7 +837,7 @@ class _HomeScreenState extends State<HomeScreen> {
         menuCode = MenuRegistry.MENU_CRM;
         break;
     }
-    
+
     if (menuCode.isNotEmpty && !_hasAccess(auth, menuCode)) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 40),
@@ -1035,7 +867,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                    icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
                     onPressed: () {
                       if (module == "MASTER" && _masterSubmenu != "HUB") {
                         setState(() => _masterSubmenu = "HUB");
@@ -1049,10 +881,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     module == "MASTER" && _masterSubmenu != "HUB"
                         ? "MASTER > $_masterSubmenu"
                         : "$module Workspace",
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
                   ),
                   const Spacer(),
-                  StatusBadge(label: "Jewellery Billing Core", color: GlassTheme.accentEmerald),
+                  const StatusBadge(label: "Jewellery Billing Core", color: GlassTheme.accentEmerald),
                 ],
               ),
               const SizedBox(height: 20),
@@ -1087,7 +919,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return GlassContainer(
           borderRadius: 16,
           child: Center(
-            child: Text("Workspace for $module is active.", style: const TextStyle(color: Colors.white)),
+            child: Text("Workspace for $module is active.", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
           ),
         );
     }
@@ -1140,7 +972,7 @@ class _HomeScreenState extends State<HomeScreen> {
         submenuCode = MenuRegistry.MASTER_INVENTORY_CATEGORY;
         break;
     }
-    
+
     if (submenuCode.isNotEmpty && !_hasAccess(auth, submenuCode)) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 40),
@@ -1310,7 +1142,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         const Text(
           "Select a master category to manage foundational data for your jewellery billing & retail operations:",
-          style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+          style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 24),
         LayoutBuilder(
@@ -1325,10 +1157,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 final Color col = item["color"];
                 return SizedBox(
                   width: itemWidth,
-                  child: GlassContainer(
-                    borderRadius: 16,
-                    padding: EdgeInsets.zero,
-                    borderColor: col.withValues(alpha: 0.25),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+                      ],
+                    ),
                     child: InkWell(
                       onTap: () => setState(() => _masterSubmenu = item["id"]),
                       borderRadius: BorderRadius.circular(16),
@@ -1361,9 +1198,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               item["title"],
                               style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: GlassTheme.textPrimary,
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -1372,7 +1209,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               item["desc"],
                               style: const TextStyle(
                                 fontSize: 11,
-                                color: GlassTheme.textMuted,
+                                color: GlassTheme.textSecondary,
+                                fontWeight: FontWeight.w500,
                               ),
                               textAlign: TextAlign.center,
                               maxLines: 2,
@@ -1443,13 +1281,13 @@ class _HomeScreenState extends State<HomeScreen> {
         Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
               onPressed: () => setState(() => _masterSubmenu = "HUB"),
             ),
             const SizedBox(width: 8),
             const Text(
               "Back to Master Menu",
-              style: TextStyle(fontSize: 14, color: GlassTheme.textMuted, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 14, color: GlassTheme.textSecondary, fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -1466,10 +1304,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 final Color col = item["color"];
                 return SizedBox(
                   width: itemWidth,
-                  child: GlassContainer(
-                    borderRadius: 16,
-                    padding: EdgeInsets.zero,
-                    borderColor: col.withValues(alpha: 0.25),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+                      ],
+                    ),
                     child: InkWell(
                       onTap: () => setState(() => _masterSubmenu = item["id"]),
                       borderRadius: BorderRadius.circular(16),
@@ -1502,9 +1345,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               item["title"],
                               style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: GlassTheme.textPrimary,
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -1512,8 +1355,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               item["desc"],
                               style: const TextStyle(
-                                fontSize: 10,
-                                color: GlassTheme.textMuted,
+                                fontSize: 11,
+                                color: GlassTheme.textSecondary,
+                                fontWeight: FontWeight.w500,
                               ),
                               textAlign: TextAlign.center,
                               maxLines: 2,
@@ -1541,13 +1385,13 @@ class _HomeScreenState extends State<HomeScreen> {
         Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
               onPressed: () => setState(() => _masterSubmenu = "ORGANIZATION"),
             ),
             const SizedBox(width: 8),
             const Text(
               "Store Profile Setup",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
             ),
           ],
         ),
@@ -1559,25 +1403,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Store Profile & Counters Content
   Widget _buildStoreProfileContent(Tenant tenant) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.storefront_rounded, color: GlassTheme.accentCyan, size: 24),
-              const SizedBox(width: 10),
-              const Text("STORE & BILLING COUNTER SETUP", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Spacer(),
-              const StatusBadge(label: "Head Office", color: GlassTheme.accentEmerald),
+              Icon(Icons.storefront_rounded, color: GlassTheme.accentCyan, size: 24),
+              SizedBox(width: 10),
+              Text(
+                "STORE & BILLING COUNTER SETUP",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
+              ),
+              Spacer(),
+              StatusBadge(label: "Head Office", color: GlassTheme.accentEmerald),
             ],
           ),
           const SizedBox(height: 16),
           const Text(
             "Overview of default head office store details, contact information, and billing terminal configuration:",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 20),
 
@@ -1585,9 +1439,9 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: const Color(0x0EFFFFFF),
+              color: const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0x22FFFFFF)),
+              border: Border.all(color: const Color(0xFFCBD5E1)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1595,30 +1449,33 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(tenant.businessName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+                    Text(tenant.businessName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
                     StatusBadge(label: "ID #${tenant.id}", color: GlassTheme.accentCyan),
                   ],
                 ),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    const Icon(Icons.phone_rounded, size: 14, color: GlassTheme.textMuted),
+                    const Icon(Icons.phone_rounded, size: 14, color: GlassTheme.textSecondary),
                     const SizedBox(width: 6),
-                    Text("Contact: ${tenant.contactNumber}", style: const TextStyle(fontSize: 12, color: Colors.white)),
+                    Text("Contact: ${tenant.contactNumber}", style: const TextStyle(fontSize: 12, color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
                     const SizedBox(width: 20),
-                    const Icon(Icons.email_rounded, size: 14, color: GlassTheme.textMuted),
+                    const Icon(Icons.email_rounded, size: 14, color: GlassTheme.textSecondary),
                     const SizedBox(width: 6),
-                    Text("Registered Email: ${tenant.email}", style: const TextStyle(fontSize: 12, color: Colors.white)),
+                    Text("Registered Email: ${tenant.email}", style: const TextStyle(fontSize: 12, color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
                   ],
                 ),
                 const SizedBox(height: 14),
-                const Divider(color: Color(0x18FFFFFF)),
+                const Divider(color: Color(0xFFE2E8F0)),
                 const SizedBox(height: 10),
                 const Row(
                   children: [
                     Icon(Icons.point_of_sale_rounded, size: 16, color: GlassTheme.accentCyan),
                     SizedBox(width: 8),
-                    Text("Configured Billing Counters: Counter 01 (Gold/Diamond), Counter 02 (Silver/Coins)", style: TextStyle(fontSize: 12, color: Colors.white70)),
+                    Text(
+                      "Configured Billing Counters: Counter 01 (Gold/Diamond), Counter 02 (Silver/Coins)",
+                      style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                    ),
                   ],
                 ),
               ],
@@ -1631,8 +1488,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 2. SUBMENU: INVENTORY
   Widget _buildInventorySubmenu(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1658,8 +1522,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text("Inventory Configurations", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                  Text("Configure metals, purities, and item categories", style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary)),
+                  Text("Inventory Configurations", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
+                  Text("Configure metals, purities, and item categories", style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600)),
                 ],
               ),
             ],
@@ -1710,10 +1574,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: GlassContainer(
-        borderRadius: 16,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: const [
+            BoxShadow(color: Color(0x080F172A), blurRadius: 10, offset: Offset(0, 3)),
+          ],
+        ),
         padding: const EdgeInsets.all(18),
-        borderColor: const Color(0x18FFFFFF),
         child: SizedBox(
           width: 260,
           child: Column(
@@ -1728,9 +1598,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Icon(icon, color: color, size: 20),
               ),
               const SizedBox(height: 14),
-              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
               const SizedBox(height: 4),
-              Text(desc, style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted), maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text(desc, style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
             ],
           ),
         ),
@@ -1738,44 +1608,32 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildCategoryPill(String title, String purity, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0x10FFFFFF),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
-          const SizedBox(height: 2),
-          Text(purity, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-
   // 3. SUBMENU: SALES AND PRICE
   Widget _buildSalesAndPriceSubmenu(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.price_change_rounded, color: GlassTheme.accentAmber, size: 24),
-              const SizedBox(width: 10),
-              const Text("SALES AND PRICE MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              Icon(Icons.price_change_rounded, color: GlassTheme.accentAmber, size: 24),
+              SizedBox(width: 10),
+              Text("SALES AND PRICE MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
             ],
           ),
           const SizedBox(height: 16),
           const Text(
             "Manage live board rates, making charge tables (per gram / % of gold), wastage calculation rules, and stone pricing.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 20),
           Row(
@@ -1800,7 +1658,7 @@ class _HomeScreenState extends State<HomeScreen> {
             gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFD97706)]),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Board rates updated successfully!")),
+                const SnackBar(content: Text("Board rates updated successfully!", style: TextStyle(fontWeight: FontWeight.w700))),
               );
             },
           ),
@@ -1808,7 +1666,7 @@ class _HomeScreenState extends State<HomeScreen> {
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(foregroundColor: GlassTheme.accentAmber, side: const BorderSide(color: GlassTheme.accentAmber)),
             icon: const Icon(Icons.arrow_back_rounded, size: 16),
-            label: const Text("Back to Master Menu"),
+            label: const Text("Back to Master Menu", style: TextStyle(fontWeight: FontWeight.w700)),
             onPressed: () => setState(() => _masterSubmenu = "HUB"),
           ),
         ],
@@ -1820,16 +1678,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0x10FFFFFF),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x22FFFFFF)),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: GlassTheme.textMuted)),
+          Text(label, style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text("₹${val.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+          Text("₹${val.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
         ],
       ),
     );
@@ -1837,8 +1695,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 5. SUBMENU: EMPLOYEES
   Widget _buildEmployeesSubmenu(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1847,12 +1712,12 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Icon(Icons.badge_rounded, color: GlassTheme.secondaryNeon, size: 24),
               const SizedBox(width: 10),
-              const Text("EMPLOYEES & KARIGARS MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              const Text("EMPLOYEES & KARIGARS MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
               const Spacer(),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(backgroundColor: GlassTheme.secondaryNeon, foregroundColor: Colors.white),
                 icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
-                label: const Text("Add Staff / Karigar"),
+                label: const Text("Add Staff / Karigar", style: TextStyle(fontWeight: FontWeight.bold)),
                 onPressed: () {},
               ),
             ],
@@ -1860,14 +1725,15 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 16),
           const Text(
             "Manage store sales executives, goldsmiths / karigars, artisan accounts, commission %, and staff contact info.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0x0EFFFFFF),
+              color: const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFCBD5E1)),
             ),
             child: const Row(
               children: [
@@ -1880,8 +1746,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Artisan / Karigar Directory", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      Text("Track issue/receive metal weights, stone wastage, and crafting labor charges", style: TextStyle(color: GlassTheme.textMuted, fontSize: 12)),
+                      Text("Artisan / Karigar Directory", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800)),
+                      Text("Track issue/receive metal weights, stone wastage, and crafting labor charges", style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
                     ],
                   ),
                 ),
@@ -1892,7 +1758,7 @@ class _HomeScreenState extends State<HomeScreen> {
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(foregroundColor: GlassTheme.secondaryNeon, side: const BorderSide(color: GlassTheme.secondaryNeon)),
             icon: const Icon(Icons.arrow_back_rounded, size: 16),
-            label: const Text("Back to Master Menu"),
+            label: const Text("Back to Master Menu", style: TextStyle(fontWeight: FontWeight.w700)),
             onPressed: () => setState(() => _masterSubmenu = "HUB"),
           ),
         ],
@@ -1903,8 +1769,15 @@ class _HomeScreenState extends State<HomeScreen> {
   // ================= OTHER MODULE WORKSPACES =================
   // 1. STOCK WORKSPACE
   Widget _buildStockWorkspace(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1913,13 +1786,13 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(Icons.inventory_2_rounded, color: GlassTheme.accentEmerald, size: 24),
               SizedBox(width: 10),
-              Text("Stock Inventory & Barcode Tracking", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text("Stock Inventory & Barcode Tracking", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
             ],
           ),
           const SizedBox(height: 16),
           const Text(
             "Manage item gross weights, net gold weights, stone charges, and RFID/Barcode tag assignments.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 20),
           GlassButton(
@@ -1935,8 +1808,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 2. POS WORKSPACE
   Widget _buildPosWorkspace(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1945,13 +1825,13 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(Icons.point_of_sale_rounded, color: GlassTheme.accentRose, size: 24),
               SizedBox(width: 10),
-              Text("Point of Sale (POS) Billing & Invoicing", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text("Point of Sale (POS) Billing & Invoicing", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
             ],
           ),
           const SizedBox(height: 16),
           const Text(
             "Generate instant tax invoices with making charges, wastage calculation, hallmarking charges, and GST breakdown.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 20),
           GlassButton(
@@ -1967,23 +1847,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 3. REPORT WORKSPACE
   Widget _buildReportWorkspace(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.analytics_rounded, color: GlassTheme.accentAmber, size: 24),
               SizedBox(width: 10),
-              Text("Business Reports & Financial Ledger", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text("Business Reports & Financial Ledger", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
+          SizedBox(height: 16),
+          Text(
             "Access Day Book summaries, Sales Registers, Metal Stock Balance Reports, and GST GSTR-1 summaries.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -1992,23 +1879,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 4. DIGIGOLD WORKSPACE
   Widget _buildDigiGoldWorkspace(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.monetization_on_rounded, color: Color(0xFFFFD700), size: 24),
               SizedBox(width: 10),
-              Text("DigiGold Digital Vault & Micro-SIP", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text("DigiGold Digital Vault & Micro-SIP", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
+          SizedBox(height: 16),
+          Text(
             "Offer 24K 99.9% Pure Digital Gold investment schemes, customer vault passbooks, and monthly SIP accumulation.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -2017,8 +1911,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 5. SETTINGS WORKSPACE
   Widget _buildSettingsWorkspace(AuthProvider auth, Tenant tenant) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2027,13 +1928,13 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(Icons.settings_suggest_rounded, color: GlassTheme.accentCyan, size: 24),
               SizedBox(width: 10),
-              Text("System Settings & Preferences", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text("System Settings & Preferences", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
             ],
           ),
           const SizedBox(height: 16),
-          Text("Store: ${tenant.businessName}", style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13)),
+          Text("Store: ${tenant.businessName}", style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          Text("Subscription Period: ${tenant.validFrom} to ${tenant.validTo}", style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
+          Text("Subscription Period: ${tenant.validFrom} to ${tenant.validTo}", style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -2041,23 +1942,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 6. CRM WORKSPACE
   Widget _buildCrmWorkspace(AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 18,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       padding: const EdgeInsets.all(22),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.groups_rounded, color: GlassTheme.secondaryNeon, size: 24),
               SizedBox(width: 10),
-              Text("CRM, Gold Schemes & Customer Directory", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text("CRM, Gold Schemes & Customer Directory", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
+          SizedBox(height: 16),
+          Text(
             "Track customer purchase histories, 11-month gold savings schemes, automated WhatsApp/SMS birthday & anniversary reminders.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -2076,16 +1984,15 @@ class _HomeScreenState extends State<HomeScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return AlertDialog(
-              backgroundColor: GlassTheme.bgDarkSecondary,
+              backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: Color(0x33FFFFFF)),
               ),
               title: const Row(
                 children: [
                   Icon(Icons.business_center_rounded, color: GlassTheme.primaryNeon, size: 22),
                   SizedBox(width: 10),
-                  Text("Business Profile & Branding", style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text("Business Profile & Branding", style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
                 ],
               ),
               content: SingleChildScrollView(
@@ -2117,16 +2024,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0x10FFFFFF),
+                        color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("Tenant Email: ${tenant.email}", style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted)),
+                          Text("Tenant Email: ${tenant.email}", style: const TextStyle(fontSize: 12, color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 4),
                           Text("Subscription: ${tenant.validFrom} to ${tenant.validTo} (${tenant.daysRemaining} days remaining)",
-                              style: const TextStyle(fontSize: 11, color: GlassTheme.accentEmerald)),
+                              style: const TextStyle(fontSize: 11, color: GlassTheme.accentEmerald, fontWeight: FontWeight.w700)),
                         ],
                       ),
                     ),
@@ -2136,7 +2044,7 @@ class _HomeScreenState extends State<HomeScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text("Cancel", style: TextStyle(color: GlassTheme.textMuted)),
+                  child: const Text("Cancel", style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w700)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -2153,11 +2061,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (context.mounted) {
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Business profile updated successfully!")),
+                        const SnackBar(content: Text("Business profile updated successfully!", style: TextStyle(fontWeight: FontWeight.w700))),
                       );
                     }
                   },
-                  child: const Text("Save Changes"),
+                  child: const Text("Save Changes", style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -2172,26 +2080,25 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: GlassTheme.bgDarkSecondary,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0x33FFFFFF)),
         ),
         title: const Row(
           children: [
             Icon(Icons.extension_rounded, color: GlassTheme.accentCyan),
             SizedBox(width: 10),
-            Text("Module Marketplace", style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+            Text("Module Marketplace", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17, fontWeight: FontWeight.w800)),
           ],
         ),
         content: const Text(
           "You can add more specialized business modules here in future releases (e.g. Karatmeter Integration, Hallmarking HUID sync, e-Way Bill, E-Commerce sync, Multi-branch sync).",
-          style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13, height: 1.4),
+          style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13, height: 1.4, fontWeight: FontWeight.w600),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Close", style: TextStyle(color: GlassTheme.accentCyan)),
+            child: const Text("Close", style: TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w700)),
           ),
         ],
       ),

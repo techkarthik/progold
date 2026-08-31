@@ -29,6 +29,21 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
 
   final TextEditingController _searchController = TextEditingController();
 
+  // ================= IN-PAGE ENTRY FORM STATE =================
+  bool _showForm = false;
+  TaxRecord? _editingRecord;
+  final _formKey = GlobalKey<FormState>();
+  final _codeController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _sgstPerController = TextEditingController(text: '0.0');
+  final _cgstPerController = TextEditingController(text: '0.0');
+  final _igstPerController = TextEditingController(text: '0.0');
+
+  String? _selectedSgstAc;
+  String? _selectedCgstAc;
+  String? _selectedIgstAc;
+  bool _isSaving = false;
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +53,11 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _codeController.dispose();
+    _nameController.dispose();
+    _sgstPerController.dispose();
+    _cgstPerController.dispose();
+    _igstPerController.dispose();
     super.dispose();
   }
 
@@ -48,7 +68,6 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
 
     setState(() => _isLoading = true);
 
-    // Load tax records and account heads concurrently
     final results = await Future.wait([
       _api.getTaxRecords(token),
       _api.getAccountHeads(token),
@@ -79,6 +98,113 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
     }
   }
 
+  void _openForm([TaxRecord? existing]) {
+    setState(() {
+      _editingRecord = existing;
+      _showForm = true;
+      if (existing != null) {
+        _codeController.text = existing.taxcode;
+        _nameController.text = existing.taxname;
+        _sgstPerController.text = existing.sgstPer.toString();
+        _cgstPerController.text = existing.cgstPer.toString();
+        _igstPerController.text = existing.igstPer.toString();
+
+        final accountNames = _accountHeads.map((h) => h.accountname).toList();
+        _selectedSgstAc = accountNames.contains(existing.sgstacname) ? existing.sgstacname : null;
+        _selectedCgstAc = accountNames.contains(existing.cgstacname) ? existing.cgstacname : null;
+        _selectedIgstAc = accountNames.contains(existing.igstacname) ? existing.igstacname : null;
+      } else {
+        _resetFormFields();
+      }
+    });
+  }
+
+  void _resetFormFields() {
+    _codeController.clear();
+    _nameController.clear();
+    _sgstPerController.text = '0.0';
+    _cgstPerController.text = '0.0';
+    _igstPerController.text = '0.0';
+    _selectedSgstAc = null;
+    _selectedCgstAc = null;
+    _selectedIgstAc = null;
+  }
+
+  void _closeForm() {
+    setState(() {
+      _showForm = false;
+      _editingRecord = null;
+      _resetFormFields();
+    });
+  }
+
+  Future<void> _saveTaxForm() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final code = _codeController.text.trim().toUpperCase();
+      final name = _nameController.text.trim();
+      final sgst = double.tryParse(_sgstPerController.text.trim()) ?? 0.0;
+      final cgst = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
+      final igst = double.tryParse(_igstPerController.text.trim()) ?? 0.0;
+
+      final record = TaxRecord(
+        taxcode: code,
+        taxname: name,
+        sgstPer: sgst,
+        sgstacname: _selectedSgstAc ?? '',
+        cgstPer: cgst,
+        cgstacname: _selectedCgstAc ?? '',
+        igstPer: igst,
+        igstacname: _selectedIgstAc ?? '',
+      );
+
+      final isEditing = _editingRecord != null && _editingRecord!.taxid != null;
+      final response = isEditing
+          ? await _api.updateTaxRecord(token, _editingRecord!.taxid!, record)
+          : await _api.createTaxRecord(token, record);
+
+      if (response['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isEditing ? "Tax Config '$code' updated successfully!" : "Tax Config '$code' created successfully!",
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              backgroundColor: GlassTheme.accentEmerald,
+            ),
+          );
+          _closeForm();
+          await _loadData();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response['message']?.toString() ?? "Failed to save tax config"),
+              backgroundColor: GlassTheme.accentRose,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: GlassTheme.accentRose),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   // ================= MAIN BUILD =================
   @override
   Widget build(BuildContext context) {
@@ -91,6 +217,12 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
         // Header
         _buildHeaderBar(context, auth, isMobile),
         const SizedBox(height: 16),
+
+        // Embedded In-Page Form
+        if (_showForm) ...[
+          _buildInPageEntryForm(isMobile),
+          const SizedBox(height: 20),
+        ],
 
         // Search & View toggles
         _buildSearchToolbar(isMobile),
@@ -172,7 +304,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                   SizedBox(height: 2),
                   Text(
                     "Configure SGST, CGST & IGST tax configurations and ledger mappings",
-                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
+                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -188,7 +320,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
                   ),
                   child: Row(
                     children: [
@@ -219,28 +351,396 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                 ),
               if (!isMobile) const SizedBox(width: 12),
               IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: GlassTheme.textSecondary),
+                icon: const Icon(Icons.refresh_rounded, color: GlassTheme.textPrimary),
                 tooltip: "Reload Taxes",
                 onPressed: _loadData,
               ),
               const SizedBox(width: 8),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
+                  backgroundColor: _showForm ? const Color(0xFF334155) : const Color(0xFF10B981),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shadowColor: Colors.transparent,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text("Add Tax Config", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                onPressed: () => _showAddEditDialog(),
+                icon: Icon(_showForm ? Icons.close_rounded : Icons.add_rounded, size: 18),
+                label: Text(
+                  _showForm ? "Close Form" : "Add Tax Config",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                onPressed: () {
+                  if (_showForm) {
+                    _closeForm();
+                  } else {
+                    _openForm();
+                  }
+                },
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  // ================= IN-PAGE ENTRY FORM COMPONENT =================
+  Widget _buildInPageEntryForm(bool isMobile) {
+    final isEditing = _editingRecord != null;
+    final List<String> accountNames = _accountHeads.map((h) => h.accountname).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0C0F172A), blurRadius: 16, offset: Offset(0, 4)),
+        ],
+      ),
+      padding: const EdgeInsets.all(22),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Form Top Bar
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isEditing ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
+                    color: const Color(0xFF10B981),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isEditing ? "Edit Tax Configuration (${_editingRecord!.taxcode})" : "Create New Tax Configuration",
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: GlassTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isEditing ? "Modify tax rates and accounting ledger postings" : "Define tax identifier, GST rates and ledger account mapping",
+                        style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: GlassTheme.textPrimary),
+                  tooltip: "Cancel and Close Form",
+                  onPressed: _closeForm,
+                ),
+              ],
+            ),
+            const Divider(height: 28, color: Color(0xFFE2E8F0)),
+
+            // Field Row 1: Tax Code & Tax Name
+            Wrap(
+              spacing: 16,
+              runSpacing: 14,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 200,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Tax Code (max 3 chars) *",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _codeController,
+                        enabled: !isEditing,
+                        style: TextStyle(
+                          color: !isEditing ? GlassTheme.textPrimary : GlassTheme.textMuted,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        decoration: _inputDecoration("e.g. G03, G18"),
+                        maxLength: 3,
+                        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                        inputFormatters: [
+                          LengthLimitingTextInputFormatter(3),
+                          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                        ],
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return "Code required";
+                          if (val.trim().length > 3) return "Max 3 chars";
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 400,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Tax Name *",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _nameController,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration("e.g. GST 3.00% (Jewellery)"),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return "Tax Name is required";
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Rates and posting accounts title
+            const Text(
+              "GST Rates & Ledger Postings",
+              style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+
+            // Field Row 2: SGST % & Account
+            Wrap(
+              spacing: 16,
+              runSpacing: 14,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 150,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("SGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _sgstPerController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("0.0"),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return "Required";
+                          if (double.tryParse(val) == null) return "Invalid";
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 320,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("SGST Posting Ledger Account", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      _buildAccountDropdown(
+                        value: _selectedSgstAc,
+                        options: accountNames,
+                        hint: "Select SGST Account Head",
+                        onChanged: (val) => setState(() => _selectedSgstAc = val),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Field Row 3: CGST % & Account
+            Wrap(
+              spacing: 16,
+              runSpacing: 14,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 150,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("CGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _cgstPerController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("0.0"),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return "Required";
+                          if (double.tryParse(val) == null) return "Invalid";
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 320,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("CGST Posting Ledger Account", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      _buildAccountDropdown(
+                        value: _selectedCgstAc,
+                        options: accountNames,
+                        hint: "Select CGST Account Head",
+                        onChanged: (val) => setState(() => _selectedCgstAc = val),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Field Row 4: IGST % & Account
+            Wrap(
+              spacing: 16,
+              runSpacing: 14,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 150,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("IGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _igstPerController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("0.0"),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return "Required";
+                          if (double.tryParse(val) == null) return "Invalid";
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 320,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("IGST Posting Ledger Account", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      _buildAccountDropdown(
+                        value: _selectedIgstAc,
+                        options: accountNames,
+                        hint: "Select IGST Account Head",
+                        onChanged: (val) => setState(() => _selectedIgstAc = val),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Action Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                GlassSecondaryButton(
+                  label: "Clear Fields",
+                  icon: Icons.refresh_rounded,
+                  onPressed: _resetFormFields,
+                ),
+                const SizedBox(width: 12),
+                GlassSecondaryButton(
+                  label: "Cancel",
+                  onPressed: _closeForm,
+                ),
+                const SizedBox(width: 12),
+                GlassButton(
+                  label: isEditing ? "Update Tax Config" : "Save Tax Config",
+                  icon: Icons.check_circle_outline_rounded,
+                  gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
+                  isLoading: _isSaving,
+                  onPressed: _saveTaxForm,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13, fontWeight: FontWeight.normal),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFF10B981), width: 2.0),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: GlassTheme.accentRose, width: 1.5),
+      ),
+    );
+  }
+
+  Widget _buildAccountDropdown({
+    required String? value,
+    required List<String> options,
+    required String hint,
+    required void Function(String?) onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      dropdownColor: Colors.white,
+      style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+      decoration: _inputDecoration(hint),
+      isExpanded: true,
+      items: [
+        const DropdownMenuItem<String>(
+          value: null,
+          child: Text("-- None (Optional) --", style: TextStyle(color: GlassTheme.textMuted, fontStyle: FontStyle.italic)),
+        ),
+        ...options.map((name) {
+          return DropdownMenuItem<String>(
+            value: name,
+            child: Text(name, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
+          );
+        }),
+      ],
+      onChanged: onChanged,
     );
   }
 
@@ -255,9 +755,9 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
             child: TextField(
               controller: _searchController,
               onChanged: (val) => setState(() => _applyFilter(val)),
-              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14),
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search_rounded, color: GlassTheme.textMuted, size: 20),
+                prefixIcon: const Icon(Icons.search_rounded, color: GlassTheme.textSecondary, size: 20),
                 hintText: "Search tax configs by name, code, posting accounts...",
                 hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13),
                 filled: true,
@@ -265,19 +765,19 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                 contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: GlassTheme.primaryNeon, width: 1.5),
+                  borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, color: GlassTheme.textMuted, size: 18),
+                        icon: const Icon(Icons.clear_rounded, color: GlassTheme.textSecondary, size: 18),
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _applyFilter(''));
@@ -295,7 +795,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
   // ================= EMPTY STATE =================
   Widget _buildEmptyState(BuildContext context, AuthProvider auth) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 80),
+      padding: const EdgeInsets.symmetric(vertical: 60),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -303,23 +803,23 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0x0EFFFFFF),
+                color: const Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0x18FFFFFF)),
+                border: Border.all(color: const Color(0xFFCBD5E1)),
               ),
-              child: const Icon(Icons.percent_rounded, size: 50, color: GlassTheme.textMuted),
+              child: const Icon(Icons.percent_rounded, size: 48, color: GlassTheme.textSecondary),
             ),
             const SizedBox(height: 18),
             Text(
               _searchQuery.isNotEmpty ? "No matching tax rates found" : "No Tax Configs created yet",
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
               _searchQuery.isNotEmpty
                   ? "Try adjusting your search filters or clear keywords."
                   : "Get started by adding your first tax configuration rate (e.g. GST, VAT).",
-              style: const TextStyle(color: GlassTheme.textMuted, fontSize: 12),
+              style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
             if (_searchQuery.isEmpty) ...[
@@ -333,7 +833,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                 ),
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text("Create Tax Config", style: TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: () => _showAddEditDialog(),
+                onPressed: () => _openForm(),
               ),
             ],
           ],
@@ -353,10 +853,16 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
           children: _filteredTaxRecords.map((tax) {
             return SizedBox(
               width: isMobile ? constraints.maxWidth : cardWidth,
-              child: GlassContainer(
-                borderRadius: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+                  ],
+                ),
                 padding: const EdgeInsets.all(18),
-                borderColor: const Color(0x18FFFFFF),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -365,24 +871,19 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                tax.taxname,
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                          child: Text(
+                            tax.taxname,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),
                         StatusBadge(label: tax.taxcode, color: const Color(0xFF10B981)),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    const Divider(color: Color(0x12FFFFFF)),
+                    const SizedBox(height: 12),
+                    const Divider(color: Color(0xFFE2E8F0)),
                     const SizedBox(height: 10),
 
                     // Tax Rates & Mappings
@@ -397,12 +898,12 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 18),
+                          icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryNeon, size: 20),
                           tooltip: "Edit Tax Config",
-                          onPressed: () => _showAddEditDialog(tax),
+                          onPressed: () => _openForm(tax),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 18),
+                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 20),
                           tooltip: "Delete Tax Config",
                           onPressed: () => _confirmDelete(tax),
                         ),
@@ -425,28 +926,29 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
           width: 50,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0x0EFFFFFF),
+            color: const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
             textAlign: TextAlign.center,
           ),
         ),
         const SizedBox(width: 10),
         Text(
           "${percentage.toStringAsFixed(2)}%",
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
-            account.isNotEmpty ? "Posting A/C: $account" : "No account mapped",
+            account.isNotEmpty ? "Posting: $account" : "No account mapped",
             style: TextStyle(
               fontSize: 12,
-              color: account.isNotEmpty ? GlassTheme.accentCyan : GlassTheme.textMuted,
-              fontWeight: FontWeight.w500,
+              color: account.isNotEmpty ? GlassTheme.primaryNeon : GlassTheme.textMuted,
+              fontWeight: FontWeight.w600,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -458,48 +960,56 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
 
   // ================= TABLE VIEW =================
   Widget _buildTableView(BuildContext context, AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 16,
-      padding: EdgeInsets.zero,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            headingRowColor: WidgetStateProperty.all(const Color(0x12FFFFFF)),
-            dataRowColor: WidgetStateProperty.all(const Color(0x06FFFFFF)),
+            headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+            dataRowColor: WidgetStateProperty.all(Colors.white),
             columns: const [
-              DataColumn(label: Text("CODE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("TAX NAME", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("SGST %", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("SGST ACCOUNT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("CGST %", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("CGST ACCOUNT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("IGST %", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("IGST ACCOUNT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("ACTIONS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              DataColumn(label: Text("CODE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("TAX NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("SGST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("SGST ACCOUNT", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("CGST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("CGST ACCOUNT", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("IGST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("IGST ACCOUNT", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("ACTIONS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
             ],
             rows: _filteredTaxRecords.map((tax) {
               return DataRow(
                 cells: [
-                  DataCell(Text(tax.taxcode, style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold))),
-                  DataCell(Text(tax.taxname, style: const TextStyle(color: Colors.white))),
-                  DataCell(Text("${tax.sgstPer.toStringAsFixed(2)}%", style: const TextStyle(color: Colors.white))),
-                  DataCell(Text(tax.sgstacname.isEmpty ? "-" : tax.sgstacname, style: const TextStyle(color: GlassTheme.accentCyan))),
-                  DataCell(Text("${tax.cgstPer.toStringAsFixed(2)}%", style: const TextStyle(color: Colors.white))),
-                  DataCell(Text(tax.cgstacname.isEmpty ? "-" : tax.cgstacname, style: const TextStyle(color: GlassTheme.accentCyan))),
-                  DataCell(Text("${tax.igstPer.toStringAsFixed(2)}%", style: const TextStyle(color: Colors.white))),
-                  DataCell(Text(tax.igstacname.isEmpty ? "-" : tax.igstacname, style: const TextStyle(color: GlassTheme.accentCyan))),
+                  DataCell(Text(tax.taxcode, style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w800, fontSize: 13))),
+                  DataCell(Text(tax.taxname, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
+                  DataCell(Text("${tax.sgstPer.toStringAsFixed(2)}%", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 13))),
+                  DataCell(Text(tax.sgstacname.isEmpty ? "-" : tax.sgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
+                  DataCell(Text("${tax.cgstPer.toStringAsFixed(2)}%", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 13))),
+                  DataCell(Text(tax.cgstacname.isEmpty ? "-" : tax.cgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
+                  DataCell(Text("${tax.igstPer.toStringAsFixed(2)}%", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 13))),
+                  DataCell(Text(tax.igstacname.isEmpty ? "-" : tax.igstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 16),
-                          onPressed: () => _showAddEditDialog(tax),
+                          icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryNeon, size: 18),
+                          tooltip: "Edit",
+                          onPressed: () => _openForm(tax),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 16),
+                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 18),
+                          tooltip: "Delete",
                           onPressed: () => _confirmDelete(tax),
                         ),
                       ],
@@ -514,430 +1024,61 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
     );
   }
 
-  // ================= ADD / EDIT DIALOG =================
-  void _showAddEditDialog([TaxRecord? existing]) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final token = auth.authToken;
-    if (token == null) return;
-
-    final formKey = GlobalKey<FormState>();
-
-    // Input controllers
-    final codeController = TextEditingController(text: existing?.taxcode ?? '');
-    final nameController = TextEditingController(text: existing?.taxname ?? '');
-    final sgstPerController = TextEditingController(text: existing != null ? existing.sgstPer.toString() : '0.0');
-    final cgstPerController = TextEditingController(text: existing != null ? existing.cgstPer.toString() : '0.0');
-    final igstPerController = TextEditingController(text: existing != null ? existing.igstPer.toString() : '0.0');
-
-    // Mapped Posting Accounts (dropdown values)
-    String? selectedSgstAc = existing != null && existing.sgstacname.isNotEmpty ? existing.sgstacname : null;
-    String? selectedCgstAc = existing != null && existing.cgstacname.isNotEmpty ? existing.cgstacname : null;
-    String? selectedIgstAc = existing != null && existing.igstacname.isNotEmpty ? existing.igstacname : null;
-
-    bool isSaving = false;
-
-    // Filtered list of account names
-    final List<String> accountNames = _accountHeads.map((h) => h.accountname).toList();
-
-    // Verify existing mapping falls in actual database account names
-    if (selectedSgstAc != null && !accountNames.contains(selectedSgstAc)) selectedSgstAc = null;
-    if (selectedCgstAc != null && !accountNames.contains(selectedCgstAc)) selectedCgstAc = null;
-    if (selectedIgstAc != null && !accountNames.contains(selectedIgstAc)) selectedIgstAc = null;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: GlassTheme.bgSurface,
-              surfaceTintColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: Color(0x1EFFFFFF)),
-              ),
-              title: Row(
-                children: [
-                  Icon(
-                    existing == null ? Icons.add_circle_outline_rounded : Icons.edit_note_rounded,
-                    color: const Color(0xFF10B981),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    existing == null ? "Add Tax Config" : "Edit Tax Config",
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: GlassTheme.textMuted),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              content: SizedBox(
-                width: 520,
-                child: Form(
-                  key: formKey,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Tax Code & Tax Name
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("Tax Code (max 3 chars) *", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 6),
-                                  TextFormField(
-                                    controller: codeController,
-                                    enabled: existing == null, // Unique code key cannot be altered after creation
-                                    style: TextStyle(
-                                      color: existing == null ? Colors.white : GlassTheme.textMuted,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    decoration: _inputDecoration("e.g. GST"),
-                                    maxLength: 3,
-                                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                                    inputFormatters: [
-                                      LengthLimitingTextInputFormatter(3),
-                                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
-                                    ],
-                                    validator: (val) {
-                                      if (val == null || val.trim().isEmpty) return "Code is required";
-                                      if (val.trim().length > 3) return "Max 3 chars";
-                                      return null;
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 3,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("Tax Name *", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 6),
-                                  TextFormField(
-                                    controller: nameController,
-                                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                                    decoration: _inputDecoration("e.g. GST 18 Percent"),
-                                    validator: (val) {
-                                      if (val == null || val.trim().isEmpty) return "Name is required";
-                                      return null;
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 18),
-                        const Divider(color: Color(0x12FFFFFF)),
-                        const SizedBox(height: 12),
-
-                        // SGST Configurations
-                        _buildTaxInputBlock(
-                          percentageTitle: "SGST Rate (%)",
-                          percentageController: sgstPerController,
-                          accountTitle: "SGST Posting Ledger Account",
-                          accountValue: selectedSgstAc,
-                          accountList: accountNames,
-                          onAccountChanged: (val) => setDialogState(() => selectedSgstAc = val),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // CGST Configurations
-                        _buildTaxInputBlock(
-                          percentageTitle: "CGST Rate (%)",
-                          percentageController: cgstPerController,
-                          accountTitle: "CGST Posting Ledger Account",
-                          accountValue: selectedCgstAc,
-                          accountList: accountNames,
-                          onAccountChanged: (val) => setDialogState(() => selectedCgstAc = val),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // IGST Configurations
-                        _buildTaxInputBlock(
-                          percentageTitle: "IGST Rate (%)",
-                          percentageController: igstPerController,
-                          accountTitle: "IGST Posting Ledger Account",
-                          accountValue: selectedIgstAc,
-                          accountList: accountNames,
-                          onAccountChanged: (val) => setDialogState(() => selectedIgstAc = val),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              actions: [
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Color(0x33FFFFFF)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                  onPressed: isSaving ? null : () => Navigator.pop(context),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey[700],
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  ),
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          if (!formKey.currentState!.validate()) return;
-
-                          setDialogState(() => isSaving = true);
-
-                          final record = TaxRecord(
-                            taxid: existing?.taxid,
-                            taxcode: codeController.text.trim().toUpperCase(),
-                            taxname: nameController.text.trim(),
-                            sgstPer: double.tryParse(sgstPerController.text.trim()) ?? 0.0,
-                            sgstacname: selectedSgstAc ?? '',
-                            cgstPer: double.tryParse(cgstPerController.text.trim()) ?? 0.0,
-                            cgstacname: selectedCgstAc ?? '',
-                            igstPer: double.tryParse(igstPerController.text.trim()) ?? 0.0,
-                            igstacname: selectedIgstAc ?? '',
-                          );
-
-                          bool success = false;
-                          String message = '';
-
-                          if (existing == null) {
-                            final res = await _api.createTaxRecord(token, record);
-                            success = res['success'] == true;
-                            message = res['message'] ?? 'Failed to create tax configuration';
-                          } else {
-                            final res = await _api.updateTaxRecord(token, existing.taxid!, record);
-                            success = res['success'] == true;
-                            message = res['message'] ?? 'Failed to update tax configuration';
-                          }
-
-                          if (mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(message),
-                                backgroundColor: success ? GlassTheme.accentEmerald : GlassTheme.accentRose,
-                              ),
-                            );
-                            if (success) {
-                              _loadData();
-                            }
-                          }
-                        },
-                  child: isSaving
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(existing == null ? "Save Tax Master" : "Update Tax Master"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildTaxInputBlock({
-    required String percentageTitle,
-    required TextEditingController percentageController,
-    required String accountTitle,
-    required String? accountValue,
-    required List<String> accountList,
-    required ValueChanged<String?> onAccountChanged,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Percentage Rate
-        Expanded(
-          flex: 2,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(percentageTitle, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              TextFormField(
-                controller: percentageController,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: _inputDecoration("Rate %"),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return "Required";
-                  if (double.tryParse(val.trim()) == null) return "Invalid rate";
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-
-        // Mapped Posting Account
-        Expanded(
-          flex: 3,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(accountTitle, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              Container(
-                height: 38,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: accountValue,
-                    dropdownColor: GlassTheme.bgSurface,
-                    hint: const Text("Select Ledger Account", style: TextStyle(fontSize: 11, color: GlassTheme.textMuted)),
-                    isExpanded: true,
-                    items: [
-                      const DropdownMenuItem<String>(
-                        value: null,
-                        child: Text("None (No mapping)", style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                      ),
-                      ...accountList.map((name) {
-                        return DropdownMenuItem<String>(
-                          value: name,
-                          child: Text(name, style: const TextStyle(fontSize: 12, color: Colors.black)),
-                        );
-                      }),
-                    ],
-                    selectedItemBuilder: (context) {
-                      return [
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text("None", style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                        ),
-                        ...accountList.map((name) {
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(name, style: const TextStyle(fontSize: 12, color: Colors.black)),
-                          );
-                        }),
-                      ];
-                    },
-                    onChanged: onAccountChanged,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  InputDecoration _inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 12),
-      filled: true,
-      fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: GlassTheme.primaryNeon, width: 1.5),
-      ),
-      errorStyle: const TextStyle(fontSize: 10),
-    );
-  }
-
-  // ================= CONFIRM DELETE =================
+  // ================= DELETE CONFIRMATION =================
   void _confirmDelete(TaxRecord tax) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final token = auth.authToken;
-    if (token == null) return;
-
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: GlassTheme.bgSurface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: Color(0x1EFFFFFF)),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: GlassTheme.accentRose),
-              const SizedBox(width: 8),
-              const Text("Confirm Delete", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: Text(
-            "Are you sure you want to permanently delete the Tax Configuration \"${tax.taxname} (${tax.taxcode})\"? This action cannot be undone.",
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
-          ),
-          actions: [
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white70,
-                side: const BorderSide(color: Color(0x33FFFFFF)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: GlassTheme.accentRose,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () async {
-                Navigator.pop(context);
-                setState(() => _isLoading = true);
-
-                final res = await _api.deleteTaxRecord(token, tax.taxid!);
-                final success = res['success'] == true;
-
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(res['message'] ?? 'Failed to delete record'),
-                      backgroundColor: success ? GlassTheme.accentEmerald : GlassTheme.accentRose,
-                    ),
-                  );
-                  _loadData();
-                }
-              },
-              child: const Text("Delete"),
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: GlassTheme.accentRose, size: 24),
+            SizedBox(width: 8),
+            Text(
+              "Delete Tax Config",
+              style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
             ),
           ],
-        );
-      },
+        ),
+        content: Text(
+          "Are you sure you want to delete tax configuration '${tax.taxcode} - ${tax.taxname}'?",
+          style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            child: const Text("Cancel", style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w700)),
+            onPressed: () => Navigator.pop(dialogCtx),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GlassTheme.accentRose,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text("Delete", style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              if (tax.taxid == null) return;
+              final auth = Provider.of<AuthProvider>(context, listen: false);
+              final token = auth.authToken;
+              if (token == null) return;
+
+              final res = await _api.deleteTaxRecord(token, tax.taxid!);
+              if (mounted) {
+                final isOk = res['success'] == true;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(res['message']?.toString() ?? "Tax record deleted"),
+                    backgroundColor: isOk ? GlassTheme.accentEmerald : GlassTheme.accentRose,
+                  ),
+                );
+                if (isOk) _loadData();
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 }

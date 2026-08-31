@@ -150,4 +150,38 @@ class CategoryRecord {
       if (updatedAt != null) 'updated_at': updatedAt,
     };
   }
+
+  CategoryRecord copyWith({
+    int? id,
+    String? metalid,
+    String? catcode,
+    String? catname,
+    String? categorytype,
+    double? sgstPer,
+    double? cgstPer,
+    double? igstPer,
+    String? sgstacname,
+    String? cgstacname,
+    String? igstacname,
+    String? metalname,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return CategoryRecord(
+      id: id ?? this.id,
+      metalid: metalid ?? this.metalid,
+      catcode: catcode ?? this.catcode,
+      catname: catname ?? this.catname,
+      categorytype: categorytype ?? this.categorytype,
+      sgstPer: sgstPer ?? this.sgstPer,
+      cgstPer: cgstPer ?? this.cgstPer,
+      igstPer: igstPer ?? this.igstPer,
+      sgstacname: sgstacname ?? this.sgstacname,
+      cgstacname: cgstacname ?? this.cgstacname,
+      igstacname: igstacname ?? this.igstacname,
+      metalname: metalname ?? this.metalname,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }

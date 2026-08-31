@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/inventory_models.dart';
 import '../models/account_head_model.dart';
@@ -30,6 +29,20 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
 
   final TextEditingController _searchController = TextEditingController();
 
+  // ================= IN-PAGE ENTRY FORM STATE =================
+  bool _showForm = false;
+  CategoryRecord? _editingCategory;
+  final _formKey = GlobalKey<FormState>();
+
+  String? _selectedMetalId;
+  final _nameController = TextEditingController();
+  final _shortNameController = TextEditingController();
+  String _selectedType = 'ORNAMENTS/STONE';
+  String? _selectedSgstAc;
+  String? _selectedCgstAc;
+  String? _selectedIgstAc;
+  bool _isSaving = false;
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +52,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _nameController.dispose();
+    _shortNameController.dispose();
     super.dispose();
   }
 
@@ -83,6 +98,113 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     }
   }
 
+  void _openForm([CategoryRecord? existing]) {
+    setState(() {
+      _editingCategory = existing;
+      _showForm = true;
+      if (existing != null) {
+        _selectedMetalId = existing.metalid;
+        _nameController.text = existing.catname;
+        _selectedType = existing.categorytype.isNotEmpty ? existing.categorytype : 'ORNAMENTS/STONE';
+
+        final ledgerNames = _accountHeads.map((h) => h.accountname).toList();
+        _selectedSgstAc = ledgerNames.contains(existing.sgstacname) ? existing.sgstacname : null;
+        _selectedCgstAc = ledgerNames.contains(existing.cgstacname) ? existing.cgstacname : null;
+        _selectedIgstAc = ledgerNames.contains(existing.igstacname) ? existing.igstacname : null;
+      } else {
+        _resetFormFields();
+      }
+    });
+  }
+
+  void _resetFormFields() {
+    _selectedMetalId = _metals.isNotEmpty ? _metals.first.metalid : null;
+    _nameController.clear();
+    _shortNameController.clear();
+    _selectedType = 'ORNAMENTS/STONE';
+    _selectedSgstAc = null;
+    _selectedCgstAc = null;
+    _selectedIgstAc = null;
+  }
+
+  void _closeForm() {
+    setState(() {
+      _showForm = false;
+      _editingCategory = null;
+      _resetFormFields();
+    });
+  }
+
+  Future<void> _saveCategoryForm() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) return;
+
+    if (_selectedMetalId == null || _selectedMetalId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a base metal"), backgroundColor: GlassTheme.accentRose),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final name = _nameController.text.trim();
+
+      final record = CategoryRecord(
+        id: _editingCategory?.id,
+        catcode: _editingCategory?.catcode ?? '',
+        metalid: _selectedMetalId!,
+        catname: name,
+        categorytype: _selectedType,
+        sgstacname: _selectedSgstAc ?? '',
+        cgstacname: _selectedCgstAc ?? '',
+        igstacname: _selectedIgstAc ?? '',
+      );
+
+      final isEditing = _editingCategory != null && _editingCategory!.id != null;
+      final response = isEditing
+          ? await _api.updateCategory(token, _editingCategory!.id!, record)
+          : await _api.createCategory(token, record);
+
+      if (response['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isEditing ? "Category '$name' updated successfully!" : "Category '$name' created successfully!",
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              backgroundColor: GlassTheme.accentEmerald,
+            ),
+          );
+          _closeForm();
+          await _loadData();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response['message']?.toString() ?? "Failed to save category"),
+              backgroundColor: GlassTheme.accentRose,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: GlassTheme.accentRose),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   // ================= MAIN BUILD =================
   @override
   Widget build(BuildContext context) {
@@ -95,6 +217,12 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         // Header
         _buildHeaderBar(context, auth, isMobile),
         const SizedBox(height: 16),
+
+        // Embedded In-Page Form
+        if (_showForm) ...[
+          _buildInPageEntryForm(isMobile),
+          const SizedBox(height: 20),
+        ],
 
         // Search & View toggles
         _buildSearchToolbar(isMobile),
@@ -175,8 +303,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    "Define product categories (Ornaments, Bulloins), tax percentages, and mapping accounts",
-                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
+                    "Define product categories (Ornaments, Bullions), tax percentages, and mapping accounts",
+                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -192,7 +320,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
                   ),
                   child: Row(
                     children: [
@@ -223,28 +351,351 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                 ),
               if (!isMobile) const SizedBox(width: 12),
               IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: GlassTheme.textSecondary),
+                icon: const Icon(Icons.refresh_rounded, color: GlassTheme.textPrimary),
                 tooltip: "Reload Categories",
                 onPressed: _loadData,
               ),
               const SizedBox(width: 8),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF3B82F6),
+                  backgroundColor: _showForm ? const Color(0xFF334155) : const Color(0xFF3B82F6),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shadowColor: Colors.transparent,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text("Add Category", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                onPressed: () => _showAddEditDialog(),
+                icon: Icon(_showForm ? Icons.close_rounded : Icons.add_rounded, size: 18),
+                label: Text(
+                  _showForm ? "Close Form" : "Add Category",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                onPressed: () {
+                  if (_showForm) {
+                    _closeForm();
+                  } else {
+                    _openForm();
+                  }
+                },
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  // ================= IN-PAGE ENTRY FORM COMPONENT =================
+  Widget _buildInPageEntryForm(bool isMobile) {
+    final isEditing = _editingCategory != null;
+    final List<String> ledgerNames = _accountHeads.map((h) => h.accountname).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.5), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0C0F172A), blurRadius: 16, offset: Offset(0, 4)),
+        ],
+      ),
+      padding: const EdgeInsets.all(22),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Bar
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isEditing ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
+                    color: const Color(0xFF3B82F6),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isEditing ? "Edit Category (${_editingCategory!.catcode} - ${_editingCategory!.catname})" : "Create New Item Category",
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: GlassTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isEditing ? "Modify category details and ledger mapping" : "Define jewelry category (e.g. Ring, Chain, Bullion) and GST ledger postings",
+                        style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: GlassTheme.textPrimary),
+                  tooltip: "Cancel and Close Form",
+                  onPressed: _closeForm,
+                ),
+              ],
+            ),
+            const Divider(height: 28, color: Color(0xFFE2E8F0)),
+
+            // Row 1: Metal & Name & Short Name & Type
+            Wrap(
+              spacing: 16,
+              runSpacing: 14,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 200,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Base Metal *",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        value: _selectedMetalId,
+                        dropdownColor: Colors.white,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("Select Metal"),
+                        items: _metals.map((m) {
+                          return DropdownMenuItem<String>(
+                            value: m.metalid,
+                            child: Text("${m.metalname} (${m.metalid})", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
+                          );
+                        }).toList(),
+                        onChanged: (val) => setState(() => _selectedMetalId = val),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 300,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Category Name *",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _nameController,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("e.g. Rings, Bangles, Chains"),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return "Name required";
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 160,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Short Code (Label)",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _shortNameController,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("e.g. RNG, BGL"),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 220,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Category Classification *",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        value: _selectedType,
+                        dropdownColor: Colors.white,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("Type"),
+                        items: const [
+                          DropdownMenuItem(value: 'ORNAMENTS/STONE', child: Text("ORNAMENTS / STONE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700))),
+                          DropdownMenuItem(value: 'METAL', child: Text("METAL / BULLION", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700))),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedType = val);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Ledger Accounts Title
+            const Text(
+              "Default Ledger Postings (Optional)",
+              style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+
+            // Row 2: SGST, CGST, IGST Mappings
+            Wrap(
+              spacing: 16,
+              runSpacing: 14,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 280,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("SGST Ledger", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      _buildAccountDropdown(
+                        value: _selectedSgstAc,
+                        options: ledgerNames,
+                        hint: "Select SGST Ledger",
+                        onChanged: (val) => setState(() => _selectedSgstAc = val),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 280,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("CGST Ledger", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      _buildAccountDropdown(
+                        value: _selectedCgstAc,
+                        options: ledgerNames,
+                        hint: "Select CGST Ledger",
+                        onChanged: (val) => setState(() => _selectedCgstAc = val),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 280,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("IGST Ledger", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      _buildAccountDropdown(
+                        value: _selectedIgstAc,
+                        options: ledgerNames,
+                        hint: "Select IGST Ledger",
+                        onChanged: (val) => setState(() => _selectedIgstAc = val),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Action Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                GlassSecondaryButton(
+                  label: "Clear Fields",
+                  icon: Icons.refresh_rounded,
+                  onPressed: _resetFormFields,
+                ),
+                const SizedBox(width: 12),
+                GlassSecondaryButton(
+                  label: "Cancel",
+                  onPressed: _closeForm,
+                ),
+                const SizedBox(width: 12),
+                GlassButton(
+                  label: isEditing ? "Update Category" : "Save Category",
+                  icon: Icons.check_circle_outline_rounded,
+                  gradient: const LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)]),
+                  isLoading: _isSaving,
+                  onPressed: _saveCategoryForm,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13, fontWeight: FontWeight.normal),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 2.0),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: GlassTheme.accentRose, width: 1.5),
+      ),
+    );
+  }
+
+  Widget _buildAccountDropdown({
+    required String? value,
+    required List<String> options,
+    required String hint,
+    required void Function(String?) onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      dropdownColor: Colors.white,
+      style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+      decoration: _inputDecoration(hint),
+      isExpanded: true,
+      items: [
+        const DropdownMenuItem<String>(
+          value: null,
+          child: Text("-- None (Optional) --", style: TextStyle(color: GlassTheme.textMuted, fontStyle: FontStyle.italic)),
+        ),
+        ...options.map((name) {
+          return DropdownMenuItem<String>(
+            value: name,
+            child: Text(name, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
+          );
+        }),
+      ],
+      onChanged: onChanged,
     );
   }
 
@@ -259,29 +710,29 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
             child: TextField(
               controller: _searchController,
               onChanged: (val) => setState(() => _applyFilter(val)),
-              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14),
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search_rounded, color: GlassTheme.textMuted, size: 20),
-                hintText: "Search categories by code, name, metal, mapping accounts...",
+                prefixIcon: const Icon(Icons.search_rounded, color: GlassTheme.textSecondary, size: 20),
+                hintText: "Search categories by code, name, metal, or posting ledgers...",
                 hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
                 contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: GlassTheme.primaryNeon, width: 1.5),
+                  borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, color: GlassTheme.textMuted, size: 18),
+                        icon: const Icon(Icons.clear_rounded, color: GlassTheme.textSecondary, size: 18),
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _applyFilter(''));
@@ -299,7 +750,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   // ================= EMPTY STATE =================
   Widget _buildEmptyState(BuildContext context, AuthProvider auth) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 80),
+      padding: const EdgeInsets.symmetric(vertical: 60),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -307,23 +758,23 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0x0EFFFFFF),
+                color: const Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0x18FFFFFF)),
+                border: Border.all(color: const Color(0xFFCBD5E1)),
               ),
-              child: const Icon(Icons.shopping_bag_outlined, size: 50, color: GlassTheme.textMuted),
+              child: const Icon(Icons.shopping_bag_rounded, size: 48, color: GlassTheme.textSecondary),
             ),
             const SizedBox(height: 18),
             Text(
-              _searchQuery.isNotEmpty ? "No matching categories found" : "No Category classifications configured yet",
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              _searchQuery.isNotEmpty ? "No matching categories found" : "No Item Categories configured yet",
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
               _searchQuery.isNotEmpty
-                  ? "Try adjusting your search filters or clear keywords."
-                  : "Get started by adding your first ornament/metal category (e.g. Gold Ornaments GST).",
-              style: const TextStyle(color: GlassTheme.textMuted, fontSize: 12),
+                  ? "Try adjusting your search query."
+                  : "Get started by adding jewelry categories (e.g. Rings, Bangles, Coins, Chains).",
+              style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
             if (_searchQuery.isEmpty) ...[
@@ -337,7 +788,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                 ),
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text("Create Category", style: TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: () => _showAddEditDialog(),
+                onPressed: () => _openForm(),
               ),
             ],
           ],
@@ -354,13 +805,19 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         return Wrap(
           spacing: 16,
           runSpacing: 16,
-          children: _filteredCategories.map((c) {
+          children: _filteredCategoriesWithMeta().map((cat) {
             return SizedBox(
               width: isMobile ? constraints.maxWidth : cardWidth,
-              child: GlassContainer(
-                borderRadius: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+                  ],
+                ),
                 padding: const EdgeInsets.all(18),
-                borderColor: const Color(0x18FFFFFF),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -369,51 +826,44 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                c.catname,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                "${c.metalname ?? c.metalid} — ${c.categorytype}",
-                                style: const TextStyle(fontSize: 11, color: GlassTheme.accentCyan, fontWeight: FontWeight.bold),
-                              ),
-                            ],
+                          child: Text(
+                            cat.catname,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),
-                        StatusBadge(label: c.catcode, color: const Color(0xFF3B82F6)),
+                        StatusBadge(label: cat.catcode, color: const Color(0xFF3B82F6)),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    const Divider(color: Color(0x12FFFFFF)),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
+                    const Divider(color: Color(0xFFE2E8F0)),
+                    const SizedBox(height: 8),
 
-                    // Tax Specs
-                    _buildTaxSpecRow("SGST", c.sgstPer, c.sgstacname),
+                    _buildInfoRow("Metal", "${cat.metalname ?? cat.metalid} (${cat.metalid})"),
                     const SizedBox(height: 6),
-                    _buildTaxSpecRow("CGST", c.cgstPer, c.cgstacname),
+                    _buildInfoRow("Category Code", cat.catcode),
                     const SizedBox(height: 6),
-                    _buildTaxSpecRow("IGST", c.igstPer, c.igstacname),
+                    _buildInfoRow("Type", cat.categorytype),
+                    if (cat.sgstacname.isNotEmpty || cat.cgstacname.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      _buildInfoRow("Ledger Posting", cat.sgstacname.isNotEmpty ? cat.sgstacname : cat.cgstacname),
+                    ],
 
                     const SizedBox(height: 14),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 18),
+                          icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryNeon, size: 20),
                           tooltip: "Edit Category",
-                          onPressed: () => _showAddEditDialog(c),
+                          onPressed: () => _openForm(cat),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 18),
+                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 20),
                           tooltip: "Delete Category",
-                          onPressed: () => _confirmDelete(c),
+                          onPressed: () => _confirmDelete(cat),
                         ),
                       ],
                     ),
@@ -427,87 +877,75 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     );
   }
 
-  Widget _buildTaxSpecRow(String label, double rate, String account) {
+  List<CategoryRecord> _filteredCategoriesWithMeta() {
+    return _filteredCategories.map((c) {
+      final metalMatch = _metals.where((m) => m.metalid == c.metalid).firstOrNull;
+      if (metalMatch != null && (c.metalname == null || c.metalname!.isEmpty)) {
+        return c.copyWith(metalname: metalMatch.metalname);
+      }
+      return c;
+    }).toList();
+  }
+
+  Widget _buildInfoRow(String label, String value) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Container(
-          width: 50,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-          decoration: BoxDecoration(
-            color: const Color(0x0EFFFFFF),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          "${rate.toStringAsFixed(2)}%",
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            account.isNotEmpty ? "Posting: $account" : "No account linked",
-            style: TextStyle(
-              fontSize: 11,
-              color: account.isNotEmpty ? GlassTheme.accentCyan : GlassTheme.textMuted,
-              fontWeight: FontWeight.w500,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600)),
+        Text(value, style: const TextStyle(fontSize: 13, color: GlassTheme.textPrimary, fontWeight: FontWeight.w800)),
       ],
     );
   }
 
   // ================= TABLE VIEW =================
   Widget _buildTableView(BuildContext context, AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 16,
-      padding: EdgeInsets.zero,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            headingRowColor: WidgetStateProperty.all(const Color(0x12FFFFFF)),
-            dataRowColor: WidgetStateProperty.all(const Color(0x06FFFFFF)),
+            headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+            dataRowColor: WidgetStateProperty.all(Colors.white),
             columns: const [
-              DataColumn(label: Text("CATCODE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("CATEGORY NAME", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("METAL", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("TYPE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("SGST %", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("CGST %", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("IGST %", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("ACTIONS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              DataColumn(label: Text("CODE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("CATEGORY NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("METAL", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("TYPE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("SGST A/C", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("CGST A/C", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("ACTIONS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
             ],
-            rows: _filteredCategories.map((c) {
+            rows: _filteredCategoriesWithMeta().map((cat) {
               return DataRow(
                 cells: [
-                  DataCell(Text(c.catcode, style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold))),
-                  DataCell(Text(c.catname, style: const TextStyle(color: Colors.white))),
-                  DataCell(Text(c.metalname ?? c.metalid, style: const TextStyle(color: Colors.white70))),
-                  DataCell(Text(c.categorytype, style: const TextStyle(color: GlassTheme.accentCyan))),
-                  DataCell(Text("${c.sgstPer.toStringAsFixed(2)}%", style: const TextStyle(color: Colors.white))),
-                  DataCell(Text("${c.cgstPer.toStringAsFixed(2)}%", style: const TextStyle(color: Colors.white))),
-                  DataCell(Text("${c.igstPer.toStringAsFixed(2)}%", style: const TextStyle(color: Colors.white))),
+                  DataCell(Text(cat.catcode, style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 13))),
+                  DataCell(Text(cat.catname, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
+                  DataCell(Text("${cat.metalname ?? cat.metalid} (${cat.metalid})", style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w700, fontSize: 13))),
+                  DataCell(Text(cat.categorytype, style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 12))),
+                  DataCell(Text(cat.sgstacname.isEmpty ? "-" : cat.sgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
+                  DataCell(Text(cat.cgstacname.isEmpty ? "-" : cat.cgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 16),
-                          onPressed: () => _showAddEditDialog(c),
+                          icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryNeon, size: 18),
+                          tooltip: "Edit",
+                          onPressed: () => _openForm(cat),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 16),
-                          onPressed: () => _confirmDelete(c),
+                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 18),
+                          tooltip: "Delete",
+                          onPressed: () => _confirmDelete(cat),
                         ),
                       ],
                     ),
@@ -521,491 +959,61 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     );
   }
 
-  // ================= ADD / EDIT DIALOG =================
-  void _showAddEditDialog([CategoryRecord? existing]) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final token = auth.authToken;
-    if (token == null) return;
-
-    if (_metals.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("No metals configured. Please create at least one metal first under Metal Master."),
-          backgroundColor: GlassTheme.accentRose,
-        ),
-      );
-      return;
-    }
-
-    final formKey = GlobalKey<FormState>();
-
-    // Input controllers
-    final nameController = TextEditingController(text: existing?.catname ?? '');
-    final sgstPerController = TextEditingController(text: existing != null ? existing.sgstPer.toString() : '1.5');
-    final cgstPerController = TextEditingController(text: existing != null ? existing.cgstPer.toString() : '1.5');
-    final igstPerController = TextEditingController(text: existing != null ? existing.igstPer.toString() : '3.0');
-
-    String? selectedMetalId = existing != null && _metals.any((m) => m.metalid == existing.metalid)
-        ? existing.metalid
-        : _metals.first.metalid;
-
-    // Segmented / option selection category type
-    String selectedType = existing?.categorytype ?? 'ORNAMENTS/STONE'; // 'METAL' or 'ORNAMENTS/STONE'
-
-    // Posting ledgers
-    String? selectedSgstAc = existing != null && existing.sgstacname.isNotEmpty ? existing.sgstacname : null;
-    String? selectedCgstAc = existing != null && existing.cgstacname.isNotEmpty ? existing.cgstacname : null;
-    String? selectedIgstAc = existing != null && existing.igstacname.isNotEmpty ? existing.igstacname : null;
-
-    final List<String> ledgerNames = _accountHeads.map((h) => h.accountname).toList();
-
-    // Verify mapping targets exist in loaded database
-    if (selectedSgstAc != null && !ledgerNames.contains(selectedSgstAc)) selectedSgstAc = null;
-    if (selectedCgstAc != null && !ledgerNames.contains(selectedCgstAc)) selectedCgstAc = null;
-    if (selectedIgstAc != null && !ledgerNames.contains(selectedIgstAc)) selectedIgstAc = null;
-
-    bool isSaving = false;
-
+  // ================= DELETE CONFIRMATION =================
+  void _confirmDelete(CategoryRecord cat) {
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: GlassTheme.bgSurface,
-              surfaceTintColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: Color(0x1EFFFFFF)),
-              ),
-              title: Row(
-                children: [
-                  Icon(
-                    existing == null ? Icons.add_circle_outline_rounded : Icons.edit_note_rounded,
-                    color: const Color(0xFF3B82F6),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    existing == null ? "Add Category" : "Edit Category",
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: GlassTheme.textMuted),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              content: SizedBox(
-                width: 520,
-                child: Form(
-                  key: formKey,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Auto-generated counter badge
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: const Color(0x0EFFFFFF),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0x18FFFFFF)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Text("Category Code: ", style: TextStyle(color: GlassTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold)),
-                              Text(
-                                existing == null ? "(Auto-generated on Save)" : existing.catcode,
-                                style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 13, fontWeight: FontWeight.w800),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Metal selector (Dropdown)
-                        const Text("Select Metal *", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: selectedMetalId,
-                              dropdownColor: GlassTheme.bgSurface,
-                              isExpanded: true,
-                              items: _metals.map((m) {
-                                return DropdownMenuItem<String>(
-                                  value: m.metalid,
-                                  child: Text(m.metalname, style: const TextStyle(fontSize: 13, color: Colors.black)),
-                                );
-                              }).toList(),
-                              selectedItemBuilder: (context) {
-                                return _metals.map((m) {
-                                  return Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(m.metalname, style: const TextStyle(fontSize: 13, color: Colors.black)),
-                                  );
-                                }).toList();
-                              },
-                              onChanged: (val) {
-                                setDialogState(() => selectedMetalId = val);
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Category Name
-                        const Text("Category Name *", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: nameController,
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          decoration: _inputDecoration("e.g. GOLD ORNAMENTS GST, GOLD BAR"),
-                          maxLength: 30,
-                          buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                          validator: (val) {
-                            if (val == null || val.trim().isEmpty) return "Category name is required";
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Category Type: Segmented Option Buttons (METAL, ORNAMENTS/STONE)
-                        const Text("Category Type *", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            _buildSegmentOption("ORNAMENTS/STONE", selectedType == 'ORNAMENTS/STONE', () {
-                              setDialogState(() => selectedType = 'ORNAMENTS/STONE');
-                            }),
-                            const SizedBox(width: 12),
-                            _buildSegmentOption("METAL", selectedType == 'METAL', () {
-                              setDialogState(() => selectedType = 'METAL');
-                            }),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        const Divider(color: Color(0x12FFFFFF)),
-                        const SizedBox(height: 12),
-
-                        // SGST Input Block
-                        _buildCategoryTaxRow(
-                          label: "SGST Rate %",
-                          controller: sgstPerController,
-                          ledgerVal: selectedSgstAc,
-                          ledgerList: ledgerNames,
-                          onLedgerChanged: (val) => setDialogState(() => selectedSgstAc = val),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // CGST Input Block
-                        _buildCategoryTaxRow(
-                          label: "CGST Rate %",
-                          controller: cgstPerController,
-                          ledgerVal: selectedCgstAc,
-                          ledgerList: ledgerNames,
-                          onLedgerChanged: (val) => setDialogState(() => selectedCgstAc = val),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // IGST Input Block
-                        _buildCategoryTaxRow(
-                          label: "IGST Rate %",
-                          controller: igstPerController,
-                          ledgerVal: selectedIgstAc,
-                          ledgerList: ledgerNames,
-                          onLedgerChanged: (val) => setDialogState(() => selectedIgstAc = val),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              actions: [
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Color(0x33FFFFFF)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                  onPressed: isSaving ? null : () => Navigator.pop(context),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B82F6),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey[700],
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  ),
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          if (!formKey.currentState!.validate()) return;
-
-                          setDialogState(() => isSaving = true);
-
-                          final record = CategoryRecord(
-                            id: existing?.id,
-                            metalid: selectedMetalId!,
-                            catcode: existing?.catcode ?? '', // Autogenerated on create
-                            catname: nameController.text.trim(),
-                            categorytype: selectedType,
-                            sgstPer: double.tryParse(sgstPerController.text.trim()) ?? 0.0,
-                            cgstPer: double.tryParse(cgstPerController.text.trim()) ?? 0.0,
-                            igstPer: double.tryParse(igstPerController.text.trim()) ?? 0.0,
-                            sgstacname: selectedSgstAc ?? '',
-                            cgstacname: selectedCgstAc ?? '',
-                            igstacname: selectedIgstAc ?? '',
-                          );
-
-                          bool success = false;
-                          String message = '';
-
-                          if (existing == null) {
-                            final res = await _api.createCategory(token, record);
-                            success = res['success'] == true;
-                            message = res['message'] ?? 'Failed to create category';
-                          } else {
-                            final res = await _api.updateCategory(token, existing.id!, record);
-                            success = res['success'] == true;
-                            message = res['message'] ?? 'Failed to update category';
-                          }
-
-                          if (mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(message),
-                                backgroundColor: success ? GlassTheme.accentEmerald : GlassTheme.accentRose,
-                              ),
-                            );
-                            if (success) {
-                              _loadData();
-                            }
-                          }
-                        },
-                  child: isSaving
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(existing == null ? "Save Category" : "Update Category"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildSegmentOption(String label, bool isSelected, VoidCallback onTap) {
-    return Expanded(
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          backgroundColor: isSelected ? const Color(0xFF3B82F6) : Colors.transparent,
-          foregroundColor: isSelected ? Colors.white : Colors.white70,
-          side: BorderSide(color: isSelected ? const Color(0xFF3B82F6) : const Color(0x33FFFFFF)),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-        onPressed: onTap,
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-      ),
-    );
-  }
-
-  Widget _buildCategoryTaxRow({
-    required String label,
-    required TextEditingController controller,
-    required String? ledgerVal,
-    required List<String> ledgerList,
-    required ValueChanged<String?> onLedgerChanged,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Percentage Rate
-        Expanded(
-          flex: 2,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              TextFormField(
-                controller: controller,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: _inputDecoration("Rate %"),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return "Required";
-                  if (double.tryParse(val.trim()) == null) return "Invalid";
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-
-        // Posting Ledger Dropdown
-        Expanded(
-          flex: 3,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text("Posting Ledger Account", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Container(
-                height: 38,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: ledgerVal,
-                    dropdownColor: GlassTheme.bgSurface,
-                    hint: const Text("Select Ledger Account", style: TextStyle(fontSize: 11, color: GlassTheme.textMuted)),
-                    isExpanded: true,
-                    items: [
-                      const DropdownMenuItem<String>(
-                        value: null,
-                        child: Text("None (No mapping)", style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                      ),
-                      ...ledgerList.map((name) {
-                        return DropdownMenuItem<String>(
-                          value: name,
-                          child: Text(name, style: const TextStyle(fontSize: 12, color: Colors.black)),
-                        );
-                      }),
-                    ],
-                    selectedItemBuilder: (context) {
-                      return [
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text("None", style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                        ),
-                        ...ledgerList.map((name) {
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(name, style: const TextStyle(fontSize: 12, color: Colors.black)),
-                          );
-                        }),
-                      ];
-                    },
-                    onChanged: onLedgerChanged,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  InputDecoration _inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 12),
-      filled: true,
-      fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: GlassTheme.primaryNeon, width: 1.5),
-      ),
-      errorStyle: const TextStyle(fontSize: 10),
-    );
-  }
-
-  // ================= CONFIRM DELETE =================
-  void _confirmDelete(CategoryRecord c) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final token = auth.authToken;
-    if (token == null) return;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: GlassTheme.bgSurface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: Color(0x1EFFFFFF)),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: GlassTheme.accentRose),
-              const SizedBox(width: 8),
-              const Text("Confirm Delete", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: Text(
-            "Are you sure you want to permanently delete the Category \"${c.catname} (${c.catcode})\"? This action cannot be undone.",
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
-          ),
-          actions: [
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white70,
-                side: const BorderSide(color: Color(0x33FFFFFF)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: GlassTheme.accentRose,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () async {
-                Navigator.pop(context);
-                setState(() => _isLoading = true);
-
-                final res = await _api.deleteCategory(token, c.id!);
-                final success = res['success'] == true;
-
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(res['message'] ?? 'Failed to delete category'),
-                      backgroundColor: success ? GlassTheme.accentEmerald : GlassTheme.accentRose,
-                    ),
-                  );
-                  _loadData();
-                }
-              },
-              child: const Text("Delete"),
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: GlassTheme.accentRose, size: 24),
+            SizedBox(width: 8),
+            Text(
+              "Delete Category",
+              style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
             ),
           ],
-        );
-      },
+        ),
+        content: Text(
+          "Are you sure you want to delete category '${cat.catcode} - ${cat.catname}'?",
+          style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            child: const Text("Cancel", style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w700)),
+            onPressed: () => Navigator.pop(dialogCtx),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GlassTheme.accentRose,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text("Delete", style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              if (cat.id == null) return;
+              final auth = Provider.of<AuthProvider>(context, listen: false);
+              final token = auth.authToken;
+              if (token == null) return;
+
+              final res = await _api.deleteCategory(token, cat.id!);
+              if (mounted) {
+                final isOk = res['success'] == true;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(res['message']?.toString() ?? "Category deleted"),
+                    backgroundColor: isOk ? GlassTheme.accentEmerald : GlassTheme.accentRose,
+                  ),
+                );
+                if (isOk) _loadData();
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 }

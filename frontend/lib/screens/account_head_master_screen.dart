@@ -28,7 +28,6 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
 
   final TextEditingController _searchController = TextEditingController();
 
-  // Predefined group names
   final List<String> _groupOptions = [
     'Bank Name',
     'Sundry Debtors',
@@ -43,6 +42,22 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
     'Indirect Expenses',
   ];
 
+  // ================= IN-PAGE ENTRY FORM STATE =================
+  bool _showForm = false;
+  AccountHead? _editingHead;
+  final _formKey = GlobalKey<FormState>();
+
+  final _nameController = TextEditingController();
+  String _selectedGroup = 'Bank Name';
+  int _selectedCountryId = 1; // India default
+  StateItem? _selectedState;
+  final _customStateController = TextEditingController();
+  final _pinController = TextEditingController();
+  final _gstController = TextEditingController();
+  final _panController = TextEditingController();
+  bool _isActive = true;
+  bool _isSaving = false;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +67,11 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _nameController.dispose();
+    _customStateController.dispose();
+    _pinController.dispose();
+    _gstController.dispose();
+    _panController.dispose();
     super.dispose();
   }
 
@@ -90,6 +110,118 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
     }
   }
 
+  void _openForm([AccountHead? existing]) {
+    setState(() {
+      _editingHead = existing;
+      _showForm = true;
+      if (existing != null) {
+        _nameController.text = existing.accountname;
+        _selectedGroup = _groupOptions.contains(existing.groupname) ? existing.groupname : _groupOptions.first;
+        _gstController.text = existing.gstno;
+        _panController.text = existing.panno;
+        _pinController.text = existing.pincode;
+        _isActive = existing.active == 1;
+
+        final matchedCountry = LocationData.getCountryByNameOrCode(existing.country);
+        _selectedCountryId = matchedCountry?.id ?? 1;
+
+        final statesForCountry = LocationData.getStatesForCountry(_selectedCountryId);
+        _selectedState = statesForCountry.where((s) => s.name.toLowerCase() == existing.state.toLowerCase()).firstOrNull;
+        _customStateController.text = _selectedState == null ? existing.state : '';
+      } else {
+        _resetFormFields();
+      }
+    });
+  }
+
+  void _resetFormFields() {
+    _nameController.clear();
+    _selectedGroup = _groupOptions.first;
+    _selectedCountryId = 1;
+    final indianStates = LocationData.indianStates;
+    _selectedState = indianStates.where((s) => s.name == "Tamil Nadu").firstOrNull ?? (indianStates.isNotEmpty ? indianStates.first : null);
+    _customStateController.clear();
+    _pinController.clear();
+    _gstController.clear();
+    _panController.clear();
+    _isActive = true;
+  }
+
+  void _closeForm() {
+    setState(() {
+      _showForm = false;
+      _editingHead = null;
+      _resetFormFields();
+    });
+  }
+
+  Future<void> _saveAccountHeadForm() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final name = _nameController.text.trim();
+      final countryObj = LocationData.getCountryById(_selectedCountryId);
+      final countryName = countryObj?.name ?? 'India';
+      final stateName = _selectedState != null ? _selectedState!.name : _customStateController.text.trim();
+
+      final record = AccountHead(
+        accode: _editingHead?.accode ?? '',
+        accountname: name,
+        groupname: _selectedGroup,
+        country: countryName,
+        state: stateName,
+        pincode: _pinController.text.trim(),
+        gstno: _gstController.text.trim().toUpperCase(),
+        panno: _panController.text.trim().toUpperCase(),
+        active: _isActive ? 1 : 0,
+      );
+
+      final isEditing = _editingHead != null && _editingHead!.id != null;
+      final response = isEditing
+          ? await _api.updateAccountHead(token, _editingHead!.id!, record)
+          : await _api.createAccountHead(token, record);
+
+      if (response['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                isEditing ? "Account '$name' updated successfully!" : "Account '$name' created successfully!",
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              backgroundColor: GlassTheme.accentEmerald,
+            ),
+          );
+          _closeForm();
+          await _loadAccountHeads();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response['message']?.toString() ?? "Failed to save account head"),
+              backgroundColor: GlassTheme.accentRose,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: GlassTheme.accentRose),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   // ================= MAIN BUILD =================
   @override
   Widget build(BuildContext context) {
@@ -102,6 +234,12 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
         // Header
         _buildHeaderBar(context, auth, isMobile),
         const SizedBox(height: 16),
+
+        // Embedded In-Page Form
+        if (_showForm) ...[
+          _buildInPageEntryForm(isMobile),
+          const SizedBox(height: 20),
+        ],
 
         // Search & View toggles
         _buildSearchToolbar(isMobile),
@@ -183,7 +321,7 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                   SizedBox(height: 2),
                   Text(
                     "Configure accounts, financial groupings, GSTIN & location parameters",
-                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary),
+                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -199,7 +337,7 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
                   ),
                   child: Row(
                     children: [
@@ -230,27 +368,383 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                 ),
               if (!isMobile) const SizedBox(width: 12),
               IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: GlassTheme.textSecondary),
+                icon: const Icon(Icons.refresh_rounded, color: GlassTheme.textPrimary),
                 tooltip: "Reload Accounts",
                 onPressed: _loadAccountHeads,
               ),
               const SizedBox(width: 8),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFF43F5E),
+                  backgroundColor: _showForm ? const Color(0xFF334155) : const Color(0xFFF43F5E),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shadowColor: Colors.transparent,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text("Add Account Head", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                onPressed: () => _showAddEditDialog(),
+                icon: Icon(_showForm ? Icons.close_rounded : Icons.add_rounded, size: 18),
+                label: Text(
+                  _showForm ? "Close Form" : "Add Account Head",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                onPressed: () {
+                  if (_showForm) {
+                    _closeForm();
+                  } else {
+                    _openForm();
+                  }
+                },
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  // ================= IN-PAGE ENTRY FORM COMPONENT =================
+  Widget _buildInPageEntryForm(bool isMobile) {
+    final isEditing = _editingHead != null;
+    final statesForCountry = LocationData.getStatesForCountry(_selectedCountryId);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF43F5E).withValues(alpha: 0.5), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0C0F172A), blurRadius: 16, offset: Offset(0, 4)),
+        ],
+      ),
+      padding: const EdgeInsets.all(22),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Bar
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF43F5E).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isEditing ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
+                    color: const Color(0xFFF43F5E),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isEditing ? "Edit Account Head (${_editingHead!.accode} - ${_editingHead!.accountname})" : "Create New Account Head / Ledger",
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: GlassTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isEditing ? "Modify ledger groupings, GST & status" : "Define general ledger, group classification, statutory GST & PAN numbers",
+                        style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: GlassTheme.textPrimary),
+                  tooltip: "Cancel and Close Form",
+                  onPressed: _closeForm,
+                ),
+              ],
+            ),
+            const Divider(height: 28, color: Color(0xFFE2E8F0)),
+
+            // Row 1: Account Name & Financial Group
+            Wrap(
+              spacing: 16,
+              runSpacing: 14,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 360,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Account Head Name *",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _nameController,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("e.g. HDFC Bank, Sundry Debtors - Walkin"),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return "Account name is required";
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 280,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Financial Group *",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        value: _selectedGroup,
+                        dropdownColor: Colors.white,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("Select Group"),
+                        items: _groupOptions.map((grp) {
+                          return DropdownMenuItem(
+                            value: grp,
+                            child: Text(grp, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedGroup = val);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 180,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Status",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _isActive ? "ACTIVE" : "INACTIVE",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: _isActive ? GlassTheme.accentEmerald : GlassTheme.accentRose,
+                              ),
+                            ),
+                            Switch(
+                              value: _isActive,
+                              activeColor: GlassTheme.accentEmerald,
+                              onChanged: (val) => setState(() => _isActive = val),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Statutory & Location Title
+            const Text(
+              "Statutory Details & Address",
+              style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+
+            // Row 2: GSTIN, PAN, Country, State, PIN
+            Wrap(
+              spacing: 16,
+              runSpacing: 14,
+              children: [
+                SizedBox(
+                  width: isMobile ? double.infinity : 220,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("GSTIN (15 Chars)", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _gstController,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("e.g. 33AAAAA0000A1Z5"),
+                        maxLength: 15,
+                        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 180,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("PAN Number", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _panController,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("e.g. ABCDE1234F"),
+                        maxLength: 10,
+                        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 180,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Country", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<int>(
+                        value: _selectedCountryId,
+                        dropdownColor: Colors.white,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("Country"),
+                        items: LocationData.countries.map((c) {
+                          return DropdownMenuItem(
+                            value: c.id,
+                            child: Text(c.name, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              _selectedCountryId = val;
+                              final newStates = LocationData.getStatesForCountry(val);
+                              _selectedState = newStates.isNotEmpty ? newStates.first : null;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 200,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("State", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      statesForCountry.isNotEmpty
+                          ? DropdownButtonFormField<StateItem>(
+                              value: _selectedState != null && statesForCountry.contains(_selectedState)
+                                  ? _selectedState
+                                  : (statesForCountry.isNotEmpty ? statesForCountry.first : null),
+                              dropdownColor: Colors.white,
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("State"),
+                              items: statesForCountry.map((s) {
+                                return DropdownMenuItem(
+                                  value: s,
+                                  child: Text("${s.name} (${s.code})", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
+                                );
+                              }).toList(),
+                              onChanged: (val) => setState(() => _selectedState = val),
+                            )
+                          : TextFormField(
+                              controller: _customStateController,
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("Enter State"),
+                            ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 140,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("PIN / Postal Code", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _pinController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("e.g. 600001"),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Action Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                GlassSecondaryButton(
+                  label: "Clear Fields",
+                  icon: Icons.refresh_rounded,
+                  onPressed: _resetFormFields,
+                ),
+                const SizedBox(width: 12),
+                GlassSecondaryButton(
+                  label: "Cancel",
+                  onPressed: _closeForm,
+                ),
+                const SizedBox(width: 12),
+                GlassButton(
+                  label: isEditing ? "Update Account" : "Save Account",
+                  icon: Icons.check_circle_outline_rounded,
+                  gradient: const LinearGradient(colors: [Color(0xFFF43F5E), Color(0xFFBE123C)]),
+                  isLoading: _isSaving,
+                  onPressed: _saveAccountHeadForm,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13, fontWeight: FontWeight.normal),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFF43F5E), width: 2.0),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: GlassTheme.accentRose, width: 1.5),
       ),
     );
   }
@@ -266,29 +760,29 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
             child: TextField(
               controller: _searchController,
               onChanged: (val) => setState(() => _applyFilter(val)),
-              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14),
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search_rounded, color: GlassTheme.textMuted, size: 20),
-                hintText: "Search accounts by name, code, group, state, GSTIN, PAN...",
+                prefixIcon: const Icon(Icons.search_rounded, color: GlassTheme.textSecondary, size: 20),
+                hintText: "Search accounts by code, name, group, GSTIN, or location...",
                 hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
                 contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: GlassTheme.primaryNeon, width: 1.5),
+                  borderSide: const BorderSide(color: Color(0xFFF43F5E), width: 1.5),
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, color: GlassTheme.textMuted, size: 18),
+                        icon: const Icon(Icons.clear_rounded, color: GlassTheme.textSecondary, size: 18),
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _applyFilter(''));
@@ -306,7 +800,7 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
   // ================= EMPTY STATE =================
   Widget _buildEmptyState(BuildContext context, AuthProvider auth) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 80),
+      padding: const EdgeInsets.symmetric(vertical: 60),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -314,23 +808,23 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0x0EFFFFFF),
+                color: const Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0x18FFFFFF)),
+                border: Border.all(color: const Color(0xFFCBD5E1)),
               ),
-              child: const Icon(Icons.account_balance_wallet_outlined, size: 50, color: GlassTheme.textMuted),
+              child: const Icon(Icons.account_balance_wallet_rounded, size: 48, color: GlassTheme.textSecondary),
             ),
             const SizedBox(height: 18),
             Text(
-              _searchQuery.isNotEmpty ? "No matching accounts found" : "No Account Heads configured yet",
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              _searchQuery.isNotEmpty ? "No matching accounts found" : "No Account Heads created yet",
+              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
               _searchQuery.isNotEmpty
-                  ? "Try adjusting your search filters or clear keywords."
-                  : "Get started by adding your first financial ledger/account head.",
-              style: const TextStyle(color: GlassTheme.textMuted, fontSize: 12),
+                  ? "Try adjusting your search query."
+                  : "Get started by adding accounts (e.g. Bank Account, Sundry Debtors, Sales, Tax Accounts).",
+              style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
             if (_searchQuery.isEmpty) ...[
@@ -344,7 +838,7 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                 ),
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text("Create Account Head", style: TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: () => _showAddEditDialog(),
+                onPressed: () => _openForm(),
               ),
             ],
           ],
@@ -355,20 +849,25 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
 
   // ================= CARD GRID VIEW =================
   Widget _buildCardsGridView(BuildContext context, AuthProvider auth, bool isMobile) {
-    final double cardWidth = isMobile ? 320 : 340;
+    final double cardWidth = isMobile ? 320 : 360;
     return LayoutBuilder(
       builder: (context, constraints) {
         return Wrap(
           spacing: 16,
           runSpacing: 16,
           children: _filteredAccountHeads.map((head) {
-            final activeColor = head.active == 1 ? GlassTheme.accentEmerald : GlassTheme.accentRose;
             return SizedBox(
               width: isMobile ? constraints.maxWidth : cardWidth,
-              child: GlassContainer(
-                borderRadius: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+                  ],
+                ),
                 padding: const EdgeInsets.all(18),
-                borderColor: const Color(0x18FFFFFF),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -377,68 +876,47 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                head.accountname,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                head.groupname,
-                                style: const TextStyle(fontSize: 11, color: GlassTheme.accentCyan, fontWeight: FontWeight.bold),
-                              ),
-                            ],
+                          child: Text(
+                            head.accountname,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),
-                        StatusBadge(label: head.accode, color: const Color(0xFFF43F5E)),
+                        StatusBadge(
+                          label: head.active == 1 ? "ACTIVE" : "INACTIVE",
+                          color: head.active == 1 ? GlassTheme.accentEmerald : GlassTheme.accentRose,
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    const Divider(color: Color(0x12FFFFFF)),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
+                    const Divider(color: Color(0xFFE2E8F0)),
+                    const SizedBox(height: 8),
 
-                    // Details
-                    _buildDetailRow(Icons.location_on_outlined, "${head.state}, ${head.country}"),
-                    if (head.pincode.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      _buildDetailRow(Icons.pin_drop_outlined, "Pincode: ${head.pincode}"),
-                    ],
+                    _buildInfoRow("Account Code", head.accode),
+                    const SizedBox(height: 6),
+                    _buildInfoRow("Group", head.groupname),
+                    const SizedBox(height: 6),
+                    _buildInfoRow("State / Location", "${head.state}, ${head.country}"),
                     if (head.gstno.isNotEmpty) ...[
                       const SizedBox(height: 6),
-                      _buildDetailRow(Icons.receipt_long_rounded, "GSTIN: ${head.gstno}"),
-                    ],
-                    if (head.panno.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      _buildDetailRow(Icons.credit_card_rounded, "PAN: ${head.panno}"),
+                      _buildInfoRow("GSTIN", head.gstno),
                     ],
 
                     const SizedBox(height: 14),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        StatusBadge(
-                          label: head.active == 1 ? "ACTIVE" : "INACTIVE",
-                          color: activeColor,
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryNeon, size: 20),
+                          tooltip: "Edit Account",
+                          onPressed: () => _openForm(head),
                         ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 18),
-                              tooltip: "Edit Account",
-                              onPressed: () => _showAddEditDialog(head),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 18),
-                              tooltip: "Delete Account",
-                              onPressed: () => _confirmDelete(head),
-                            ),
-                          ],
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 20),
+                          tooltip: "Delete Account",
+                          onPressed: () => _confirmDelete(head),
                         ),
                       ],
                     ),
@@ -452,59 +930,54 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
     );
   }
 
-  Widget _buildDetailRow(IconData icon, String text) {
+  Widget _buildInfoRow(String label, String value) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Icon(icon, size: 14, color: GlassTheme.textMuted),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600)),
+        Text(value, style: const TextStyle(fontSize: 13, color: GlassTheme.textPrimary, fontWeight: FontWeight.w800)),
       ],
     );
   }
 
-  // ================= TABLE VIEW (Desktop) =================
+  // ================= TABLE VIEW =================
   Widget _buildTableView(BuildContext context, AuthProvider auth) {
-    return GlassContainer(
-      borderRadius: 16,
-      padding: EdgeInsets.zero,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            headingRowColor: WidgetStateProperty.all(const Color(0x12FFFFFF)),
-            dataRowColor: WidgetStateProperty.all(const Color(0x06FFFFFF)),
+            headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+            dataRowColor: WidgetStateProperty.all(Colors.white),
             columns: const [
-              DataColumn(label: Text("CODE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("ACCOUNT NAME", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("GROUP NAME", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("STATE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("COUNTRY", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("GSTIN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("PAN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("STATUS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("ACTIONS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              DataColumn(label: Text("CODE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("ACCOUNT NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("GROUP", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("GSTIN", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("STATE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("STATUS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("ACTIONS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
             ],
             rows: _filteredAccountHeads.map((head) {
               return DataRow(
                 cells: [
-                  DataCell(Text(head.accode, style: const TextStyle(color: Color(0xFFF43F5E), fontWeight: FontWeight.bold))),
-                  DataCell(Text(head.accountname, style: const TextStyle(color: Colors.white))),
-                  DataCell(Text(head.groupname, style: const TextStyle(color: GlassTheme.accentCyan))),
-                   DataCell(Text(head.state, style: const TextStyle(color: Colors.white70))),
-                  DataCell(Text(head.country, style: const TextStyle(color: Colors.white70))),
-                  DataCell(Text(head.gstno.isEmpty ? "-" : head.gstno, style: const TextStyle(color: Colors.white70))),
-                  DataCell(Text(head.panno.isEmpty ? "-" : head.panno, style: const TextStyle(color: Colors.white70))),
+                  DataCell(Text(head.accode, style: const TextStyle(color: Color(0xFFF43F5E), fontWeight: FontWeight.w800, fontSize: 13))),
+                  DataCell(Text(head.accountname, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
+                  DataCell(Text(head.groupname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w700, fontSize: 13))),
+                  DataCell(Text(head.gstno.isEmpty ? "-" : head.gstno, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 12))),
+                  DataCell(Text(head.state, style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 12))),
                   DataCell(
                     StatusBadge(
-                      label: head.active == 1 ? "ACTIVE" : "INACTIVE",
+                      label: head.active == 1 ? "Active" : "Inactive",
                       color: head.active == 1 ? GlassTheme.accentEmerald : GlassTheme.accentRose,
                     ),
                   ),
@@ -513,11 +986,13 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 16),
-                          onPressed: () => _showAddEditDialog(head),
+                          icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryNeon, size: 18),
+                          tooltip: "Edit",
+                          onPressed: () => _openForm(head),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 16),
+                          icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 18),
+                          tooltip: "Delete",
                           onPressed: () => _confirmDelete(head),
                         ),
                       ],
@@ -532,480 +1007,61 @@ class _AccountHeadMasterScreenState extends State<AccountHeadMasterScreen> {
     );
   }
 
-  // ================= ADD / EDIT DIALOG =================
-  void _showAddEditDialog([AccountHead? existing]) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final token = auth.authToken;
-    if (token == null) return;
-
-    final formKey = GlobalKey<FormState>();
-
-    // Input controllers
-    final accountNameController = TextEditingController(text: existing?.accountname ?? '');
-    final pincodeController = TextEditingController(text: existing?.pincode ?? '');
-    final gstController = TextEditingController(text: existing?.gstno ?? '');
-    final panController = TextEditingController(text: existing?.panno ?? '');
-
-    String? selectedGroup = existing != null && _groupOptions.contains(existing.groupname)
-        ? existing.groupname
-        : _groupOptions.first;
-
-    CountryItem selectedCountry = LocationData.getCountryByNameOrCode(existing?.country ?? 'India') ??
-        LocationData.countries.first;
-
-    // Load states for selected country
-    List<StateItem> filteredStates = LocationData.getStatesForCountry(selectedCountry.id);
-
-    StateItem? selectedState = (existing != null && filteredStates.any((s) => s.name == existing.state))
-        ? filteredStates.firstWhere((s) => s.name == existing.state)
-        : (filteredStates.isNotEmpty ? filteredStates.first : null);
-
-    // If state is not in helper list (for custom states / text input fallback)
-    final customStateController = TextEditingController(
-      text: (selectedState == null && existing != null) ? existing.state : '',
-    );
-
-    bool isActive = existing != null ? existing.active == 1 : true;
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              backgroundColor: GlassTheme.bgSurface,
-              surfaceTintColor: Colors.transparent,
-              shadowColor: Colors.black54,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: Color(0x1EFFFFFF)),
-              ),
-              title: Row(
-                children: [
-                  Icon(
-                    existing == null ? Icons.add_circle_outline_rounded : Icons.edit_note_rounded,
-                    color: const Color(0xFFF43F5E),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    existing == null ? "Add Account Head" : "Edit Account Head",
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: GlassTheme.textMuted),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              content: SizedBox(
-                width: 500,
-                child: Form(
-                  key: formKey,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (existing != null) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: const Color(0x0EFFFFFF),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0x18FFFFFF)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Text("Account Code: ", style: TextStyle(color: GlassTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold)),
-                                Text(existing.accode, style: const TextStyle(color: Color(0xFFF43F5E), fontSize: 13, fontWeight: FontWeight.w800)),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Account Name
-                        const Text("Account Name *", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: accountNameController,
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          decoration: _inputDecoration("Enter primary account / client name"),
-                          validator: (val) {
-                            if (val == null || val.trim().isEmpty) return "Account name is required";
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Group Name (Dropdown)
-                        const Text("Account Group *", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: selectedGroup,
-                              dropdownColor: GlassTheme.bgSurface,
-                              isExpanded: true,
-                              items: _groupOptions.map((g) {
-                                return DropdownMenuItem<String>(
-                                  value: g,
-                                  child: Text(g, style: const TextStyle(fontSize: 13, color: Colors.black)),
-                                );
-                              }).toList(),
-                              selectedItemBuilder: (context) {
-                                return _groupOptions.map((g) {
-                                  return Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(g, style: const TextStyle(fontSize: 13, color: Colors.black)),
-                                  );
-                                }).toList();
-                              },
-                              onChanged: (val) {
-                                setDialogState(() => selectedGroup = val);
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Country (Dropdown)
-                        const Text("Country *", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<CountryItem>(
-                              value: selectedCountry,
-                              dropdownColor: GlassTheme.bgSurface,
-                              isExpanded: true,
-                              items: LocationData.countries.map((c) {
-                                return DropdownMenuItem<CountryItem>(
-                                  value: c,
-                                  child: Text("${c.flag}  ${c.name}", style: const TextStyle(fontSize: 13, color: Colors.black)),
-                                );
-                              }).toList(),
-                              selectedItemBuilder: (context) {
-                                return LocationData.countries.map((c) {
-                                  return Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text("${c.flag}  ${c.name}", style: const TextStyle(fontSize: 13, color: Colors.black)),
-                                  );
-                                }).toList();
-                              },
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setDialogState(() {
-                                    selectedCountry = val;
-                                    filteredStates = LocationData.getStatesForCountry(val.id);
-                                    selectedState = filteredStates.isNotEmpty ? filteredStates.first : null;
-                                  });
-                                }
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // State (Dropdown or text field)
-                        const Text("State / Emirates", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        if (filteredStates.isNotEmpty) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<StateItem>(
-                                value: selectedState,
-                                dropdownColor: GlassTheme.bgSurface,
-                                isExpanded: true,
-                                items: filteredStates.map((s) {
-                                  return DropdownMenuItem<StateItem>(
-                                    value: s,
-                                    child: Text(s.name, style: const TextStyle(fontSize: 13, color: Colors.black)),
-                                  );
-                                }).toList(),
-                                selectedItemBuilder: (context) {
-                                  return filteredStates.map((s) {
-                                    return Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(s.name, style: const TextStyle(fontSize: 13, color: Colors.black)),
-                                    );
-                                  }).toList();
-                                },
-                                onChanged: (val) {
-                                  setDialogState(() => selectedState = val);
-                                },
-                              ),
-                            ),
-                          ),
-                        ] else ...[
-                          TextFormField(
-                            controller: customStateController,
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
-                            decoration: _inputDecoration("Enter state / province"),
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-
-                        // Pincode
-                        const Text("Pincode", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: pincodeController,
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          decoration: _inputDecoration("Postal / ZIP code"),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Tax & Pan info
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("GSTIN No.", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 6),
-                                  TextFormField(
-                                    controller: gstController,
-                                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                                    decoration: _inputDecoration("15-digit GSTIN"),
-                                    maxLength: 15,
-                                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text("PAN Card No.", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 6),
-                                  TextFormField(
-                                    controller: panController,
-                                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                                    decoration: _inputDecoration("10-digit PAN"),
-                                    maxLength: 10,
-                                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Active status
-                        Row(
-                          children: [
-                            const Text("Active Status", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                            const Spacer(),
-                            Switch(
-                              value: isActive,
-                              activeColor: GlassTheme.accentEmerald,
-                              onChanged: (val) {
-                                setDialogState(() => isActive = val);
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              actions: [
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Color(0x33FFFFFF)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                  onPressed: isSaving ? null : () => Navigator.pop(context),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF43F5E),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey[700],
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  ),
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          if (!formKey.currentState!.validate()) return;
-
-                          setDialogState(() => isSaving = true);
-
-                          final finalState = filteredStates.isNotEmpty
-                              ? (selectedState?.name ?? '')
-                              : customStateController.text.trim();
-
-                          final record = AccountHead(
-                            id: existing?.id,
-                            accode: existing?.accode ?? '', // Backend autogenerates this for NEW
-                            groupname: selectedGroup ?? '',
-                            accountname: accountNameController.text.trim(),
-                            state: finalState,
-                            country: selectedCountry.name,
-                            pincode: pincodeController.text.trim(),
-                            active: isActive ? 1 : 0,
-                            gstno: gstController.text.trim().toUpperCase(),
-                            panno: panController.text.trim().toUpperCase(),
-                          );
-
-                          bool success = false;
-                          String message = '';
-
-                          if (existing == null) {
-                            final res = await _api.createAccountHead(token, record);
-                            success = res['success'] == true;
-                            message = res['message'] ?? 'Failed to create account head';
-                          } else {
-                            final res = await _api.updateAccountHead(token, existing.id!, record);
-                            success = res['success'] == true;
-                            message = res['message'] ?? 'Failed to update account head';
-                          }
-
-                          if (mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(message),
-                                backgroundColor: success ? GlassTheme.accentEmerald : GlassTheme.accentRose,
-                              ),
-                            );
-                            if (success) {
-                              _loadAccountHeads();
-                            }
-                          }
-                        },
-                  child: isSaving
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(existing == null ? "Save Account" : "Update Account"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  InputDecoration _inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13),
-      filled: true,
-      fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: GlassTheme.primaryNeon, width: 1.5),
-      ),
-      errorStyle: const TextStyle(fontSize: 11),
-    );
-  }
-
-  // ================= CONFIRM DELETE =================
+  // ================= DELETE CONFIRMATION =================
   void _confirmDelete(AccountHead head) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final token = auth.authToken;
-    if (token == null) return;
-
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: GlassTheme.bgSurface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: Color(0x1EFFFFFF)),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: GlassTheme.accentRose),
-              const SizedBox(width: 8),
-              const Text("Confirm Delete", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: Text(
-            "Are you sure you want to permanently delete the Account Head \"${head.accountname}\"? This action cannot be undone.",
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
-          ),
-          actions: [
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white70,
-                side: const BorderSide(color: Color(0x33FFFFFF)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: GlassTheme.accentRose,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () async {
-                Navigator.pop(context);
-                setState(() => _isLoading = true);
-
-                final res = await _api.deleteAccountHead(token, head.id!);
-                final success = res['success'] == true;
-
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(res['message'] ?? 'Failed to delete record'),
-                      backgroundColor: success ? GlassTheme.accentEmerald : GlassTheme.accentRose,
-                    ),
-                  );
-                  _loadAccountHeads();
-                }
-              },
-              child: const Text("Delete"),
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: GlassTheme.accentRose, size: 24),
+            SizedBox(width: 8),
+            Text(
+              "Delete Account Head",
+              style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
             ),
           ],
-        );
-      },
+        ),
+        content: Text(
+          "Are you sure you want to delete account head '${head.accode} - ${head.accountname}'?",
+          style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            child: const Text("Cancel", style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w700)),
+            onPressed: () => Navigator.pop(dialogCtx),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GlassTheme.accentRose,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text("Delete", style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              if (head.id == null) return;
+              final auth = Provider.of<AuthProvider>(context, listen: false);
+              final token = auth.authToken;
+              if (token == null) return;
+
+              final res = await _api.deleteAccountHead(token, head.id!);
+              if (mounted) {
+                final isOk = res['success'] == true;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(res['message']?.toString() ?? "Account head deleted"),
+                    backgroundColor: isOk ? GlassTheme.accentEmerald : GlassTheme.accentRose,
+                  ),
+                );
+                if (isOk) _loadAccountHeads();
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 }
