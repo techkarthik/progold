@@ -186,7 +186,39 @@ class MenuTreeRegistry {
       ],
     ),
 
-    // 3. POS MODULE
+    // 3. ESTIMATE MODULE (3rd Main Menu)
+    const MenuTreeNode(
+      code: MenuRegistry.MENU_ESTIMATE,
+      title: "Estimate & Quotation",
+      subtitle: "Pre-sale ornament estimates, rate lock quotations & slip printing",
+      icon: Icons.request_quote_rounded,
+      color: Color(0xFFF97316),
+      children: [
+        MenuTreeNode(
+          code: MenuRegistry.ESTIMATE_NEW,
+          title: "New Estimate Quotation",
+          subtitle: "Calculate live weight, making charges & gold preview",
+          icon: Icons.add_circle_outline_rounded,
+          color: Color(0xFFF97316),
+        ),
+        MenuTreeNode(
+          code: MenuRegistry.ESTIMATE_REGISTER,
+          title: "Estimates Register",
+          subtitle: "Browse quotations history, print slips & track conversions",
+          icon: Icons.history_edu_rounded,
+          color: Color(0xFF10B981),
+        ),
+        MenuTreeNode(
+          code: MenuRegistry.ESTIMATE_CONVERT,
+          title: "Convert to POS Invoice",
+          subtitle: "Instant conversion of approved estimates into retail GST invoice",
+          icon: Icons.transform_rounded,
+          color: Color(0xFF6366F1),
+        ),
+      ],
+    ),
+
+    // 4. POS MODULE
     const MenuTreeNode(
       code: MenuRegistry.MENU_POS,
       title: "POS & Retail Billing",

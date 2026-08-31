@@ -80,6 +80,12 @@ import {
   updateSystemControlController,
   deleteSystemControlController,
 } from "./controllers/systemControlsController.js";
+import {
+  getEstimatesController,
+  createEstimateController,
+  updateEstimateController,
+  deleteEstimateController,
+} from "./controllers/estimateController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -202,6 +208,12 @@ app.get("/api/tenant/system-controls", requireAuth, getSystemControlsController)
 app.post("/api/tenant/system-controls", requireAuth, createSystemControlController);
 app.put("/api/tenant/system-controls/:id", requireAuth, updateSystemControlController);
 app.delete("/api/tenant/system-controls/:id", requireAuth, deleteSystemControlController);
+
+// Tenant Estimates / Quotation Routes (3rd Main Menu)
+app.get("/api/tenant/estimates", requireAuth, getEstimatesController);
+app.post("/api/tenant/estimates", requireAuth, createEstimateController);
+app.put("/api/tenant/estimates/:id", requireAuth, updateEstimateController);
+app.delete("/api/tenant/estimates/:id", requireAuth, deleteEstimateController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

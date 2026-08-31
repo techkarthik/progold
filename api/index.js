@@ -81,6 +81,12 @@ import {
   updateSystemControlController,
   deleteSystemControlController,
 } from "../backend/src/controllers/systemControlsController.js";
+import {
+  getEstimatesController,
+  createEstimateController,
+  updateEstimateController,
+  deleteEstimateController,
+} from "../backend/src/controllers/estimateController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -258,6 +264,12 @@ router.get("/tenant/system-controls", requireAuth, getSystemControlsController);
 router.post("/tenant/system-controls", requireAuth, createSystemControlController);
 router.put("/tenant/system-controls/:id", requireAuth, updateSystemControlController);
 router.delete("/tenant/system-controls/:id", requireAuth, deleteSystemControlController);
+
+// Tenant Estimates / Quotation Routes (3rd Main Menu)
+router.get("/tenant/estimates", requireAuth, getEstimatesController);
+router.post("/tenant/estimates", requireAuth, createEstimateController);
+router.put("/tenant/estimates/:id", requireAuth, updateEstimateController);
+router.delete("/tenant/estimates/:id", requireAuth, deleteEstimateController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);

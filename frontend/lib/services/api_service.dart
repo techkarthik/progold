@@ -9,6 +9,7 @@ import '../models/account_head_model.dart';
 import '../models/tax_model.dart';
 import '../models/inventory_models.dart';
 import '../models/system_control_model.dart';
+import '../models/estimate_model.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -998,6 +999,74 @@ class ApiService {
   Future<Map<String, dynamic>> deleteSystemControl(String token, int sno) async {
     try {
       final res = await http.delete(Uri.parse('$baseUrl/tenant/system-controls/$sno'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= ESTIMATE / QUOTATION CRUD (3rd Main Menu) =================
+
+  /// Fetches estimates with metadata (counts, total value, next estimate no)
+  Future<Map<String, dynamic>> getEstimatesData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/estimates'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['estimates'] is List) {
+          final items = (data['estimates'] as List).map((i) => EstimateRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'estimates': items,
+            'last_estimate_id': data['last_estimate_id'] ?? 0,
+            'next_estimate_no': data['next_estimate_no'] ?? 'EST-1001',
+            'total_count': data['total_count'] ?? 0,
+            'open_count': data['open_count'] ?? 0,
+            'total_value': (data['total_value'] as num?)?.toDouble() ?? 0.0,
+          };
+        }
+      }
+      return {'success': false, 'estimates': <EstimateRecord>[], 'next_estimate_no': 'EST-1001'};
+    } catch (e) {
+      debugPrint("Error getEstimatesData: $e");
+      return {'success': false, 'estimates': <EstimateRecord>[], 'next_estimate_no': 'EST-1001'};
+    }
+  }
+
+  Future<List<EstimateRecord>> getEstimates(String token) async {
+    final data = await getEstimatesData(token);
+    return data['estimates'] as List<EstimateRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createEstimate(String token, EstimateRecord estimate) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/estimates'),
+        headers: _headers(token),
+        body: jsonEncode(estimate.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateEstimate(String token, int estimateId, EstimateRecord estimate) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/estimates/$estimateId'),
+        headers: _headers(token),
+        body: jsonEncode(estimate.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteEstimate(String token, int estimateId) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/estimates/$estimateId'), headers: _headers(token));
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': e.toString()};

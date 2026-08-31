@@ -17,6 +17,7 @@ import 'product_master_screen.dart';
 import 'subproduct_master_screen.dart';
 import 'database_status_screen.dart';
 import 'system_controls_screen.dart';
+import 'estimate_screen.dart';
 import '../constants/menu_registry.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -364,6 +365,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                 ],
+                if (_hasAccess(auth, MenuRegistry.MENU_ESTIMATE)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
+                    icon: Icons.request_quote_rounded,
+                    title: "Estimate & Quotation",
+                    subtitle: "Pre-sale gold quotes & print slips",
+                    isSelected: _selectedModule == "ESTIMATE",
+                    onTap: () {
+                      Navigator.pop(context);
+                      setState(() => _selectedModule = "ESTIMATE");
+                    },
+                  ),
+                ],
                 if (_hasAccess(auth, MenuRegistry.MENU_POS)) ...[
                   const SizedBox(height: 4),
                   _buildDrawerItem(
@@ -560,6 +574,15 @@ class _HomeScreenState extends State<HomeScreen> {
         "badge": null,
       },
       {
+        "id": "ESTIMATE",
+        "name": "ESTIMATE",
+        "desc": "Quotation & Preview",
+        "icon": Icons.request_quote_rounded,
+        "gradient": const LinearGradient(colors: [Color(0xFFF97316), Color(0xFFC2410C)]),
+        "glow": const Color(0xFFF97316),
+        "badge": "3rd Menu",
+      },
+      {
         "id": "POS",
         "name": "POS BILLING",
         "desc": "Sales Counter",
@@ -624,6 +647,9 @@ class _HomeScreenState extends State<HomeScreen> {
           break;
         case "STOCK":
           menuCode = MenuRegistry.MENU_STOCK;
+          break;
+        case "ESTIMATE":
+          menuCode = MenuRegistry.MENU_ESTIMATE;
           break;
         case "POS":
           menuCode = MenuRegistry.MENU_POS;
@@ -870,6 +896,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "STOCK":
         menuCode = MenuRegistry.MENU_STOCK;
         break;
+      case "ESTIMATE":
+        menuCode = MenuRegistry.MENU_ESTIMATE;
+        break;
       case "POS":
         menuCode = MenuRegistry.MENU_POS;
         break;
@@ -932,8 +961,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     module == "MASTER" && _masterSubmenu != "HUB"
                         ? "MASTER > $_masterSubmenu"
                         : (module == "SETTINGS" && _settingsSubmenu != "HUB"
-                            ? "SETTINGS > ${_settingsSubmenu == 'DB_STATUS' ? 'Database Status' : _settingsSubmenu}"
-                            : "$module Workspace"),
+                            ? "SETTINGS > ${_settingsSubmenu == 'DB_STATUS' ? 'Database Status' : (_settingsSubmenu == 'SYSTEM_CONTROLS' ? 'System Controls' : _settingsSubmenu)}"
+                            : (module == "ESTIMATE" ? "ESTIMATE & QUOTATION DESK" : "$module Workspace")),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
                   ),
                   const Spacer(),
@@ -958,6 +987,11 @@ class _HomeScreenState extends State<HomeScreen> {
         return _buildMasterHubWithSubmenus(auth, tenant);
       case "STOCK":
         return _buildStockWorkspace(auth);
+      case "ESTIMATE":
+        return EstimateScreen(
+          onBack: () => setState(() => _selectedModule = "HOME"),
+          onNavigateModule: (m) => setState(() => _selectedModule = m),
+        );
       case "POS":
         return _buildPosWorkspace(auth);
       case "REPORT":

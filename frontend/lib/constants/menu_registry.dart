@@ -9,6 +9,7 @@ class MenuRegistry {
   // ==========================================
   static const String MENU_MASTER = "M_MASTER";
   static const String MENU_STOCK = "M_STOCK";
+  static const String MENU_ESTIMATE = "M_ESTIMATE";
   static const String MENU_POS = "M_POS";
   static const String MENU_REPORT = "M_REPORT";
   static const String MENU_DIGIGOLD = "M_DIGIGOLD";
@@ -44,7 +45,14 @@ class MenuRegistry {
   static const String STOCK_AUDIT = "M_STOCK.AUDIT";
 
   // ==========================================
-  // 4. SUB-MENUS UNDER POS (M_POS) - Extensible
+  // 4. SUB-MENUS UNDER ESTIMATE (M_ESTIMATE) - 3rd Main Menu
+  // ==========================================
+  static const String ESTIMATE_NEW = "M_ESTIMATE.NEW";
+  static const String ESTIMATE_REGISTER = "M_ESTIMATE.REGISTER";
+  static const String ESTIMATE_CONVERT = "M_ESTIMATE.CONVERT";
+
+  // ==========================================
+  // 5. SUB-MENUS UNDER POS (M_POS) - Extensible
   // ==========================================
   static const String POS_BILLING = "M_POS.BILLING";
   static const String POS_ESTIMATION = "M_POS.ESTIMATION";
