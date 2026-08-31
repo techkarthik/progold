@@ -72,6 +72,7 @@ class MenuRegistry {
   static const String SETTINGS_STORE = "M_SETTINGS.STORE";
   static const String SETTINGS_PRINTER = "M_SETTINGS.PRINTER";
   static const String SETTINGS_DB_STATUS = "M_SETTINGS.DB_STATUS";
+  static const String SETTINGS_SYSTEM_CONTROLS = "M_SETTINGS.SYSTEM_CONTROLS";
   static const String SETTINGS_TURSO_SYNC = "M_SETTINGS.TURSO_SYNC";
 
   // ==========================================

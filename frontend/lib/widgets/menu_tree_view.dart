@@ -358,6 +358,13 @@ class MenuTreeRegistry {
           color: Color(0xFF06B6D4),
         ),
         MenuTreeNode(
+          code: MenuRegistry.SETTINGS_SYSTEM_CONTROLS,
+          title: "System Controls",
+          subtitle: "Module parameters, global configuration values & branch overrides",
+          icon: Icons.tune_rounded,
+          color: Color(0xFFF59E0B),
+        ),
+        MenuTreeNode(
           code: MenuRegistry.SETTINGS_TURSO_SYNC,
           title: "Turso Cloud DB & Query Tool",
           subtitle: "Private SQLite schema health, latency & SQL console",

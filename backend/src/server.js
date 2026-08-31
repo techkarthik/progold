@@ -74,6 +74,12 @@ import {
   updateSubProductController,
   deleteSubProductController,
 } from "./controllers/inventoryMasterController.js";
+import {
+  getSystemControlsController,
+  createSystemControlController,
+  updateSystemControlController,
+  deleteSystemControlController,
+} from "./controllers/systemControlsController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -190,6 +196,12 @@ app.get("/api/tenant/subproducts", requireAuth, getSubProductsController);
 app.post("/api/tenant/subproducts", requireAuth, createSubProductController);
 app.put("/api/tenant/subproducts/:id", requireAuth, updateSubProductController);
 app.delete("/api/tenant/subproducts/:id", requireAuth, deleteSubProductController);
+
+// Tenant System Controls CRUD Routes (4th Menu under Settings)
+app.get("/api/tenant/system-controls", requireAuth, getSystemControlsController);
+app.post("/api/tenant/system-controls", requireAuth, createSystemControlController);
+app.put("/api/tenant/system-controls/:id", requireAuth, updateSystemControlController);
+app.delete("/api/tenant/system-controls/:id", requireAuth, deleteSystemControlController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

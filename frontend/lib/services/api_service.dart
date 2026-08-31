@@ -8,6 +8,7 @@ import '../models/user_model.dart';
 import '../models/account_head_model.dart';
 import '../models/tax_model.dart';
 import '../models/inventory_models.dart';
+import '../models/system_control_model.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -931,6 +932,72 @@ class ApiService {
   Future<Map<String, dynamic>> deleteSubProduct(String token, int subproductid) async {
     try {
       final res = await http.delete(Uri.parse('$baseUrl/tenant/subproducts/$subproductid'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= SYSTEM CONTROLS CRUD (4th Menu under Settings) =================
+
+  /// Fetches system controls along with last_sno and next_sno metadata
+  Future<Map<String, dynamic>> getSystemControlsData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/system-controls'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['controls'] is List) {
+          final items = (data['controls'] as List).map((i) => SystemControlRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'controls': items,
+            'last_sno': data['last_sno'] ?? 0,
+            'next_sno': data['next_sno'] ?? 1,
+            'total_count': data['total_count'] ?? 0,
+          };
+        }
+      }
+      return {'success': false, 'controls': <SystemControlRecord>[], 'last_sno': 0, 'next_sno': 1};
+    } catch (e) {
+      debugPrint("Error getSystemControlsData: $e");
+      return {'success': false, 'controls': <SystemControlRecord>[], 'last_sno': 0, 'next_sno': 1};
+    }
+  }
+
+  Future<List<SystemControlRecord>> getSystemControls(String token) async {
+    final data = await getSystemControlsData(token);
+    return data['controls'] as List<SystemControlRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createSystemControl(String token, SystemControlRecord control) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/system-controls'),
+        headers: _headers(token),
+        body: jsonEncode(control.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateSystemControl(String token, int sno, SystemControlRecord control) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/system-controls/$sno'),
+        headers: _headers(token),
+        body: jsonEncode(control.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteSystemControl(String token, int sno) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/system-controls/$sno'), headers: _headers(token));
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': e.toString()};

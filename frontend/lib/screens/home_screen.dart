@@ -16,6 +16,7 @@ import 'category_master_screen.dart';
 import 'product_master_screen.dart';
 import 'subproduct_master_screen.dart';
 import 'database_status_screen.dart';
+import 'system_controls_screen.dart';
 import '../constants/menu_registry.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -429,6 +430,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         setState(() {
                           _selectedModule = "SETTINGS";
                           _settingsSubmenu = "DB_STATUS";
+                        });
+                      },
+                    ),
+                  ],
+                  if (_hasAccess(auth, MenuRegistry.SETTINGS_SYSTEM_CONTROLS)) ...[
+                    const SizedBox(height: 4),
+                    _buildDrawerItem(
+                      icon: Icons.tune_rounded,
+                      title: "System Controls",
+                      subtitle: "Module parameters & branch overrides",
+                      isSelected: _selectedModule == "SETTINGS" && _settingsSubmenu == "SYSTEM_CONTROLS",
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _selectedModule = "SETTINGS";
+                          _settingsSubmenu = "SYSTEM_CONTROLS";
                         });
                       },
                     ),
@@ -950,6 +967,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "SETTINGS":
         if (_settingsSubmenu == "DB_STATUS") {
           return DatabaseStatusScreen(onBack: () => setState(() => _settingsSubmenu = "HUB"));
+        }
+        if (_settingsSubmenu == "SYSTEM_CONTROLS") {
+          return SystemControlsScreen(onBack: () => setState(() => _settingsSubmenu = "HUB"));
         }
         return _buildSettingsWorkspace(auth, tenant);
       case "CRM":
@@ -2066,6 +2086,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.cloud_sync_rounded,
                 color: const Color(0xFF10B981),
                 onTap: () => setState(() => _settingsSubmenu = "DB_STATUS"),
+              ),
+
+              // 4. System Controls
+              _buildSubmenuGridCard(
+                title: "System Controls",
+                desc: "Module runtime parameters, global configuration values & branch overrides",
+                icon: Icons.tune_rounded,
+                color: const Color(0xFFF59E0B),
+                onTap: () => setState(() => _settingsSubmenu = "SYSTEM_CONTROLS"),
               ),
             ],
           ),

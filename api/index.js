@@ -75,6 +75,12 @@ import {
   updateSubProductController,
   deleteSubProductController,
 } from "../backend/src/controllers/inventoryMasterController.js";
+import {
+  getSystemControlsController,
+  createSystemControlController,
+  updateSystemControlController,
+  deleteSystemControlController,
+} from "../backend/src/controllers/systemControlsController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -246,6 +252,12 @@ router.get("/tenant/subproducts", requireAuth, getSubProductsController);
 router.post("/tenant/subproducts", requireAuth, createSubProductController);
 router.put("/tenant/subproducts/:id", requireAuth, updateSubProductController);
 router.delete("/tenant/subproducts/:id", requireAuth, deleteSubProductController);
+
+// Tenant System Controls CRUD Routes (4th Menu under Settings)
+router.get("/tenant/system-controls", requireAuth, getSystemControlsController);
+router.post("/tenant/system-controls", requireAuth, createSystemControlController);
+router.put("/tenant/system-controls/:id", requireAuth, updateSystemControlController);
+router.delete("/tenant/system-controls/:id", requireAuth, deleteSystemControlController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);
