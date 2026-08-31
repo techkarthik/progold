@@ -27,6 +27,8 @@ class MenuRegistry {
   static const String MASTER_INVENTORY_METAL = "M_MASTER.INVENTORY.METAL";
   static const String MASTER_INVENTORY_PURITY = "M_MASTER.INVENTORY.PURITY";
   static const String MASTER_INVENTORY_CATEGORY = "M_MASTER.INVENTORY.CATEGORY";
+  static const String MASTER_INVENTORY_PRODUCTS = "M_MASTER.INVENTORY.PRODUCTS";
+  static const String MASTER_INVENTORY_SUBPRODUCTS = "M_MASTER.INVENTORY.SUBPRODUCTS";
   static const String MASTER_SALES_AND_PRICE = "M_MASTER.SALES_AND_PRICE";
   static const String MASTER_LOGIN_USERS = "M_MASTER.LOGIN_USERS";
   static const String MASTER_EMPLOYEES = "M_MASTER.EMPLOYEES";
@@ -69,6 +71,7 @@ class MenuRegistry {
   // ==========================================
   static const String SETTINGS_STORE = "M_SETTINGS.STORE";
   static const String SETTINGS_PRINTER = "M_SETTINGS.PRINTER";
+  static const String SETTINGS_DB_STATUS = "M_SETTINGS.DB_STATUS";
   static const String SETTINGS_TURSO_SYNC = "M_SETTINGS.TURSO_SYNC";
 
   // ==========================================

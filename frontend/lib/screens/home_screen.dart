@@ -13,6 +13,9 @@ import 'tax_master_screen.dart';
 import 'metal_master_screen.dart';
 import 'purity_master_screen.dart';
 import 'category_master_screen.dart';
+import 'product_master_screen.dart';
+import 'subproduct_master_screen.dart';
+import 'database_status_screen.dart';
 import '../constants/menu_registry.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -33,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _selectedModule = "HOME"; // e.g. MenuRegistry.MENU_MASTER, etc.
   String _masterSubmenu = "HUB"; // e.g. MenuRegistry.MASTER_ORGANIZATION, etc.
+  String _settingsSubmenu = "HUB"; // e.g. "DB_STATUS" or "HUB"
 
   // Live gold & silver rate states
   double _gold24k = 7250.0;
@@ -395,12 +399,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.settings_rounded,
                     title: "Settings & Config",
                     subtitle: "System preferences & print templates",
-                    isSelected: _selectedModule == "SETTINGS",
+                    isSelected: _selectedModule == "SETTINGS" && _settingsSubmenu == "HUB",
                     onTap: () {
                       Navigator.pop(context);
-                      setState(() => _selectedModule = "SETTINGS");
+                      setState(() {
+                        _selectedModule = "SETTINGS";
+                        _settingsSubmenu = "HUB";
+                      });
                     },
                   ),
+                  if (_hasAccess(auth, MenuRegistry.SETTINGS_DB_STATUS)) ...[
+                    const SizedBox(height: 4),
+                    _buildDrawerItem(
+                      icon: Icons.pie_chart_rounded,
+                      title: "Database Status",
+                      subtitle: "Storage size, quota & Turso health",
+                      isSelected: _selectedModule == "SETTINGS" && _settingsSubmenu == "DB_STATUS",
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _selectedModule = "SETTINGS";
+                          _settingsSubmenu = "DB_STATUS";
+                        });
+                      },
+                    ),
+                  ],
                 ],
                 if (_hasAccess(auth, MenuRegistry.MENU_CRM)) ...[
                   const SizedBox(height: 4),
@@ -871,6 +894,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: () {
                       if (module == "MASTER" && _masterSubmenu != "HUB") {
                         setState(() => _masterSubmenu = "HUB");
+                      } else if (module == "SETTINGS" && _settingsSubmenu != "HUB") {
+                        setState(() => _settingsSubmenu = "HUB");
                       } else {
                         setState(() => _selectedModule = "HOME");
                       }
@@ -880,7 +905,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     module == "MASTER" && _masterSubmenu != "HUB"
                         ? "MASTER > $_masterSubmenu"
-                        : "$module Workspace",
+                        : (module == "SETTINGS" && _settingsSubmenu != "HUB"
+                            ? "SETTINGS > ${_settingsSubmenu == 'DB_STATUS' ? 'Database Status' : _settingsSubmenu}"
+                            : "$module Workspace"),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
                   ),
                   const Spacer(),
@@ -912,6 +939,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "DIGIGOLD":
         return _buildDigiGoldWorkspace(auth);
       case "SETTINGS":
+        if (_settingsSubmenu == "DB_STATUS") {
+          return DatabaseStatusScreen(onBack: () => setState(() => _settingsSubmenu = "HUB"));
+        }
         return _buildSettingsWorkspace(auth, tenant);
       case "CRM":
         return _buildCrmWorkspace(auth);
@@ -970,6 +1000,12 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case "CATEGORY":
         submenuCode = MenuRegistry.MASTER_INVENTORY_CATEGORY;
+        break;
+      case "PRODUCTS":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_PRODUCTS;
+        break;
+      case "SUBPRODUCTS":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_SUBPRODUCTS;
         break;
     }
 
@@ -1035,6 +1071,14 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       case "CATEGORY":
         return CategoryMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
+      case "PRODUCTS":
+        return ProductMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
+      case "SUBPRODUCTS":
+        return SubProductMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
         );
       case "HUB":
@@ -1557,6 +1601,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: GlassTheme.accentRose,
                   onTap: () => setState(() => _masterSubmenu = "CATEGORY"),
                 ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_PRODUCTS))
+                _buildSubmenuGridCard(
+                  title: "Product Master",
+                  desc: "Define products, calc types (Weight/Rate/Fixed) & stock tracking",
+                  icon: Icons.category_rounded,
+                  color: const Color(0xFF8B5CF6),
+                  onTap: () => setState(() => _masterSubmenu = "PRODUCTS"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_SUBPRODUCTS))
+                _buildSubmenuGridCard(
+                  title: "Sub-Product Master",
+                  desc: "Manage multi-part jewellery assemblies & sub-products",
+                  icon: Icons.account_tree_rounded,
+                  color: const Color(0xFFEC4899),
+                  onTap: () => setState(() => _masterSubmenu = "SUBPRODUCTS"),
+                ),
             ],
           ),
         ],
@@ -1924,17 +1984,111 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.settings_suggest_rounded, color: GlassTheme.accentCyan, size: 24),
-              SizedBox(width: 10),
-              Text("System Settings & Preferences", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0xFF06B6D4), Color(0xFF0E7490)]),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF06B6D4).withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.settings_suggest_rounded, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 14),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        "System Settings & Management",
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
+                      ),
+                      SizedBox(width: 8),
+                      StatusBadge(label: "Administration", color: Color(0xFF06B6D4)),
+                    ],
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    "Database monitoring, storage quotas, hardware configuration, and store profile",
+                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
             ],
           ),
+          const SizedBox(height: 24),
+
+          // Settings Submenu Action Cards
+          Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: [
+              // 1. Database Status
+              _buildSubmenuGridCard(
+                title: "Database Status",
+                desc: "Check database size, balance storage available, Turso latency & table row counts",
+                icon: Icons.pie_chart_rounded,
+                color: const Color(0xFF06B6D4),
+                onTap: () => setState(() => _settingsSubmenu = "DB_STATUS"),
+              ),
+
+              // 2. Store Profile
+              _buildSubmenuGridCard(
+                title: "Store Profile & Setup",
+                desc: "Configure business branding, contact numbers, and invoice headers",
+                icon: Icons.store_mall_directory_rounded,
+                color: const Color(0xFFF59E0B),
+                onTap: () => _showProfileDialog(context, auth, tenant),
+              ),
+
+              // 3. Turso Query Tool
+              _buildSubmenuGridCard(
+                title: "Turso Cloud DB & Query",
+                desc: "Private SQLite schema health, live SQL console & table inspector",
+                icon: Icons.cloud_sync_rounded,
+                color: const Color(0xFF10B981),
+                onTap: () => setState(() => _settingsSubmenu = "DB_STATUS"),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const Divider(color: Color(0xFFE2E8F0)),
           const SizedBox(height: 16),
-          Text("Store: ${tenant.businessName}", style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text("Subscription Period: ${tenant.validFrom} to ${tenant.validTo}", style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+
+          // Tenant Profile Summary Box
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(tenant.businessName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
+                    StatusBadge(label: "Tenant #${tenant.id}", color: const Color(0xFF06B6D4)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text("Registered Email: ${tenant.email}", style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text("Subscription License: ${tenant.validFrom} to ${tenant.validTo} (${tenant.daysRemaining} days remaining)", style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
         ],
       ),
     );

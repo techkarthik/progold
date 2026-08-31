@@ -185,3 +185,187 @@ class CategoryRecord {
     );
   }
 }
+
+class ProductRecord {
+  final int? productid;
+  final int categoryid;
+  final String productname;
+  final String calctype; // 'WEIGHT', 'RATE', 'METAL', 'FIXED'
+  final String stocktype; // 'SKU', 'OPEN'
+  final String havestoneDiamond; // 'YES', 'NO'
+  final String havesubproduct; // 'YES', 'NO'
+  final String? catname;
+  final String? catcode;
+  final String? categorytype;
+  final String? metalid;
+  final String? metalname;
+  final String? createdAt;
+  final String? updatedAt;
+
+  ProductRecord({
+    this.productid,
+    required this.categoryid,
+    required this.productname,
+    this.calctype = 'WEIGHT',
+    this.stocktype = 'SKU',
+    this.havestoneDiamond = 'NO',
+    this.havesubproduct = 'NO',
+    this.catname,
+    this.catcode,
+    this.categorytype,
+    this.metalid,
+    this.metalname,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory ProductRecord.fromJson(Map<String, dynamic> json) {
+    return ProductRecord(
+      productid: json['productid'] != null ? int.tryParse(json['productid'].toString()) : null,
+      categoryid: int.tryParse(json['categoryid']?.toString() ?? '0') ?? 0,
+      productname: json['productname']?.toString() ?? '',
+      calctype: json['calctype']?.toString() ?? 'WEIGHT',
+      stocktype: json['stocktype']?.toString() ?? 'SKU',
+      havestoneDiamond: json['havestone_diamond']?.toString() ?? 'NO',
+      havesubproduct: json['havesubproduct']?.toString() ?? 'NO',
+      catname: json['catname']?.toString(),
+      catcode: json['catcode']?.toString(),
+      categorytype: json['categorytype']?.toString(),
+      metalid: json['metalid']?.toString(),
+      metalname: json['metalname']?.toString(),
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (productid != null) 'productid': productid,
+      'categoryid': categoryid,
+      'productname': productname,
+      'calctype': calctype,
+      'stocktype': stocktype,
+      'havestone_diamond': havestoneDiamond,
+      'havesubproduct': havesubproduct,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
+
+  ProductRecord copyWith({
+    int? productid,
+    int? categoryid,
+    String? productname,
+    String? calctype,
+    String? stocktype,
+    String? havestoneDiamond,
+    String? havesubproduct,
+    String? catname,
+    String? catcode,
+    String? categorytype,
+    String? metalid,
+    String? metalname,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return ProductRecord(
+      productid: productid ?? this.productid,
+      categoryid: categoryid ?? this.categoryid,
+      productname: productname ?? this.productname,
+      calctype: calctype ?? this.calctype,
+      stocktype: stocktype ?? this.stocktype,
+      havestoneDiamond: havestoneDiamond ?? this.havestoneDiamond,
+      havesubproduct: havesubproduct ?? this.havesubproduct,
+      catname: catname ?? this.catname,
+      catcode: catcode ?? this.catcode,
+      categorytype: categorytype ?? this.categorytype,
+      metalid: metalid ?? this.metalid,
+      metalname: metalname ?? this.metalname,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+class SubProductRecord {
+  final int? subproductid;
+  final int productid;
+  final String subproductname;
+  final String havestoneDiamond; // 'YES', 'NO'
+  final String? productname;
+  final String? catname;
+  final String? catcode;
+  final String? metalname;
+  final String? metalid;
+  final String? createdAt;
+  final String? updatedAt;
+
+  SubProductRecord({
+    this.subproductid,
+    required this.productid,
+    required this.subproductname,
+    this.havestoneDiamond = 'NO',
+    this.productname,
+    this.catname,
+    this.catcode,
+    this.metalname,
+    this.metalid,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory SubProductRecord.fromJson(Map<String, dynamic> json) {
+    return SubProductRecord(
+      subproductid: json['subproductid'] != null ? int.tryParse(json['subproductid'].toString()) : null,
+      productid: int.tryParse(json['productid']?.toString() ?? '0') ?? 0,
+      subproductname: json['subproductname']?.toString() ?? '',
+      havestoneDiamond: json['havestone_diamond']?.toString() ?? 'NO',
+      productname: json['productname']?.toString(),
+      catname: json['catname']?.toString(),
+      catcode: json['catcode']?.toString(),
+      metalname: json['metalname']?.toString(),
+      metalid: json['metalid']?.toString(),
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (subproductid != null) 'subproductid': subproductid,
+      'productid': productid,
+      'subproductname': subproductname,
+      'havestone_diamond': havestoneDiamond,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
+
+  SubProductRecord copyWith({
+    int? subproductid,
+    int? productid,
+    String? subproductname,
+    String? havestoneDiamond,
+    String? productname,
+    String? catname,
+    String? catcode,
+    String? metalname,
+    String? metalid,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return SubProductRecord(
+      subproductid: subproductid ?? this.subproductid,
+      productid: productid ?? this.productid,
+      subproductname: subproductname ?? this.subproductname,
+      havestoneDiamond: havestoneDiamond ?? this.havestoneDiamond,
+      productname: productname ?? this.productname,
+      catname: catname ?? this.catname,
+      catcode: catcode ?? this.catcode,
+      metalname: metalname ?? this.metalname,
+      metalid: metalid ?? this.metalid,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}

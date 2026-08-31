@@ -48,6 +48,36 @@ async function ensureInventoryTables(client) {
       FOREIGN KEY (metalid) REFERENCES metals(metalid)
     );
   `);
+
+  // Products (New 4th Master under Inventory)
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS products (
+      productid INTEGER PRIMARY KEY AUTOINCREMENT,
+      categoryid INTEGER NOT NULL,
+      productname TEXT NOT NULL,
+      calctype TEXT NOT NULL DEFAULT 'WEIGHT',
+      stocktype TEXT NOT NULL DEFAULT 'SKU',
+      havestone_diamond TEXT NOT NULL DEFAULT 'NO',
+      havesubproduct TEXT NOT NULL DEFAULT 'NO',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (categoryid) REFERENCES categories(id)
+    );
+  `);
+
+  // Sub-Products (New 5th Master under Inventory)
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS subproducts (
+      subproductid INTEGER PRIMARY KEY AUTOINCREMENT,
+      productid INTEGER NOT NULL,
+      subproductname TEXT NOT NULL,
+      havestone_diamond TEXT NOT NULL DEFAULT 'NO',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (productid) REFERENCES products(productid),
+      UNIQUE (productid, subproductname)
+    );
+  `);
 }
 
 /**
@@ -527,6 +557,446 @@ export async function deleteCategoryController(req, res) {
     return res.json({ success: true, message: "Category deleted successfully!" });
   } catch (error) {
     console.error("deleteCategory error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// ==========================================
+// 4. PRODUCTS CRUD CONTROLLERS (4th Inventory Master)
+// ==========================================
+
+export async function getProductsController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const result = await client.execute(`
+      SELECT p.*, c.catname, c.catcode, c.categorytype, m.metalname, m.metalid
+      FROM products p
+      JOIN categories c ON p.categoryid = c.id
+      JOIN metals m ON c.metalid = m.metalid
+      ORDER BY p.productid DESC;
+    `);
+
+    // Get max/last productid
+    const metaResult = await client.execute(`
+      SELECT MAX(productid) AS max_id, COUNT(*) AS total_count FROM products;
+    `);
+
+    const maxId = Number(metaResult.rows[0]?.max_id || 0);
+    const nextId = maxId + 1;
+    const totalCount = Number(metaResult.rows[0]?.total_count || 0);
+
+    return res.json({
+      success: true,
+      products: result.rows || [],
+      last_productid: maxId,
+      next_productid: nextId,
+      total_count: totalCount,
+    });
+  } catch (error) {
+    console.error("getProducts error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function createProductController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      categoryid,
+      productname,
+      calctype = "WEIGHT",
+      stocktype = "SKU",
+      havestone_diamond = "NO",
+      havesubproduct = "NO",
+    } = req.body;
+
+    if (!categoryid) {
+      return res.status(400).json({ success: false, message: "Category selection is required." });
+    }
+
+    if (!productname || !productname.trim()) {
+      return res.status(400).json({ success: false, message: "Product Name is required." });
+    }
+
+    const cleanName = productname.trim().substring(0, 100);
+    const validCalcTypes = ["WEIGHT", "RATE", "METAL", "FIXED"];
+    const validStockTypes = ["SKU", "OPEN"];
+    const validYesNo = ["YES", "NO"];
+
+    const cleanCalc = validCalcTypes.includes(String(calctype).toUpperCase())
+      ? String(calctype).toUpperCase()
+      : "WEIGHT";
+
+    const cleanStock = validStockTypes.includes(String(stocktype).toUpperCase())
+      ? String(stocktype).toUpperCase()
+      : "SKU";
+
+    const cleanStone = validYesNo.includes(String(havestone_diamond).toUpperCase())
+      ? String(havestone_diamond).toUpperCase()
+      : "NO";
+
+    const cleanSub = validYesNo.includes(String(havesubproduct).toUpperCase())
+      ? String(havesubproduct).toUpperCase()
+      : "NO";
+
+    const now = new Date().toISOString();
+
+    const insertResult = await client.execute({
+      sql: `
+        INSERT INTO products (
+          categoryid, productname, calctype, stocktype, havestone_diamond, havesubproduct, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+      `,
+      args: [
+        Number(categoryid),
+        cleanName,
+        cleanCalc,
+        cleanStock,
+        cleanStone,
+        cleanSub,
+        now,
+        now,
+      ],
+    });
+
+    const newId = insertResult.lastInsertRowid ? Number(insertResult.lastInsertRowid) : null;
+
+    return res.status(201).json({
+      success: true,
+      message: "Product created successfully!",
+      productid: newId,
+    });
+  } catch (error) {
+    console.error("createProduct error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function updateProductController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      categoryid,
+      productname,
+      calctype = "WEIGHT",
+      stocktype = "SKU",
+      havestone_diamond = "NO",
+      havesubproduct = "NO",
+    } = req.body;
+
+    if (!categoryid) {
+      return res.status(400).json({ success: false, message: "Category selection is required." });
+    }
+
+    if (!productname || !productname.trim()) {
+      return res.status(400).json({ success: false, message: "Product Name is required." });
+    }
+
+    const cleanName = productname.trim().substring(0, 100);
+    const validCalcTypes = ["WEIGHT", "RATE", "METAL", "FIXED"];
+    const validStockTypes = ["SKU", "OPEN"];
+    const validYesNo = ["YES", "NO"];
+
+    const cleanCalc = validCalcTypes.includes(String(calctype).toUpperCase())
+      ? String(calctype).toUpperCase()
+      : "WEIGHT";
+
+    const cleanStock = validStockTypes.includes(String(stocktype).toUpperCase())
+      ? String(stocktype).toUpperCase()
+      : "SKU";
+
+    const cleanStone = validYesNo.includes(String(havestone_diamond).toUpperCase())
+      ? String(havestone_diamond).toUpperCase()
+      : "NO";
+
+    const cleanSub = validYesNo.includes(String(havesubproduct).toUpperCase())
+      ? String(havesubproduct).toUpperCase()
+      : "NO";
+
+    const now = new Date().toISOString();
+
+    await client.execute({
+      sql: `
+        UPDATE products
+        SET categoryid = ?,
+            productname = ?,
+            calctype = ?,
+            stocktype = ?,
+            havestone_diamond = ?,
+            havesubproduct = ?,
+            updated_at = ?
+        WHERE productid = ?;
+      `,
+      args: [
+        Number(categoryid),
+        cleanName,
+        cleanCalc,
+        cleanStock,
+        cleanStone,
+        cleanSub,
+        now,
+        Number(id),
+      ],
+    });
+
+    return res.json({ success: true, message: "Product updated successfully!" });
+  } catch (error) {
+    console.error("updateProduct error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deleteProductController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    await client.execute({
+      sql: `DELETE FROM products WHERE productid = ?;`,
+      args: [Number(id)],
+    });
+
+    return res.json({ success: true, message: "Product deleted successfully!" });
+  } catch (error) {
+    console.error("deleteProduct error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// ==========================================
+// 5. SUB-PRODUCTS CRUD CONTROLLERS (5th Inventory Master)
+// ==========================================
+
+export async function getSubProductsController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const result = await client.execute(`
+      SELECT s.*, p.productname, p.havesubproduct, c.catname, c.catcode, m.metalname, m.metalid
+      FROM subproducts s
+      JOIN products p ON s.productid = p.productid
+      JOIN categories c ON p.categoryid = c.id
+      JOIN metals m ON c.metalid = m.metalid
+      ORDER BY s.subproductid DESC;
+    `);
+
+    // Get max/last subproductid
+    const metaResult = await client.execute(`
+      SELECT MAX(subproductid) AS max_id, COUNT(*) AS total_count FROM subproducts;
+    `);
+
+    const maxId = Number(metaResult.rows[0]?.max_id || 0);
+    const nextId = maxId + 1;
+    const totalCount = Number(metaResult.rows[0]?.total_count || 0);
+
+    return res.json({
+      success: true,
+      subproducts: result.rows || [],
+      last_subproductid: maxId,
+      next_subproductid: nextId,
+      total_count: totalCount,
+    });
+  } catch (error) {
+    console.error("getSubProducts error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function createSubProductController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      productid,
+      subproductname,
+      havestone_diamond = "NO",
+    } = req.body;
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Parent Product selection is required." });
+    }
+
+    if (!subproductname || !subproductname.trim()) {
+      return res.status(400).json({ success: false, message: "Sub-Product Name is required." });
+    }
+
+    const cleanName = subproductname.trim().substring(0, 100);
+    const cleanStone = String(havestone_diamond).toUpperCase() === "YES" ? "YES" : "NO";
+
+    // 1. Verify parent product exists and has havesubproduct = 'YES'
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname, havesubproduct FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Parent Product does not exist." });
+    }
+
+    const parentProd = prodCheck.rows[0];
+    if (String(parentProd.havesubproduct).toUpperCase() !== "YES") {
+      return res.status(400).json({
+        success: false,
+        message: `Product '${parentProd.productname}' does not have 'HAVE SUB-PRODUCT' enabled. Please enable it in Product Master first.`,
+      });
+    }
+
+    // 2. Check uniqueness of (productid, subproductname)
+    const duplicateCheck = await client.execute({
+      sql: `SELECT subproductid FROM subproducts WHERE productid = ? AND LOWER(subproductname) = LOWER(?) LIMIT 1;`,
+      args: [Number(productid), cleanName],
+    });
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Sub-product '${cleanName}' already exists under '${parentProd.productname}'. Sub-product name must be unique within the product.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    const insertResult = await client.execute({
+      sql: `
+        INSERT INTO subproducts (
+          productid, subproductname, havestone_diamond, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?);
+      `,
+      args: [
+        Number(productid),
+        cleanName,
+        cleanStone,
+        now,
+        now,
+      ],
+    });
+
+    const newId = insertResult.lastInsertRowid ? Number(insertResult.lastInsertRowid) : null;
+
+    return res.status(201).json({
+      success: true,
+      message: "Sub-Product created successfully!",
+      subproductid: newId,
+    });
+  } catch (error) {
+    console.error("createSubProduct error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function updateSubProductController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      productid,
+      subproductname,
+      havestone_diamond = "NO",
+    } = req.body;
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Parent Product selection is required." });
+    }
+
+    if (!subproductname || !subproductname.trim()) {
+      return res.status(400).json({ success: false, message: "Sub-Product Name is required." });
+    }
+
+    const cleanName = subproductname.trim().substring(0, 100);
+    const cleanStone = String(havestone_diamond).toUpperCase() === "YES" ? "YES" : "NO";
+
+    // 1. Verify parent product exists and has havesubproduct = 'YES'
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname, havesubproduct FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Parent Product does not exist." });
+    }
+
+    const parentProd = prodCheck.rows[0];
+    if (String(parentProd.havesubproduct).toUpperCase() !== "YES") {
+      return res.status(400).json({
+        success: false,
+        message: `Product '${parentProd.productname}' does not have 'HAVE SUB-PRODUCT' enabled.`,
+      });
+    }
+
+    // 2. Check uniqueness of (productid, subproductname) for other records
+    const duplicateCheck = await client.execute({
+      sql: `SELECT subproductid FROM subproducts WHERE productid = ? AND LOWER(subproductname) = LOWER(?) AND subproductid != ? LIMIT 1;`,
+      args: [Number(productid), cleanName, Number(id)],
+    });
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Sub-product '${cleanName}' already exists under '${parentProd.productname}'.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    await client.execute({
+      sql: `
+        UPDATE subproducts
+        SET productid = ?,
+            subproductname = ?,
+            havestone_diamond = ?,
+            updated_at = ?
+        WHERE subproductid = ?;
+      `,
+      args: [
+        Number(productid),
+        cleanName,
+        cleanStone,
+        now,
+        Number(id),
+      ],
+    });
+
+    return res.json({ success: true, message: "Sub-Product updated successfully!" });
+  } catch (error) {
+    console.error("updateSubProduct error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deleteSubProductController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    await client.execute({
+      sql: `DELETE FROM subproducts WHERE subproductid = ?;`,
+      args: [Number(id)],
+    });
+
+    return res.json({ success: true, message: "Sub-Product deleted successfully!" });
+  } catch (error) {
+    console.error("deleteSubProduct error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 }

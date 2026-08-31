@@ -1,6 +1,8 @@
 import { masterTurso } from "../config/turso.js";
 import {
   getTenantDatabaseOverview,
+  getTenantDatabaseStatus,
+  optimizeTenantDatabase,
   executeTenantQuery,
   testTursoConnection,
   syncTenantDatabaseSchema,
@@ -72,6 +74,34 @@ export async function updateProfileController(req, res) {
   } catch (error) {
     console.error("updateProfileController error:", error);
     return res.status(500).json({ success: false, message: "Failed to update profile." });
+  }
+}
+
+/**
+ * Get comprehensive Database Status (size, quota, storage balance, latency, tables breakdown)
+ */
+export async function getTenantDbStatusController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const status = await getTenantDatabaseStatus(turso_url, turso_token, req.tenant);
+    return res.json(status);
+  } catch (error) {
+    console.error("getTenantDbStatusController error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch database status." });
+  }
+}
+
+/**
+ * Optimize tenant database (runs PRAGMA optimize & updates planner statistics)
+ */
+export async function optimizeTenantDbController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const result = await optimizeTenantDatabase(turso_url, turso_token);
+    return res.json(result);
+  } catch (error) {
+    console.error("optimizeTenantDbController error:", error);
+    return res.status(500).json({ success: false, message: "Failed to optimize database." });
   }
 }
 

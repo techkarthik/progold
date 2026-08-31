@@ -13,6 +13,8 @@ import {
 import {
   getProfileController,
   updateProfileController,
+  getTenantDbStatusController,
+  optimizeTenantDbController,
   getTenantDbOverviewController,
   executeTenantQueryController,
   testTenantDbHealthController,
@@ -63,6 +65,14 @@ import {
   createCategoryController,
   updateCategoryController,
   deleteCategoryController,
+  getProductsController,
+  createProductController,
+  updateProductController,
+  deleteProductController,
+  getSubProductsController,
+  createSubProductController,
+  updateSubProductController,
+  deleteSubProductController,
 } from "./controllers/inventoryMasterController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
@@ -112,6 +122,8 @@ app.post("/api/auth/login", loginController);
 // Authenticated Tenant Routes
 app.get("/api/tenant/profile", requireAuth, getProfileController);
 app.put("/api/tenant/profile", requireAuth, updateProfileController);
+app.get("/api/tenant/db/status", requireAuth, getTenantDbStatusController);
+app.post("/api/tenant/db/optimize", requireAuth, optimizeTenantDbController);
 app.get("/api/tenant/db/overview", requireAuth, getTenantDbOverviewController);
 app.get("/api/tenant/db/health", requireAuth, testTenantDbHealthController);
 app.post("/api/tenant/db/query", requireAuth, executeTenantQueryController);
@@ -166,6 +178,18 @@ app.get("/api/tenant/categories", requireAuth, getCategoriesController);
 app.post("/api/tenant/categories", requireAuth, createCategoryController);
 app.put("/api/tenant/categories/:id", requireAuth, updateCategoryController);
 app.delete("/api/tenant/categories/:id", requireAuth, deleteCategoryController);
+
+// Tenant Products CRUD Routes (4th Master under Inventory)
+app.get("/api/tenant/products", requireAuth, getProductsController);
+app.post("/api/tenant/products", requireAuth, createProductController);
+app.put("/api/tenant/products/:id", requireAuth, updateProductController);
+app.delete("/api/tenant/products/:id", requireAuth, deleteProductController);
+
+// Tenant Sub-Products CRUD Routes (5th Master under Inventory)
+app.get("/api/tenant/subproducts", requireAuth, getSubProductsController);
+app.post("/api/tenant/subproducts", requireAuth, createSubProductController);
+app.put("/api/tenant/subproducts/:id", requireAuth, updateSubProductController);
+app.delete("/api/tenant/subproducts/:id", requireAuth, deleteSubProductController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

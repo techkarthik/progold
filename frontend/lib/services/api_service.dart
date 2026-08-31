@@ -218,6 +218,32 @@ class ApiService {
     }
   }
 
+  /// Fetches comprehensive Database Status including size, available storage balance, quota & table diagnostics
+  Future<Map<String, dynamic>> getTenantDbStatus(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/db/status'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch database status: $e'};
+    }
+  }
+
+  /// Optimizes database storage and updates query statistics
+  Future<Map<String, dynamic>> optimizeTenantDb(String token) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/db/optimize'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Optimization error: $e'};
+    }
+  }
+
   /// Tests latency and status of tenant's private Turso DB
   Future<TursoTestResult> testTenantDbHealth(String token) async {
     try {
@@ -773,6 +799,138 @@ class ApiService {
   Future<Map<String, dynamic>> deleteCategory(String token, int id) async {
     try {
       final res = await http.delete(Uri.parse('$baseUrl/tenant/categories/$id'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= PRODUCTS CRUD (4th Inventory Master) =================
+
+  /// Fetches products along with last_productid and next_productid metadata
+  Future<Map<String, dynamic>> getProductsData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/products'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['products'] is List) {
+          final items = (data['products'] as List).map((i) => ProductRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'products': items,
+            'last_productid': data['last_productid'] ?? 0,
+            'next_productid': data['next_productid'] ?? 1,
+            'total_count': data['total_count'] ?? 0,
+          };
+        }
+      }
+      return {'success': false, 'products': <ProductRecord>[], 'last_productid': 0, 'next_productid': 1};
+    } catch (e) {
+      debugPrint("Error getProductsData: $e");
+      return {'success': false, 'products': <ProductRecord>[], 'last_productid': 0, 'next_productid': 1};
+    }
+  }
+
+  Future<List<ProductRecord>> getProducts(String token) async {
+    final data = await getProductsData(token);
+    return data['products'] as List<ProductRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createProduct(String token, ProductRecord product) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/products'),
+        headers: _headers(token),
+        body: jsonEncode(product.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateProduct(String token, int productid, ProductRecord product) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/products/$productid'),
+        headers: _headers(token),
+        body: jsonEncode(product.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteProduct(String token, int productid) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/products/$productid'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= SUB-PRODUCTS CRUD (5th Inventory Master) =================
+
+  /// Fetches subproducts along with last_subproductid and next_subproductid metadata
+  Future<Map<String, dynamic>> getSubProductsData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/subproducts'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['subproducts'] is List) {
+          final items = (data['subproducts'] as List).map((i) => SubProductRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'subproducts': items,
+            'last_subproductid': data['last_subproductid'] ?? 0,
+            'next_subproductid': data['next_subproductid'] ?? 1,
+            'total_count': data['total_count'] ?? 0,
+          };
+        }
+      }
+      return {'success': false, 'subproducts': <SubProductRecord>[], 'last_subproductid': 0, 'next_subproductid': 1};
+    } catch (e) {
+      debugPrint("Error getSubProductsData: $e");
+      return {'success': false, 'subproducts': <SubProductRecord>[], 'last_subproductid': 0, 'next_subproductid': 1};
+    }
+  }
+
+  Future<List<SubProductRecord>> getSubProducts(String token) async {
+    final data = await getSubProductsData(token);
+    return data['subproducts'] as List<SubProductRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createSubProduct(String token, SubProductRecord subProduct) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/subproducts'),
+        headers: _headers(token),
+        body: jsonEncode(subProduct.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateSubProduct(String token, int subproductid, SubProductRecord subProduct) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/subproducts/$subproductid'),
+        headers: _headers(token),
+        body: jsonEncode(subProduct.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteSubProduct(String token, int subproductid) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/subproducts/$subproductid'), headers: _headers(token));
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': e.toString()};

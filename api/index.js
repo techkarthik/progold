@@ -18,6 +18,8 @@ import {
   executeTenantQueryController,
   testTenantDbHealthController,
   reinstallTenantDbController,
+  getTenantDbStatusController,
+  optimizeTenantDbController,
 } from "../backend/src/controllers/tenantController.js";
 import {
   getCompaniesController,
@@ -64,6 +66,14 @@ import {
   createCategoryController,
   updateCategoryController,
   deleteCategoryController,
+  getProductsController,
+  createProductController,
+  updateProductController,
+  deleteProductController,
+  getSubProductsController,
+  createSubProductController,
+  updateSubProductController,
+  deleteSubProductController,
 } from "../backend/src/controllers/inventoryMasterController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
@@ -112,7 +122,7 @@ router.use(async (req, res, next) => {
   if (req.path !== "/health" && req.path !== "/api/health") {
     try {
       await ensureSchema();
-    } catch (_) {}
+    } catch (_) { }
   }
   next();
 });
@@ -172,6 +182,8 @@ router.get("/tenant/db/overview", requireAuth, getTenantDbOverviewController);
 router.get("/tenant/db/health", requireAuth, testTenantDbHealthController);
 router.post("/tenant/db/query", requireAuth, executeTenantQueryController);
 router.post("/tenant/db/reinstall", requireAuth, reinstallTenantDbController);
+router.get("/tenant/db/status", requireAuth, getTenantDbStatusController);
+router.post("/tenant/db/optimize", requireAuth, optimizeTenantDbController);
 
 // Tenant Company Master CRUD Routes
 router.get("/tenant/companies", requireAuth, getCompaniesController);
@@ -222,6 +234,18 @@ router.get("/tenant/categories", requireAuth, getCategoriesController);
 router.post("/tenant/categories", requireAuth, createCategoryController);
 router.put("/tenant/categories/:id", requireAuth, updateCategoryController);
 router.delete("/tenant/categories/:id", requireAuth, deleteCategoryController);
+
+// Tenant Products CRUD Routes (4th Master under Inventory)
+router.get("/tenant/products", requireAuth, getProductsController);
+router.post("/tenant/products", requireAuth, createProductController);
+router.put("/tenant/products/:id", requireAuth, updateProductController);
+router.delete("/tenant/products/:id", requireAuth, deleteProductController);
+
+// Tenant Sub-Products CRUD Routes (5th Master under Inventory)
+router.get("/tenant/subproducts", requireAuth, getSubProductsController);
+router.post("/tenant/subproducts", requireAuth, createSubProductController);
+router.put("/tenant/subproducts/:id", requireAuth, updateSubProductController);
+router.delete("/tenant/subproducts/:id", requireAuth, deleteSubProductController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);
