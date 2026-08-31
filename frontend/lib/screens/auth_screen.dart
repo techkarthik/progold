@@ -239,7 +239,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
               Icon(Icons.hub_rounded, color: GlassTheme.primaryNeon, size: 18),
               SizedBox(width: 8),
               Text(
-                "Multi-Tenant Enterprise Portal",
+                "Worship God.. Repect Human",
                 style: TextStyle(
                   color: GlassTheme.textPrimary,
                   fontSize: 12,

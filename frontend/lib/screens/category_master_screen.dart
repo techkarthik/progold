@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/inventory_models.dart';
 import '../models/account_head_model.dart';
+import '../models/tax_model.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/glass_theme.dart';
@@ -23,6 +24,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   List<CategoryRecord> _filteredCategories = [];
   List<Metal> _metals = [];
   List<AccountHead> _accountHeads = [];
+  List<TaxRecord> _taxRecords = [];
   bool _isLoading = false;
   String _searchQuery = '';
   bool _isTableView = false;
@@ -36,8 +38,14 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
 
   String? _selectedMetalId;
   final _nameController = TextEditingController();
-  final _shortNameController = TextEditingController();
   String _selectedType = 'ORNAMENTS/STONE';
+
+  // Tax Master linkage & calculation
+  TaxRecord? _selectedTaxRecord;
+  final _sgstPerController = TextEditingController(text: '1.50');
+  final _cgstPerController = TextEditingController(text: '1.50');
+  final _igstPerController = TextEditingController(text: '3.00');
+
   String? _selectedSgstAc;
   String? _selectedCgstAc;
   String? _selectedIgstAc;
@@ -53,7 +61,9 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   void dispose() {
     _searchController.dispose();
     _nameController.dispose();
-    _shortNameController.dispose();
+    _sgstPerController.dispose();
+    _cgstPerController.dispose();
+    _igstPerController.dispose();
     super.dispose();
   }
 
@@ -68,6 +78,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
       _api.getCategories(token),
       _api.getMetals(token),
       _api.getAccountHeads(token),
+      _api.getTaxRecords(token),
     ]);
 
     if (mounted) {
@@ -75,6 +86,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         _categories = results[0] as List<CategoryRecord>;
         _metals = results[1] as List<Metal>;
         _accountHeads = results[2] as List<AccountHead>;
+        _taxRecords = results[3] as List<TaxRecord>;
         _applyFilter(_searchQuery);
         _isLoading = false;
       });
@@ -98,6 +110,30 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     }
   }
 
+  void _onTaxRecordSelected(TaxRecord? tax) {
+    setState(() {
+      _selectedTaxRecord = tax;
+      if (tax != null) {
+        // Automatically populate and calculate tax percentages
+        _sgstPerController.text = tax.sgstPer.toStringAsFixed(2);
+        _cgstPerController.text = tax.cgstPer.toStringAsFixed(2);
+        _igstPerController.text = tax.igstPer.toStringAsFixed(2);
+
+        // Auto-assign posting ledgers if configured in Tax Master
+        final ledgerNames = _accountHeads.map((h) => h.accountname).toList();
+        if (tax.sgstacname.isNotEmpty && ledgerNames.contains(tax.sgstacname)) {
+          _selectedSgstAc = tax.sgstacname;
+        }
+        if (tax.cgstacname.isNotEmpty && ledgerNames.contains(tax.cgstacname)) {
+          _selectedCgstAc = tax.cgstacname;
+        }
+        if (tax.igstacname.isNotEmpty && ledgerNames.contains(tax.igstacname)) {
+          _selectedIgstAc = tax.igstacname;
+        }
+      }
+    });
+  }
+
   void _openForm([CategoryRecord? existing]) {
     setState(() {
       _editingCategory = existing;
@@ -106,11 +142,20 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         _selectedMetalId = existing.metalid;
         _nameController.text = existing.catname;
         _selectedType = existing.categorytype.isNotEmpty ? existing.categorytype : 'ORNAMENTS/STONE';
+        _sgstPerController.text = existing.sgstPer.toStringAsFixed(2);
+        _cgstPerController.text = existing.cgstPer.toStringAsFixed(2);
+        _igstPerController.text = existing.igstPer.toStringAsFixed(2);
 
         final ledgerNames = _accountHeads.map((h) => h.accountname).toList();
         _selectedSgstAc = ledgerNames.contains(existing.sgstacname) ? existing.sgstacname : null;
         _selectedCgstAc = ledgerNames.contains(existing.cgstacname) ? existing.cgstacname : null;
         _selectedIgstAc = ledgerNames.contains(existing.igstacname) ? existing.igstacname : null;
+
+        // Try matching with existing Tax Master record
+        _selectedTaxRecord = _taxRecords.where((t) {
+          return (t.sgstPer == existing.sgstPer && t.cgstPer == existing.cgstPer) ||
+              (t.igstPer == existing.igstPer && existing.igstPer > 0);
+        }).firstOrNull;
       } else {
         _resetFormFields();
       }
@@ -120,11 +165,28 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   void _resetFormFields() {
     _selectedMetalId = _metals.isNotEmpty ? _metals.first.metalid : null;
     _nameController.clear();
-    _shortNameController.clear();
     _selectedType = 'ORNAMENTS/STONE';
-    _selectedSgstAc = null;
-    _selectedCgstAc = null;
-    _selectedIgstAc = null;
+
+    // Default to first tax record if available (e.g. 3% GST), otherwise 1.5% SGST + 1.5% CGST
+    if (_taxRecords.isNotEmpty) {
+      _selectedTaxRecord = _taxRecords.first;
+      _sgstPerController.text = _taxRecords.first.sgstPer.toStringAsFixed(2);
+      _cgstPerController.text = _taxRecords.first.cgstPer.toStringAsFixed(2);
+      _igstPerController.text = _taxRecords.first.igstPer.toStringAsFixed(2);
+
+      final ledgerNames = _accountHeads.map((h) => h.accountname).toList();
+      _selectedSgstAc = ledgerNames.contains(_taxRecords.first.sgstacname) ? _taxRecords.first.sgstacname : null;
+      _selectedCgstAc = ledgerNames.contains(_taxRecords.first.cgstacname) ? _taxRecords.first.cgstacname : null;
+      _selectedIgstAc = ledgerNames.contains(_taxRecords.first.igstacname) ? _taxRecords.first.igstacname : null;
+    } else {
+      _selectedTaxRecord = null;
+      _sgstPerController.text = '1.50';
+      _cgstPerController.text = '1.50';
+      _igstPerController.text = '3.00';
+      _selectedSgstAc = null;
+      _selectedCgstAc = null;
+      _selectedIgstAc = null;
+    }
   }
 
   void _closeForm() {
@@ -153,6 +215,9 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
 
     try {
       final name = _nameController.text.trim();
+      final sgst = double.tryParse(_sgstPerController.text.trim()) ?? 0.0;
+      final cgst = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
+      final igst = double.tryParse(_igstPerController.text.trim()) ?? (sgst + cgst);
 
       final record = CategoryRecord(
         id: _editingCategory?.id,
@@ -160,6 +225,9 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         metalid: _selectedMetalId!,
         catname: name,
         categorytype: _selectedType,
+        sgstPer: sgst,
+        cgstPer: cgst,
+        igstPer: igst,
         sgstacname: _selectedSgstAc ?? '',
         cgstacname: _selectedCgstAc ?? '',
         igstacname: _selectedIgstAc ?? '',
@@ -298,12 +366,12 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                         ),
                       ),
                       SizedBox(width: 8),
-                      StatusBadge(label: "Classifications", color: GlassTheme.accentRose),
+                      StatusBadge(label: "Classifications", color: Color(0xFF3B82F6)),
                     ],
                   ),
                   SizedBox(height: 2),
                   Text(
-                    "Define product categories (Ornaments, Bullions), tax percentages, and mapping accounts",
+                    "Define product categories, select Tax Master rules, and calculate GST rates automatically",
                     style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
                   ),
                 ],
@@ -390,6 +458,10 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     final isEditing = _editingCategory != null;
     final List<String> ledgerNames = _accountHeads.map((h) => h.accountname).toList();
 
+    final sgstVal = double.tryParse(_sgstPerController.text.trim()) ?? 0.0;
+    final cgstVal = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
+    final totalGst = sgstVal + cgstVal;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -435,7 +507,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        isEditing ? "Modify category details and ledger mapping" : "Define jewelry category (e.g. Ring, Chain, Bullion) and GST ledger postings",
+                        isEditing ? "Modify category details and linked Tax Master configuration" : "Define jewelry category (e.g. Ring, Chain, Bullion) and select tax type from Tax Master table",
                         style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
                       ),
                     ],
@@ -450,13 +522,19 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
             ),
             const Divider(height: 28, color: Color(0xFFE2E8F0)),
 
-            // Row 1: Metal & Name & Short Name & Type
+            // Section 1: Basic Information
+            const Text(
+              "1. General Category Details",
+              style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+
             Wrap(
               spacing: 16,
               runSpacing: 14,
               children: [
                 SizedBox(
-                  width: isMobile ? double.infinity : 200,
+                  width: isMobile ? double.infinity : 220,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -482,7 +560,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                   ),
                 ),
                 SizedBox(
-                  width: isMobile ? double.infinity : 300,
+                  width: isMobile ? double.infinity : 320,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -494,7 +572,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
-                        decoration: _inputDecoration("e.g. Rings, Bangles, Chains"),
+                        decoration: _inputDecoration("e.g. Rings, Bangles, Chains, Gold Coins"),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) return "Name required";
                           return null;
@@ -504,25 +582,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                   ),
                 ),
                 SizedBox(
-                  width: isMobile ? double.infinity : 160,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Short Code (Label)",
-                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: _shortNameController,
-                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
-                        decoration: _inputDecoration("e.g. RNG, BGL"),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 220,
+                  width: isMobile ? double.infinity : 240,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -549,16 +609,158 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 22),
 
-            // Ledger Accounts Title
+            // Section 2: Tax Master Selector & Calculation Engine
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.receipt_long_rounded, color: Color(0xFF3B82F6), size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            "2. Select Tax Type from Tax Master Table",
+                            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          "Calculated GST: ${totalGst.toStringAsFixed(2)}%",
+                          style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Selecting a Tax Type automatically calculates SGST %, CGST %, IGST % and fills default ledger postings.",
+                    style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Tax Master Dropdown
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 14,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: isMobile ? double.infinity : 360,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("Tax Master Rule *", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 6),
+                            DropdownButtonFormField<TaxRecord>(
+                              value: _selectedTaxRecord,
+                              dropdownColor: Colors.white,
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("Choose Tax Master Rule"),
+                              isExpanded: true,
+                              items: [
+                                const DropdownMenuItem<TaxRecord>(
+                                  value: null,
+                                  child: Text("-- Select Tax Rule --", style: TextStyle(color: GlassTheme.textMuted, fontStyle: FontStyle.italic)),
+                                ),
+                                ..._taxRecords.map((t) {
+                                  final totalRate = t.sgstPer + t.cgstPer + (t.igstPer > 0 && t.sgstPer == 0 ? t.igstPer : 0);
+                                  return DropdownMenuItem<TaxRecord>(
+                                    value: t,
+                                    child: Text(
+                                      "${t.taxname} (${t.taxcode} - ${totalRate.toStringAsFixed(1)}% GST)",
+                                      style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700),
+                                    ),
+                                  );
+                                }),
+                              ],
+                              onChanged: _onTaxRecordSelected,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Live Calculated Tax Breakdown Tiles
+                      SizedBox(
+                        width: isMobile ? double.infinity : 130,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("SGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _sgstPerController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              onChanged: (_) => setState(() {}),
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("1.50"),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: isMobile ? double.infinity : 130,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("CGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _cgstPerController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              onChanged: (_) => setState(() {}),
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("1.50"),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: isMobile ? double.infinity : 130,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("IGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _igstPerController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("3.00"),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Section 3: Ledger Accounts
             const Text(
-              "Default Ledger Postings (Optional)",
+              "3. Default GST Ledger Postings (Optional)",
               style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 10),
 
-            // Row 2: SGST, CGST, IGST Mappings
             Wrap(
               spacing: 16,
               runSpacing: 14,
@@ -806,6 +1008,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
           spacing: 16,
           runSpacing: 16,
           children: _filteredCategoriesWithMeta().map((cat) {
+            final double totalGstRate = cat.sgstPer + cat.cgstPer + (cat.igstPer > 0 && cat.sgstPer == 0 ? cat.igstPer : 0);
+
             return SizedBox(
               width: isMobile ? constraints.maxWidth : cardWidth,
               child: Container(
@@ -846,6 +1050,13 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                     _buildInfoRow("Category Code", cat.catcode),
                     const SizedBox(height: 6),
                     _buildInfoRow("Type", cat.categorytype),
+                    const SizedBox(height: 6),
+                    _buildInfoRow(
+                      "GST Rate",
+                      totalGstRate > 0
+                          ? "${totalGstRate.toStringAsFixed(2)}% (SGST: ${cat.sgstPer}% + CGST: ${cat.cgstPer}%)"
+                          : "0.00% (Exempt)",
+                    ),
                     if (cat.sgstacname.isNotEmpty || cat.cgstacname.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       _buildInfoRow("Ledger Posting", cat.sgstacname.isNotEmpty ? cat.sgstacname : cat.cgstacname),
@@ -892,7 +1103,15 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600)),
-        Text(value, style: const TextStyle(fontSize: 13, color: GlassTheme.textPrimary, fontWeight: FontWeight.w800)),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 13, color: GlassTheme.textPrimary, fontWeight: FontWeight.w800),
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }
@@ -920,17 +1139,33 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
               DataColumn(label: Text("CATEGORY NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("METAL", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("TYPE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("GST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("SGST A/C", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("CGST A/C", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("ACTIONS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
             ],
             rows: _filteredCategoriesWithMeta().map((cat) {
+              final double totalGstRate = cat.sgstPer + cat.cgstPer + (cat.igstPer > 0 && cat.sgstPer == 0 ? cat.igstPer : 0);
+
               return DataRow(
                 cells: [
                   DataCell(Text(cat.catcode, style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 13))),
                   DataCell(Text(cat.catname, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(Text("${cat.metalname ?? cat.metalid} (${cat.metalid})", style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w700, fontSize: 13))),
                   DataCell(Text(cat.categorytype, style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 12))),
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        "${totalGstRate.toStringAsFixed(1)}%",
+                        style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 12),
+                      ),
+                    ),
+                  ),
                   DataCell(Text(cat.sgstacname.isEmpty ? "-" : cat.sgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(Text(cat.cgstacname.isEmpty ? "-" : cat.cgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(
