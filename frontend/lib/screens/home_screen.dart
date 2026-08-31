@@ -29,8 +29,17 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _hasAccess(AuthProvider auth, String menuCode) {
     if (auth.isAdmin) return true;
     final user = auth.currentUser;
-    if (user == null) return false;
+    if (user == null) return true;
+    if (user.allowedMenus.isEmpty) return true;
     if (user.hasMenuAccess(menuCode)) return true;
+
+    // Check parent hierarchy e.g. M_MASTER.INVENTORY grants M_MASTER.INVENTORY.PRODUCTS
+    final parts = menuCode.split('.');
+    for (int i = parts.length - 1; i >= 1; i--) {
+      final parentCode = parts.sublist(0, i).join('.');
+      if (user.allowedMenus.contains(parentCode)) return true;
+    }
+
     return user.allowedMenus.any((code) => code.startsWith('$menuCode.'));
   }
 
