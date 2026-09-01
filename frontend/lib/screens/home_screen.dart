@@ -783,11 +783,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildRateItem("GOLD 24K", "₹${_gold24k.toStringAsFixed(0)}/g", Icons.trending_up_rounded, GlassTheme.accentEmerald),
+          _buildRateItem("GOLD 24K", "₹${_gold24k.round()}/g", Icons.trending_up_rounded, GlassTheme.accentEmerald),
           Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
-          _buildRateItem("GOLD 22K (916)", "₹${_gold22k.toStringAsFixed(0)}/g", Icons.trending_up_rounded, GlassTheme.accentEmerald),
+          _buildRateItem("GOLD 22K (916)", "₹${_gold22k.round()}/g", Icons.trending_up_rounded, GlassTheme.accentEmerald),
           Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
-          _buildRateItem("SILVER", "₹${_silver.toStringAsFixed(2)}/g", Icons.trending_flat_rounded, GlassTheme.accentCyan),
+          _buildRateItem("SILVER", "₹${_silver.round()}/g", Icons.trending_flat_rounded, GlassTheme.accentCyan),
           if (_lastRateUpdated.isNotEmpty) ...[
             Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
             Row(

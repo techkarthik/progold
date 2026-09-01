@@ -39,9 +39,6 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
   final TextEditingController _historySearchController = TextEditingController();
   String _historySearchQuery = '';
 
-  // Auto-derivation helper
-  final TextEditingController _base24kController = TextEditingController(text: '7500');
-
   @override
   void initState() {
     super.initState();
@@ -55,7 +52,6 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
     _tabController.dispose();
     _disposeControllers();
     _historySearchController.dispose();
-    _base24kController.dispose();
     super.dispose();
   }
 
@@ -95,11 +91,12 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
 
         _disposeControllers();
         for (final r in rates) {
+          // Initialize with rounded whole Rupee values
           _rateControllers[r.purityid] = TextEditingController(
-            text: r.rate > 0 ? r.rate.toStringAsFixed(2) : '',
+            text: r.rate > 0 ? r.rate.round().toString() : '',
           );
           _buyRateControllers[r.purityid] = TextEditingController(
-            text: r.buyRate > 0 ? r.buyRate.toStringAsFixed(2) : '',
+            text: r.buyRate > 0 ? r.buyRate.round().toString() : '',
           );
           _notesControllers[r.purityid] = TextEditingController(text: r.notes);
         }
@@ -182,34 +179,6 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
     _loadRatesForSelectedDate();
   }
 
-  void _autoDeriveFromBase() {
-    final baseRate = double.tryParse(_base24kController.text.trim());
-    if (baseRate == null || baseRate <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter a valid base 24K pure gold rate.")),
-      );
-      return;
-    }
-
-    setState(() {
-      for (final p in _purityRates) {
-        if (p.metalid.toUpperCase() == 'G') {
-          // Proportionate rate based on purity %
-          final derived = (baseRate * (p.purity / 99.9));
-          _rateControllers[p.purityid]?.text = derived.toStringAsFixed(2);
-          _buyRateControllers[p.purityid]?.text = (derived * 0.98).toStringAsFixed(2); // standard 2% margin
-        }
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Calculated gold rates proportionally based on 24K pure base rate!"),
-        backgroundColor: GlassTheme.accentEmerald,
-      ),
-    );
-  }
-
   Future<void> _saveRates() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final token = auth.authToken;
@@ -219,12 +188,13 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
 
     final List<PurityRateItem> payloadRates = [];
     for (final p in _purityRates) {
-      final rateText = _rateControllers[p.purityid]?.text.trim() ?? '0';
-      final buyRateText = _buyRateControllers[p.purityid]?.text.trim() ?? '0';
+      final rateText = _rateControllers[p.purityid]?.text.trim() ?? '';
+      final buyRateText = _buyRateControllers[p.purityid]?.text.trim() ?? '';
       final notesText = _notesControllers[p.purityid]?.text.trim() ?? '';
 
-      final rateVal = double.tryParse(rateText) ?? 0.0;
-      final buyRateVal = double.tryParse(buyRateText) ?? 0.0;
+      // Round to nearest whole Rupee (removes paise)
+      final rateVal = (double.tryParse(rateText) ?? 0.0).roundToDouble();
+      final buyRateVal = (double.tryParse(buyRateText) ?? 0.0).roundToDouble();
 
       payloadRates.add(
         p.copyWith(
@@ -363,8 +333,8 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
           const SizedBox(height: 16),
           if (_tabController.index == 0) ...[
             _buildDateAndStatusControlBar(),
-            const SizedBox(height: 16),
-            _buildAutoDeriveCard(),
+            const SizedBox(height: 14),
+            _buildManualRateHelpCard(),
             const SizedBox(height: 16),
             if (_isLoading)
               const Center(
@@ -644,8 +614,8 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
     );
   }
 
-  // ================= AUTO DERIVATION CALCULATOR TOOL =================
-  Widget _buildAutoDeriveCard() {
+  // ================= MANUAL RATE ENTRY HELP BANNER =================
+  Widget _buildManualRateHelpCard() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -653,58 +623,15 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFFDE68A)),
       ),
-      child: Row(
+      child: const Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: GlassTheme.accentAmber.withOpacity(0.2),
-              shape: BoxShape.circle,
+          Icon(Icons.info_outline_rounded, color: GlassTheme.accentAmber, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              "Enter board rates manually per gram in whole Rupees (₹/g). Rates are automatically rounded to whole Rupee (no paise) and every update is logged in audit history.",
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: GlassTheme.textPrimary),
             ),
-            child: const Icon(Icons.calculate_rounded, color: GlassTheme.accentAmber, size: 20),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Rate Auto-Derivation Helper",
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: GlassTheme.textPrimary),
-                ),
-                Text(
-                  "Enter 24K pure gold base rate (₹/g) to calculate 22K (91.6%), 18K (75%) proportionally",
-                  style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 130,
-            height: 38,
-            child: TextField(
-              controller: _base24kController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-              decoration: const InputDecoration(
-                prefixText: "₹ ",
-                hintText: "24K Rate",
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFD97706),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: _autoDeriveFromBase,
-            child: const Text("Apply Rates", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
           ),
         ],
       ),
@@ -885,7 +812,7 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      p.rate > 0 ? "₹${p.rate.toStringAsFixed(2)}" : "No prior rate",
+                      p.rate > 0 ? "₹${p.rate.round()}" : "No prior rate",
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -908,11 +835,11 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
                   height: 38,
                   child: TextField(
                     controller: rateCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: false),
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: GlassTheme.textPrimary),
                     decoration: InputDecoration(
                       prefixText: "₹ ",
-                      hintText: "0.00",
+                      hintText: "e.g. 7450",
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -930,11 +857,11 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
                   height: 38,
                   child: TextField(
                     controller: buyRateCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: false),
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: GlassTheme.textPrimary),
                     decoration: InputDecoration(
                       prefixText: "₹ ",
-                      hintText: "Optional",
+                      hintText: "e.g. 7300",
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1021,9 +948,10 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
                           height: 38,
                           child: TextField(
                             controller: rateCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: false),
                             decoration: const InputDecoration(
                               prefixText: "₹ ",
+                              hintText: "e.g. 7450",
                               filled: true,
                               fillColor: Colors.white,
                               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -1045,9 +973,10 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
                           height: 38,
                           child: TextField(
                             controller: buyRateCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: false),
                             decoration: const InputDecoration(
                               prefixText: "₹ ",
+                              hintText: "e.g. 7300",
                               filled: true,
                               fillColor: Colors.white,
                               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -1312,12 +1241,12 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
 
                   // Board Rate (₹/g)
                   DataCell(
-                    Text("₹${h.rate.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: GlassTheme.textPrimary)),
+                    Text("₹${h.rate.round()}", style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: GlassTheme.textPrimary)),
                   ),
 
                   // Buy Back (₹/g)
                   DataCell(
-                    Text(h.buyRate > 0 ? "₹${h.buyRate.toStringAsFixed(2)}" : "-", style: const TextStyle(fontSize: 12)),
+                    Text(h.buyRate > 0 ? "₹${h.buyRate.round()}" : "-", style: const TextStyle(fontSize: 12)),
                   ),
 
                   // Remarks / Notes

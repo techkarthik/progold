@@ -332,9 +332,11 @@ export async function bulkUpdateRatesController(req, res) {
       const metalId = String(r.metalid || "").trim().toUpperCase();
       const purityName = String(r.purityname || "").trim();
       const purityPercent = parseFloat(r.purity) || 0.0;
-      const rateVal = parseFloat(r.rate) || 0.0;
-      const buyRateVal = parseFloat(r.buy_rate) || 0.0;
-      const sellRateVal = parseFloat(r.sell_rate) || rateVal;
+      
+      // Round paise in rate to whole Rupee
+      const rateVal = Math.round(parseFloat(r.rate) || 0.0);
+      const buyRateVal = Math.round(parseFloat(r.buy_rate) || 0.0);
+      const sellRateVal = Math.round(parseFloat(r.sell_rate) || rateVal);
       const notes = String(r.notes || "").trim();
 
       if (!purityId) continue;
