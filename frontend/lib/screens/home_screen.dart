@@ -1738,14 +1738,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: const Color(0xFFEC4899),
                   onTap: () => setState(() => _masterSubmenu = "SUBPRODUCTS"),
                 ),
-              if (_hasAccess(auth, MenuRegistry.MASTER_TAX_MASTER))
-                _buildSubmenuGridCard(
-                  title: "Tax Master",
-                  desc: "Configure GST rates (SGST, CGST, IGST) for categories",
-                  icon: Icons.percent_rounded,
-                  color: GlassTheme.accentEmerald,
-                  onTap: () => setState(() => _masterSubmenu = "TAXMASTER"),
-                ),
             ],
           ),
         ],

@@ -199,43 +199,37 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
     final auth = Provider.of<AuthProvider>(context);
     final isMobile = MediaQuery.of(context).size.width < 768;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(context, auth),
-            const SizedBox(height: 16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(context, auth),
+        const SizedBox(height: 16),
 
-            // In-Page Create / Edit Form
-            if (_showForm) ...[
-              _buildTaxForm(context, auth, isMobile),
-              const SizedBox(height: 20),
-            ],
+        // In-Page Create / Edit Form
+        if (_showForm) ...[
+          _buildTaxForm(context, auth, isMobile),
+          const SizedBox(height: 20),
+        ],
 
-            // Search & View Toggle Toolbar
-            _buildSearchToolbar(isMobile),
-            const SizedBox(height: 16),
+        // Search & View Toggle Toolbar
+        _buildSearchToolbar(isMobile),
+        const SizedBox(height: 16),
 
-            // Data View
-            if (_isLoading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(60.0),
-                  child: CircularProgressIndicator(color: Color(0xFF10B981)),
-                ),
-              )
-            else if (_filteredTaxRecords.isEmpty)
-              _buildEmptyState(context, auth)
-            else if (_isTableView)
-              _buildTableView(context, auth)
-            else
-              _buildCardsGridView(context, auth, isMobile),
-          ],
-        ),
-      ),
+        // Data View
+        if (_isLoading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(60.0),
+              child: CircularProgressIndicator(color: Color(0xFF10B981)),
+            ),
+          )
+        else if (_filteredTaxRecords.isEmpty)
+          _buildEmptyState(context, auth)
+        else if (_isTableView)
+          _buildTableView(context, auth)
+        else
+          _buildCardsGridView(context, auth, isMobile),
+      ],
     );
   }
 
@@ -259,7 +253,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
               if (widget.onBack != null) ...[
                 IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
-                  tooltip: "Back",
+                  tooltip: "Back to Master Hub",
                   onPressed: widget.onBack,
                 ),
                 const SizedBox(width: 8),
@@ -287,7 +281,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    "Item Master > Tax Master",
+                    "Master Hub > Tax Master",
                     style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w500),
                   ),
                 ],
