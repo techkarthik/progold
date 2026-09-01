@@ -65,6 +65,12 @@ async function ensureInventoryTables(client) {
     );
   `);
 
+  try {
+    await client.execute(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_products_productname_unique ON products (UPPER(TRIM(productname)));
+    `);
+  } catch (_) {}
+
   // Sub-Products (New 5th Master under Inventory)
   await client.execute(`
     CREATE TABLE IF NOT EXISTS subproducts (
@@ -625,6 +631,20 @@ export async function createProductController(req, res) {
     }
 
     const cleanName = productname.trim().substring(0, 100);
+
+    // Enforce Unique Product Name (Case-Insensitive)
+    const checkDuplicate = await client.execute({
+      sql: `SELECT productid FROM products WHERE UPPER(TRIM(productname)) = UPPER(?) LIMIT 1;`,
+      args: [cleanName],
+    });
+
+    if (checkDuplicate.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Product name "${cleanName}" already exists. Product name must be unique.`,
+      });
+    }
+
     const validCalcTypes = ["WEIGHT", "RATE", "METAL", "FIXED"];
     const validStockTypes = ["SKU", "OPEN"];
     const validYesNo = ["YES", "NO"];
@@ -674,6 +694,12 @@ export async function createProductController(req, res) {
     });
   } catch (error) {
     console.error("createProduct error:", error);
+    if (error.message && error.message.includes("UNIQUE constraint failed")) {
+      return res.status(409).json({
+        success: false,
+        message: "Product name already exists. Product name must be unique.",
+      });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 }
@@ -703,6 +729,20 @@ export async function updateProductController(req, res) {
     }
 
     const cleanName = productname.trim().substring(0, 100);
+
+    // Enforce Unique Product Name (Case-Insensitive) excluding current productid
+    const checkDuplicate = await client.execute({
+      sql: `SELECT productid FROM products WHERE UPPER(TRIM(productname)) = UPPER(?) AND productid != ? LIMIT 1;`,
+      args: [cleanName, Number(id)],
+    });
+
+    if (checkDuplicate.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Product name "${cleanName}" already exists. Product name must be unique.`,
+      });
+    }
+
     const validCalcTypes = ["WEIGHT", "RATE", "METAL", "FIXED"];
     const validStockTypes = ["SKU", "OPEN"];
     const validYesNo = ["YES", "NO"];
@@ -752,6 +792,12 @@ export async function updateProductController(req, res) {
     return res.json({ success: true, message: "Product updated successfully!" });
   } catch (error) {
     console.error("updateProduct error:", error);
+    if (error.message && error.message.includes("UNIQUE constraint failed")) {
+      return res.status(409).json({
+        success: false,
+        message: "Product name already exists. Product name must be unique.",
+      });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 }

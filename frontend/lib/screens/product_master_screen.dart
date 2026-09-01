@@ -155,11 +155,24 @@ class _ProductMasterScreenState extends State<ProductMasterScreen> {
       return;
     }
 
+    final name = _nameController.text.trim();
+    final isDuplicate = _products.any((p) =>
+        p.productname.trim().toLowerCase() == name.toLowerCase() &&
+        (_editingProduct == null || p.productid != _editingProduct!.productid));
+
+    if (isDuplicate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Product name '$name' already exists. Product name must be unique."),
+          backgroundColor: GlassTheme.accentRose,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
-      final name = _nameController.text.trim();
-
       final record = ProductRecord(
         productid: _editingProduct?.productid,
         categoryid: _selectedCategoryId!,
@@ -578,6 +591,13 @@ class _ProductMasterScreenState extends State<ProductMasterScreen> {
                         ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) return "Product Name is required";
+                          final clean = val.trim().toLowerCase();
+                          final isDuplicate = _products.any((p) =>
+                              p.productname.trim().toLowerCase() == clean &&
+                              (_editingProduct == null || p.productid != _editingProduct!.productid));
+                          if (isDuplicate) {
+                            return "Product name '${val.trim()}' already exists (Must be unique)";
+                          }
                           return null;
                         },
                       ),
