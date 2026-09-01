@@ -46,6 +46,11 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   final _cgstPerController = TextEditingController(text: '1.50');
   final _igstPerController = TextEditingController(text: '3.00');
 
+  // Sales & Purchase Account Heads (Where sales and purchases post)
+  String? _selectedSalesAc;
+  String? _selectedPurchaseAc;
+
+  // Tax Posting Ledgers (Optional)
   String? _selectedSgstAc;
   String? _selectedCgstAc;
   String? _selectedIgstAc;
@@ -103,6 +108,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
             c.catname.toLowerCase().contains(_searchQuery) ||
             c.categorytype.toLowerCase().contains(_searchQuery) ||
             (c.metalname ?? '').toLowerCase().contains(_searchQuery) ||
+            c.salesacname.toLowerCase().contains(_searchQuery) ||
+            c.purchaseacname.toLowerCase().contains(_searchQuery) ||
             c.sgstacname.toLowerCase().contains(_searchQuery) ||
             c.cgstacname.toLowerCase().contains(_searchQuery) ||
             c.igstacname.toLowerCase().contains(_searchQuery);
@@ -147,6 +154,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         _igstPerController.text = existing.igstPer.toStringAsFixed(2);
 
         final ledgerNames = _accountHeads.map((h) => h.accountname).toList();
+        _selectedSalesAc = ledgerNames.contains(existing.salesacname) ? existing.salesacname : (existing.salesacname.isNotEmpty ? existing.salesacname : null);
+        _selectedPurchaseAc = ledgerNames.contains(existing.purchaseacname) ? existing.purchaseacname : (existing.purchaseacname.isNotEmpty ? existing.purchaseacname : null);
         _selectedSgstAc = ledgerNames.contains(existing.sgstacname) ? existing.sgstacname : null;
         _selectedCgstAc = ledgerNames.contains(existing.cgstacname) ? existing.cgstacname : null;
         _selectedIgstAc = ledgerNames.contains(existing.igstacname) ? existing.igstacname : null;
@@ -166,6 +175,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     _selectedMetalId = _metals.isNotEmpty ? _metals.first.metalid : null;
     _nameController.clear();
     _selectedType = 'ORNAMENTS/STONE';
+    _selectedSalesAc = null;
+    _selectedPurchaseAc = null;
 
     // Default to first tax record if available (e.g. 3% GST), otherwise 1.5% SGST + 1.5% CGST
     if (_taxRecords.isNotEmpty) {
@@ -228,6 +239,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         sgstPer: sgst,
         cgstPer: cgst,
         igstPer: igst,
+        salesacname: _selectedSalesAc ?? '',
+        purchaseacname: _selectedPurchaseAc ?? '',
         sgstacname: _selectedSgstAc ?? '',
         cgstacname: _selectedCgstAc ?? '',
         igstacname: _selectedIgstAc ?? '',
@@ -754,66 +767,95 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Section 3: Ledger Accounts
-            const Text(
-              "3. Default GST Ledger Postings (Optional)",
-              style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
+            // Section 3: Sales & Purchase Account Posting Ledgers (Account Heads)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_rounded, color: GlassTheme.accentEmerald, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        "3. Sales & Purchase Account Posting Ledgers",
+                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Specify which Account Head from Master the sales and purchase transactions of this category will be posted into.",
+                    style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 14),
 
-            Wrap(
-              spacing: 16,
-              runSpacing: 14,
-              children: [
-                SizedBox(
-                  width: isMobile ? double.infinity : 280,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 14,
                     children: [
-                      const Text("SGST Ledger", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      _buildAccountDropdown(
-                        value: _selectedSgstAc,
-                        options: ledgerNames,
-                        hint: "Select SGST Ledger",
-                        onChanged: (val) => setState(() => _selectedSgstAc = val),
+                      // Sales Account Head (Where Sales Goes)
+                      SizedBox(
+                        width: isMobile ? double.infinity : 380,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.point_of_sale_rounded, color: GlassTheme.accentEmerald, size: 16),
+                                SizedBox(width: 6),
+                                Text(
+                                  "Sales Account Head (Where Sales Goes) *",
+                                  style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            _buildAccountDropdown(
+                              value: _selectedSalesAc,
+                              options: ledgerNames,
+                              hint: "Select Sales Ledger (e.g. Gold Sales A/c)",
+                              onChanged: (val) => setState(() => _selectedSalesAc = val),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Purchase Account Head (Where Purchase Goes)
+                      SizedBox(
+                        width: isMobile ? double.infinity : 380,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.shopping_bag_outlined, color: Color(0xFF3B82F6), size: 16),
+                                SizedBox(width: 6),
+                                Text(
+                                  "Purchase Account Head (Where Purchase Goes) *",
+                                  style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            _buildAccountDropdown(
+                              value: _selectedPurchaseAc,
+                              options: ledgerNames,
+                              hint: "Select Purchase Ledger (e.g. Gold Purchase A/c)",
+                              onChanged: (val) => setState(() => _selectedPurchaseAc = val),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 280,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("CGST Ledger", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      _buildAccountDropdown(
-                        value: _selectedCgstAc,
-                        options: ledgerNames,
-                        hint: "Select CGST Ledger",
-                        onChanged: (val) => setState(() => _selectedCgstAc = val),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 280,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("IGST Ledger", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      _buildAccountDropdown(
-                        value: _selectedIgstAc,
-                        options: ledgerNames,
-                        hint: "Select IGST Ledger",
-                        onChanged: (val) => setState(() => _selectedIgstAc = val),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 24),
 
@@ -1057,10 +1099,10 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                           ? "${totalGstRate.toStringAsFixed(2)}% (SGST: ${cat.sgstPer}% + CGST: ${cat.cgstPer}%)"
                           : "0.00% (Exempt)",
                     ),
-                    if (cat.sgstacname.isNotEmpty || cat.cgstacname.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      _buildInfoRow("Ledger Posting", cat.sgstacname.isNotEmpty ? cat.sgstacname : cat.cgstacname),
-                    ],
+                    const SizedBox(height: 6),
+                    _buildInfoRow("Sales A/c", cat.salesacname.isNotEmpty ? cat.salesacname : "Not Assigned"),
+                    const SizedBox(height: 6),
+                    _buildInfoRow("Purchase A/c", cat.purchaseacname.isNotEmpty ? cat.purchaseacname : "Not Assigned"),
 
                     const SizedBox(height: 14),
                     Row(
@@ -1140,8 +1182,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
               DataColumn(label: Text("METAL", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("TYPE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("GST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-              DataColumn(label: Text("SGST A/C", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-              DataColumn(label: Text("CGST A/C", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("SALES A/C (POSTING)", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("PURCHASE A/C (POSTING)", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("ACTIONS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
             ],
             rows: _filteredCategoriesWithMeta().map((cat) {
@@ -1166,8 +1208,32 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                       ),
                     ),
                   ),
-                  DataCell(Text(cat.sgstacname.isEmpty ? "-" : cat.sgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
-                  DataCell(Text(cat.cgstacname.isEmpty ? "-" : cat.cgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: GlassTheme.accentEmerald.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        cat.salesacname.isEmpty ? "-" : cat.salesacname,
+                        style: const TextStyle(color: GlassTheme.accentEmerald, fontWeight: FontWeight.w800, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        cat.purchaseacname.isEmpty ? "-" : cat.purchaseacname,
+                        style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 12),
+                      ),
+                    ),
+                  ),
                   DataCell(
                     Row(
                       mainAxisSize: MainAxisSize.min,

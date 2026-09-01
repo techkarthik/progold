@@ -90,6 +90,8 @@ class CategoryRecord {
   final double sgstPer;
   final double cgstPer;
   final double igstPer;
+  final String salesacname;
+  final String purchaseacname;
   final String sgstacname;
   final String cgstacname;
   final String igstacname;
@@ -106,6 +108,8 @@ class CategoryRecord {
     this.sgstPer = 0.0,
     this.cgstPer = 0.0,
     this.igstPer = 0.0,
+    this.salesacname = '',
+    this.purchaseacname = '',
     this.sgstacname = '',
     this.cgstacname = '',
     this.igstacname = '',
@@ -124,6 +128,8 @@ class CategoryRecord {
       sgstPer: json['sgst_per'] != null ? double.tryParse(json['sgst_per'].toString()) ?? 0.0 : 0.0,
       cgstPer: json['cgst_per'] != null ? double.tryParse(json['cgst_per'].toString()) ?? 0.0 : 0.0,
       igstPer: json['igst_per'] != null ? double.tryParse(json['igst_per'].toString()) ?? 0.0 : 0.0,
+      salesacname: json['salesacname']?.toString() ?? '',
+      purchaseacname: json['purchaseacname']?.toString() ?? '',
       sgstacname: json['sgstacname']?.toString() ?? '',
       cgstacname: json['cgstacname']?.toString() ?? '',
       igstacname: json['igstacname']?.toString() ?? '',
@@ -143,6 +149,8 @@ class CategoryRecord {
       'sgst_per': sgstPer,
       'cgst_per': cgstPer,
       'igst_per': igstPer,
+      'salesacname': salesacname,
+      'purchaseacname': purchaseacname,
       'sgstacname': sgstacname,
       'cgstacname': cgstacname,
       'igstacname': igstacname,
@@ -160,6 +168,8 @@ class CategoryRecord {
     double? sgstPer,
     double? cgstPer,
     double? igstPer,
+    String? salesacname,
+    String? purchaseacname,
     String? sgstacname,
     String? cgstacname,
     String? igstacname,
@@ -176,6 +186,8 @@ class CategoryRecord {
       sgstPer: sgstPer ?? this.sgstPer,
       cgstPer: cgstPer ?? this.cgstPer,
       igstPer: igstPer ?? this.igstPer,
+      salesacname: salesacname ?? this.salesacname,
+      purchaseacname: purchaseacname ?? this.purchaseacname,
       sgstacname: sgstacname ?? this.sgstacname,
       cgstacname: cgstacname ?? this.cgstacname,
       igstacname: igstacname ?? this.igstacname,

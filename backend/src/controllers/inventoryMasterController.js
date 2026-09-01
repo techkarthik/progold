@@ -40,6 +40,8 @@ async function ensureInventoryTables(client) {
       sgst_per REAL DEFAULT 0.0,
       cgst_per REAL DEFAULT 0.0,
       igst_per REAL DEFAULT 0.0,
+      salesacname TEXT DEFAULT '',
+      purchaseacname TEXT DEFAULT '',
       sgstacname TEXT DEFAULT '',
       cgstacname TEXT DEFAULT '',
       igstacname TEXT DEFAULT '',
@@ -48,6 +50,13 @@ async function ensureInventoryTables(client) {
       FOREIGN KEY (metalid) REFERENCES metals(metalid)
     );
   `);
+
+  try {
+    await client.execute(`ALTER TABLE categories ADD COLUMN salesacname TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE categories ADD COLUMN purchaseacname TEXT DEFAULT '';`);
+  } catch (_) {}
 
   // Products (New 4th Master under Inventory)
   await client.execute(`
@@ -384,6 +393,8 @@ export async function createCategoryController(req, res) {
       sgst_per = 0.0,
       cgst_per = 0.0,
       igst_per = 0.0,
+      salesacname = "",
+      purchaseacname = "",
       sgstacname = "",
       cgstacname = "",
       igstacname = "",
@@ -419,8 +430,8 @@ export async function createCategoryController(req, res) {
     await client.execute({
       sql: `
         INSERT INTO categories (
-          metalid, catcode, catname, categorytype, sgst_per, cgst_per, igst_per, sgstacname, cgstacname, igstacname, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+          metalid, catcode, catname, categorytype, sgst_per, cgst_per, igst_per, salesacname, purchaseacname, sgstacname, cgstacname, igstacname, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       args: [
         cleanMetalId,
@@ -430,9 +441,11 @@ export async function createCategoryController(req, res) {
         Number(sgst_per) || 0.0,
         Number(cgst_per) || 0.0,
         Number(igst_per) || 0.0,
-        sgstacname.trim(),
-        cgstacname.trim(),
-        igstacname.trim(),
+        String(salesacname || "").trim(),
+        String(purchaseacname || "").trim(),
+        String(sgstacname || "").trim(),
+        String(cgstacname || "").trim(),
+        String(igstacname || "").trim(),
         now,
         now,
       ],
@@ -463,6 +476,8 @@ export async function updateCategoryController(req, res) {
       sgst_per,
       cgst_per,
       igst_per,
+      salesacname,
+      purchaseacname,
       sgstacname,
       cgstacname,
       igstacname,
@@ -519,6 +534,8 @@ export async function updateCategoryController(req, res) {
             sgst_per = ?,
             cgst_per = ?,
             igst_per = ?,
+            salesacname = ?,
+            purchaseacname = ?,
             sgstacname = ?,
             cgstacname = ?,
             igstacname = ?,
@@ -533,9 +550,11 @@ export async function updateCategoryController(req, res) {
         sgst_per !== undefined ? Number(sgst_per) : 0.0,
         cgst_per !== undefined ? Number(cgst_per) : 0.0,
         igst_per !== undefined ? Number(igst_per) : 0.0,
-        sgstacname !== undefined ? sgstacname.trim() : "",
-        cgstacname !== undefined ? cgstacname.trim() : "",
-        igstacname !== undefined ? igstacname.trim() : "",
+        salesacname !== undefined ? String(salesacname).trim() : "",
+        purchaseacname !== undefined ? String(purchaseacname).trim() : "",
+        sgstacname !== undefined ? String(sgstacname).trim() : "",
+        cgstacname !== undefined ? String(cgstacname).trim() : "",
+        igstacname !== undefined ? String(igstacname).trim() : "",
         now,
         Number(id),
       ],
