@@ -31,6 +31,7 @@ async function ensureDailyRatesTable(client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS daily_rates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id INTEGER DEFAULT 1,
       ratedate TEXT NOT NULL,
       purityid INTEGER NOT NULL,
       metalid TEXT NOT NULL,
@@ -46,11 +47,20 @@ async function ensureDailyRatesTable(client) {
     );
   `);
 
+  // Safe non-destructive column additions
+  try {
+    await client.execute(`ALTER TABLE daily_rates ADD COLUMN batch_id INTEGER DEFAULT 1;`);
+  } catch (_) {}
+
   // Safe index creation
   try {
     await client.execute(`
-      CREATE INDEX IF NOT EXISTS idx_daily_rates_date_purity 
-      ON daily_rates (ratedate, purityid);
+      CREATE INDEX IF NOT EXISTS idx_daily_rates_purity_id 
+      ON daily_rates (purityid, id DESC);
+    `);
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_daily_rates_date_id 
+      ON daily_rates (ratedate, id DESC);
     `);
   } catch (_) {}
 }
@@ -65,7 +75,7 @@ export async function getLatestRatesController(req, res) {
     const client = createTenantClient(turso_url, turso_token);
     await ensureDailyRatesTable(client);
 
-    // Fetch all purities joined with metals and their latest rate entry
+    // Fetch all purities joined with metals and their latest rate entry (highest id)
     const result = await client.execute(`
       SELECT 
         p.purityid,
@@ -76,19 +86,20 @@ export async function getLatestRatesController(req, res) {
         p.purity,
         p.type,
         r.id AS rate_id,
+        r.batch_id,
         r.ratedate,
         COALESCE(r.rate, 0.0) AS rate,
         COALESCE(r.buy_rate, 0.0) AS buy_rate,
         COALESCE(r.sell_rate, COALESCE(r.rate, 0.0)) AS sell_rate,
         r.notes,
-        r.updated_at AS last_updated_at
+        r.created_at AS last_updated_at
       FROM purities p
       LEFT JOIN metals m ON p.metalid = m.metalid
       LEFT JOIN daily_rates r ON r.id = (
         SELECT dr.id 
         FROM daily_rates dr 
         WHERE dr.purityid = p.purityid 
-        ORDER BY dr.ratedate DESC, dr.updated_at DESC, dr.id DESC 
+        ORDER BY dr.id DESC 
         LIMIT 1
       )
       ORDER BY p.metalid ASC, p.purity DESC;
@@ -183,19 +194,29 @@ export async function getRatesByDateController(req, res) {
 
     const purities = puritiesRes.rows || [];
 
-    // 2. Fetch rates saved on the exact target date
+    // 2. Fetch the latest rate saved on the exact target date for each purity
     const exactDateRatesRes = await client.execute({
-      sql: `SELECT * FROM daily_rates WHERE ratedate = ?;`,
+      sql: `
+        SELECT dr.* 
+        FROM daily_rates dr
+        JOIN (
+          SELECT purityid, MAX(id) AS max_id 
+          FROM daily_rates 
+          WHERE ratedate = ? 
+          GROUP BY purityid
+        ) latest ON dr.id = latest.max_id;
+      `,
       args: [targetDate],
     });
+
     const exactMap = new Map();
     for (const row of exactDateRatesRes.rows || []) {
       exactMap.set(Number(row.purityid), row);
     }
 
-    // 3. For purities without a record on targetDate, fetch their latest historical rate before or equal to targetDate
+    // 3. For purities without a record on targetDate, fetch their latest historical rate on or before targetDate
     const items = [];
-    let isAlreadySavedForDate = exactMap.size > 0;
+    const isAlreadySavedForDate = exactMap.size > 0;
 
     for (const p of purities) {
       const pid = Number(p.purityid);
@@ -210,21 +231,22 @@ export async function getRatesByDateController(req, res) {
           purity: p.purity,
           type: p.type,
           rate_id: row.id,
+          batch_id: row.batch_id || 1,
           ratedate: row.ratedate,
           rate: Number(row.rate) || 0.0,
           buy_rate: Number(row.buy_rate) || 0.0,
           sell_rate: Number(row.sell_rate) || 0.0,
           notes: row.notes || "",
           is_saved_for_date: true,
-          updated_at: row.updated_at,
+          updated_at: row.created_at || row.updated_at,
         });
       } else {
-        // Fetch last known historical rate
+        // Fetch last known historical rate on or before targetDate
         const lastKnownRes = await client.execute({
           sql: `
             SELECT * FROM daily_rates 
             WHERE purityid = ? AND ratedate <= ?
-            ORDER BY ratedate DESC, updated_at DESC, id DESC 
+            ORDER BY id DESC 
             LIMIT 1;
           `,
           args: [pid, targetDate],
@@ -240,6 +262,7 @@ export async function getRatesByDateController(req, res) {
           purity: p.purity,
           type: p.type,
           rate_id: null,
+          batch_id: null,
           ratedate: targetDate,
           rate: lastKnown ? Number(lastKnown.rate) || 0.0 : 0.0,
           buy_rate: lastKnown ? Number(lastKnown.buy_rate) || 0.0 : 0.0,
@@ -247,7 +270,7 @@ export async function getRatesByDateController(req, res) {
           notes: "",
           is_saved_for_date: false,
           previous_rate_date: lastKnown?.ratedate || "",
-          updated_at: lastKnown?.updated_at || "",
+          updated_at: lastKnown?.created_at || lastKnown?.updated_at || "",
         });
       }
     }
@@ -269,7 +292,7 @@ export async function getRatesByDateController(req, res) {
 
 /**
  * POST /api/tenant/rates/bulk-update
- * Saves or updates daily rates for all purities for a given date in one operation.
+ * ALWAYS saves a new historical rate log entry for every update, generating an auto-incrementing integer ID and batch number.
  */
 export async function bulkUpdateRatesController(req, res) {
   try {
@@ -296,6 +319,14 @@ export async function bulkUpdateRatesController(req, res) {
     const cleanDate = ratedate.trim();
     const now = new Date().toISOString();
 
+    // Generate unique sequential integer Batch ID for this update session
+    const batchRes = await client.execute(`
+      SELECT COALESCE(MAX(batch_id), 0) + 1 AS next_batch FROM daily_rates;
+    `);
+    const nextBatchId = Number(batchRes.rows[0]?.next_batch || 1);
+
+    const insertedIds = [];
+
     for (const r of rates) {
       const purityId = parseInt(r.purityid, 10);
       const metalId = String(r.metalid || "").trim().toUpperCase();
@@ -308,58 +339,41 @@ export async function bulkUpdateRatesController(req, res) {
 
       if (!purityId) continue;
 
-      // Check if a rate record already exists for this exact date and purity
-      const existing = await client.execute({
-        sql: `SELECT id FROM daily_rates WHERE ratedate = ? AND purityid = ? LIMIT 1;`,
-        args: [cleanDate, purityId],
+      // Always INSERT a new historical rate record (preserves full audit log history)
+      const insRes = await client.execute({
+        sql: `
+          INSERT INTO daily_rates (
+            batch_id, ratedate, purityid, metalid, purityname, purity,
+            rate, buy_rate, sell_rate, notes, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        `,
+        args: [
+          nextBatchId,
+          cleanDate,
+          purityId,
+          metalId,
+          purityName,
+          purityPercent,
+          rateVal,
+          buyRateVal,
+          sellRateVal,
+          notes,
+          now,
+          now,
+        ],
       });
 
-      if (existing.rows.length > 0) {
-        const existingId = existing.rows[0].id;
-        await client.execute({
-          sql: `
-            UPDATE daily_rates SET
-              metalid = ?,
-              purityname = ?,
-              purity = ?,
-              rate = ?,
-              buy_rate = ?,
-              sell_rate = ?,
-              notes = ?,
-              updated_at = ?
-            WHERE id = ?;
-          `,
-          args: [metalId, purityName, purityPercent, rateVal, buyRateVal, sellRateVal, notes, now, existingId],
-        });
-      } else {
-        await client.execute({
-          sql: `
-            INSERT INTO daily_rates (
-              ratedate, purityid, metalid, purityname, purity,
-              rate, buy_rate, sell_rate, notes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-          `,
-          args: [
-            cleanDate,
-            purityId,
-            metalId,
-            purityName,
-            purityPercent,
-            rateVal,
-            buyRateVal,
-            sellRateVal,
-            notes,
-            now,
-            now,
-          ],
-        });
+      if (insRes.lastInsertRowid) {
+        insertedIds.push(Number(insRes.lastInsertRowid));
       }
     }
 
     return res.json({
       success: true,
-      message: `Daily board rates for ${cleanDate} saved successfully (${rates.length} purities updated).`,
+      message: `Board rates update (Batch #${nextBatchId}) saved successfully for ${cleanDate} (${insertedIds.length} purities logged in history).`,
+      batch_id: nextBatchId,
       saved_date: cleanDate,
+      total_logged: insertedIds.length,
     });
   } catch (error) {
     console.error("bulkUpdateRatesController error:", error);
@@ -372,7 +386,7 @@ export async function bulkUpdateRatesController(req, res) {
 
 /**
  * GET /api/tenant/rates/history
- * Returns chronological history of daily rate entries with optional filters.
+ * Returns chronological history of every single rate update ever performed with its unique integer Record ID and Batch ID.
  */
 export async function getRateHistoryController(req, res) {
   try {
@@ -380,13 +394,25 @@ export async function getRateHistoryController(req, res) {
     const client = createTenantClient(turso_url, turso_token);
     await ensureDailyRatesTable(client);
 
-    const { from_date, to_date, metalid, purityid, limit = 100 } = req.query;
+    const { from_date, to_date, metalid, purityid, limit = 200 } = req.query;
 
     let sql = `
       SELECT 
-        r.*,
+        r.id,
+        COALESCE(r.batch_id, 1) AS batch_id,
+        r.ratedate,
+        r.purityid,
+        r.metalid,
         COALESCE(m.metalname, r.metalid) AS metalname,
-        p.purityshortname
+        r.purityname,
+        p.purityshortname,
+        r.purity,
+        r.rate,
+        r.buy_rate,
+        r.sell_rate,
+        r.notes,
+        r.created_at,
+        r.updated_at
       FROM daily_rates r
       LEFT JOIN metals m ON r.metalid = m.metalid
       LEFT JOIN purities p ON r.purityid = p.purityid
@@ -414,8 +440,8 @@ export async function getRateHistoryController(req, res) {
       args.push(parseInt(purityid, 10));
     }
 
-    sql += ` ORDER BY r.ratedate DESC, r.updated_at DESC, r.id DESC LIMIT ?;`;
-    args.push(parseInt(limit, 10) || 100);
+    sql += ` ORDER BY r.id DESC LIMIT ?;`;
+    args.push(parseInt(limit, 10) || 200);
 
     const result = await client.execute({ sql, args });
 
@@ -435,7 +461,7 @@ export async function getRateHistoryController(req, res) {
 
 /**
  * DELETE /api/tenant/rates/:id
- * Deletes a single rate history entry by ID.
+ * Deletes a single rate history entry by integer ID.
  */
 export async function deleteRateRecordController(req, res) {
   try {

@@ -7,6 +7,7 @@ class PurityRateItem {
   final double purity;
   final String type;
   final int? rateId;
+  final int? batchId;
   final String ratedate;
   final double rate;
   final double buyRate;
@@ -25,6 +26,7 @@ class PurityRateItem {
     required this.purity,
     this.type = 'ORNAMENT',
     this.rateId,
+    this.batchId,
     this.ratedate = '',
     this.rate = 0.0,
     this.buyRate = 0.0,
@@ -45,6 +47,7 @@ class PurityRateItem {
       purity: double.tryParse(json['purity']?.toString() ?? '0') ?? 0.0,
       type: json['type']?.toString() ?? 'ORNAMENT',
       rateId: json['rate_id'] != null ? int.tryParse(json['rate_id'].toString()) : null,
+      batchId: json['batch_id'] != null ? int.tryParse(json['batch_id'].toString()) : null,
       ratedate: json['ratedate']?.toString() ?? '',
       rate: double.tryParse(json['rate']?.toString() ?? '0') ?? 0.0,
       buyRate: double.tryParse(json['buy_rate']?.toString() ?? '0') ?? 0.0,
@@ -52,7 +55,7 @@ class PurityRateItem {
       notes: json['notes']?.toString() ?? '',
       isSavedForDate: json['is_saved_for_date'] == true || json['is_saved_for_date'] == 1 || json['is_saved_for_date'] == 'true',
       previousRateDate: json['previous_rate_date']?.toString() ?? '',
-      updatedAt: json['updated_at']?.toString() ?? json['last_updated_at']?.toString(),
+      updatedAt: json['updated_at']?.toString() ?? json['last_updated_at']?.toString() ?? json['created_at']?.toString(),
     );
   }
 
@@ -78,6 +81,7 @@ class PurityRateItem {
     double? purity,
     String? type,
     int? rateId,
+    int? batchId,
     String? ratedate,
     double? rate,
     double? buyRate,
@@ -96,6 +100,7 @@ class PurityRateItem {
       purity: purity ?? this.purity,
       type: type ?? this.type,
       rateId: rateId ?? this.rateId,
+      batchId: batchId ?? this.batchId,
       ratedate: ratedate ?? this.ratedate,
       rate: rate ?? this.rate,
       buyRate: buyRate ?? this.buyRate,
@@ -110,6 +115,7 @@ class PurityRateItem {
 
 class RateHistoryRecord {
   final int id;
+  final int batchId;
   final String ratedate;
   final int purityid;
   final String metalid;
@@ -126,6 +132,7 @@ class RateHistoryRecord {
 
   RateHistoryRecord({
     required this.id,
+    this.batchId = 1,
     required this.ratedate,
     required this.purityid,
     required this.metalid,
@@ -144,6 +151,7 @@ class RateHistoryRecord {
   factory RateHistoryRecord.fromJson(Map<String, dynamic> json) {
     return RateHistoryRecord(
       id: int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      batchId: int.tryParse(json['batch_id']?.toString() ?? '1') ?? 1,
       ratedate: json['ratedate']?.toString() ?? '',
       purityid: int.tryParse(json['purityid']?.toString() ?? '0') ?? 0,
       metalid: json['metalid']?.toString().toUpperCase() ?? 'G',

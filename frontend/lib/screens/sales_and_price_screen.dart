@@ -326,12 +326,13 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
     }
 
     final StringBuffer buffer = StringBuffer();
-    buffer.writeln("Date,Metal,Purity Name,Purity %,Board Rate (Rs/g),Buy Back (Rs/g),Notes,Updated At");
+    buffer.writeln("Record ID,Batch No,Rate Date,Metal,Purity Name,Purity %,Board Rate (Rs/g),Buy Back (Rs/g),Notes,Recorded Timestamp");
 
     for (final h in _historyRecords) {
       final safeName = '"${h.purityname.replaceAll('"', '""')}"';
       final safeNotes = '"${h.notes.replaceAll('"', '""')}"';
-      buffer.writeln("${h.ratedate},${h.metalname},$safeName,${h.purity},${h.rate},${h.buyRate},$safeNotes,${h.updatedAt}");
+      final timeStr = h.createdAt.isNotEmpty ? h.createdAt : h.updatedAt;
+      buffer.writeln("#${h.id},Batch #${h.batchId},${h.ratedate},${h.metalname},$safeName,${h.purity},${h.rate},${h.buyRate},$safeNotes,$timeStr");
     }
 
     Clipboard.setData(ClipboardData(text: buffer.toString()));
@@ -1108,6 +1109,20 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
             spacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              // Total updates logged pill
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Text(
+                  "${_historyRecords.length} Total Updates Logged",
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
+                ),
+              ),
+
               // Metal Filter
               Container(
                 height: 38,
@@ -1159,7 +1174,9 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
   Widget _buildHistoryTable() {
     final filtered = _historyRecords.where((h) {
       if (_historySearchQuery.isEmpty) return true;
-      return h.ratedate.contains(_historySearchQuery) ||
+      return h.id.toString().contains(_historySearchQuery) ||
+          h.batchId.toString().contains(_historySearchQuery) ||
+          h.ratedate.contains(_historySearchQuery) ||
           h.purityname.toLowerCase().contains(_historySearchQuery) ||
           h.metalname.toLowerCase().contains(_historySearchQuery) ||
           h.rate.toString().contains(_historySearchQuery) ||
@@ -1180,7 +1197,7 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
             Icon(Icons.history_toggle_off_rounded, size: 40, color: GlassTheme.textSecondary),
             SizedBox(height: 12),
             Text("No historical rate records found", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Text("Published daily rates will automatically appear here as an audit log.", style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12)),
+            Text("Every published rate update will automatically appear here as an audit log.", style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12)),
           ],
         ),
       );
@@ -1202,49 +1219,120 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
           child: DataTable(
             headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
             horizontalMargin: 20,
-            columnSpacing: 24,
+            columnSpacing: 20,
             columns: const [
-              DataColumn(label: Text("Rate Date", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("Rate # / ID", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("Rate Date & Time", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("Metal", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("Purity Grade", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("Purity %", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("Board Rate (₹/g)", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("Buy Back (₹/g)", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
-              DataColumn(label: Text("Recorded At", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("Remarks / Notes", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("Actions", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
             ],
             rows: filtered.map((h) {
+              String timeDisplay = "";
+              if (h.createdAt.contains("T")) {
+                final timePart = h.createdAt.split("T")[1];
+                timeDisplay = timePart.length >= 8 ? timePart.substring(0, 8) : timePart;
+              }
+
               return DataRow(
                 cells: [
+                  // Rate # / Unique Integer ID Badge
                   DataCell(
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: GlassTheme.accentAmber.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(h.ratedate, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: GlassTheme.accentAmber)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.4)),
+                          ),
+                          child: Text(
+                            "#${h.id}",
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: Color(0xFF8B5CF6)),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            "B#${h.batchId}",
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 10, color: GlassTheme.textSecondary),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+
+                  // Rate Date & Time
+                  DataCell(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: GlassTheme.accentAmber.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            h.ratedate,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: GlassTheme.accentAmber),
+                          ),
+                        ),
+                        if (timeDisplay.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            timeDisplay,
+                            style: const TextStyle(fontSize: 10, color: GlassTheme.textSecondary, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Metal
                   DataCell(Text(h.metalname, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
+
+                  // Purity Grade
                   DataCell(Text(h.purityname, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+
+                  // Purity %
                   DataCell(Text("${h.purity}%", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+
+                  // Board Rate (₹/g)
                   DataCell(
                     Text("₹${h.rate.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: GlassTheme.textPrimary)),
                   ),
+
+                  // Buy Back (₹/g)
                   DataCell(
                     Text(h.buyRate > 0 ? "₹${h.buyRate.toStringAsFixed(2)}" : "-", style: const TextStyle(fontSize: 12)),
                   ),
+
+                  // Remarks / Notes
                   DataCell(
                     Text(
-                      h.updatedAt.isNotEmpty ? h.updatedAt.split("T").first : "-",
+                      h.notes.isNotEmpty ? h.notes : "-",
                       style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary),
                     ),
                   ),
+
+                  // Actions
                   DataCell(
                     IconButton(
                       icon: const Icon(Icons.delete_outline_rounded, size: 16, color: GlassTheme.accentRose),
-                      tooltip: "Delete record",
+                      tooltip: "Delete rate entry #${h.id}",
                       onPressed: () => _deleteHistoryEntry(h),
                     ),
                   ),
