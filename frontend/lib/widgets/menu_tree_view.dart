@@ -140,7 +140,7 @@ class MenuTreeRegistry {
         MenuTreeNode(
           code: MenuRegistry.MASTER_TAX_MASTER,
           title: "Tax Master",
-          subtitle: "Configure SGST, CGST, IGST rates & posting accounts",
+          subtitle: "Configure SGST, CGST, IGST tax rates & slabs",
           icon: Icons.percent_rounded,
           color: Color(0xFF10B981),
         ),

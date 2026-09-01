@@ -1263,7 +1263,7 @@ class _HomeScreenState extends State<HomeScreen> {
         "id": "TAXMASTER",
         "name": "TAX MASTER",
         "title": "Tax Master Setup",
-        "desc": "Configure SGST, CGST, IGST rates & posting accounts",
+        "desc": "Configure SGST, CGST, IGST rates for jewellery & bullion",
         "icon": Icons.percent_rounded,
         "color": GlassTheme.accentEmerald,
       },
@@ -1737,6 +1737,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.account_tree_rounded,
                   color: const Color(0xFFEC4899),
                   onTap: () => setState(() => _masterSubmenu = "SUBPRODUCTS"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_TAX_MASTER))
+                _buildSubmenuGridCard(
+                  title: "Tax Master",
+                  desc: "Configure GST rates (SGST, CGST, IGST) for categories",
+                  icon: Icons.percent_rounded,
+                  color: GlassTheme.accentEmerald,
+                  onTap: () => setState(() => _masterSubmenu = "TAXMASTER"),
                 ),
             ],
           ),
