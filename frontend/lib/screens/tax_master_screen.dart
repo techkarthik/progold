@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/tax_model.dart';
-import '../models/account_head_model.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/glass_theme.dart';
@@ -22,7 +21,6 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
 
   List<TaxRecord> _taxRecords = [];
   List<TaxRecord> _filteredTaxRecords = [];
-  List<AccountHead> _accountHeads = [];
   bool _isLoading = false;
   String _searchQuery = '';
   bool _isTableView = false;
@@ -35,13 +33,9 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
   final _nameController = TextEditingController();
-  final _sgstPerController = TextEditingController(text: '0.0');
-  final _cgstPerController = TextEditingController(text: '0.0');
-  final _igstPerController = TextEditingController(text: '0.0');
-
-  String? _selectedSgstAc;
-  String? _selectedCgstAc;
-  String? _selectedIgstAc;
+  final _sgstPerController = TextEditingController(text: '1.50');
+  final _cgstPerController = TextEditingController(text: '1.50');
+  final _igstPerController = TextEditingController(text: '3.00');
   bool _isSaving = false;
 
   @override
@@ -68,18 +62,17 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
 
     setState(() => _isLoading = true);
 
-    final results = await Future.wait([
-      _api.getTaxRecords(token),
-      _api.getAccountHeads(token),
-    ]);
-
-    if (mounted) {
-      setState(() {
-        _taxRecords = results[0] as List<TaxRecord>;
-        _accountHeads = results[1] as List<AccountHead>;
-        _applyFilter(_searchQuery);
-        _isLoading = false;
-      });
+    try {
+      final records = await _api.getTaxRecords(token);
+      if (mounted) {
+        setState(() {
+          _taxRecords = records;
+          _applyFilter(_searchQuery);
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -91,9 +84,9 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
       _filteredTaxRecords = _taxRecords.where((t) {
         return t.taxcode.toLowerCase().contains(_searchQuery) ||
             t.taxname.toLowerCase().contains(_searchQuery) ||
-            t.sgstacname.toLowerCase().contains(_searchQuery) ||
-            t.cgstacname.toLowerCase().contains(_searchQuery) ||
-            t.igstacname.toLowerCase().contains(_searchQuery);
+            t.sgstPer.toString().contains(_searchQuery) ||
+            t.cgstPer.toString().contains(_searchQuery) ||
+            t.igstPer.toString().contains(_searchQuery);
       }).toList();
     }
   }
@@ -105,14 +98,9 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
       if (existing != null) {
         _codeController.text = existing.taxcode;
         _nameController.text = existing.taxname;
-        _sgstPerController.text = existing.sgstPer.toString();
-        _cgstPerController.text = existing.cgstPer.toString();
-        _igstPerController.text = existing.igstPer.toString();
-
-        final accountNames = _accountHeads.map((h) => h.accountname).toList();
-        _selectedSgstAc = accountNames.contains(existing.sgstacname) ? existing.sgstacname : null;
-        _selectedCgstAc = accountNames.contains(existing.cgstacname) ? existing.cgstacname : null;
-        _selectedIgstAc = accountNames.contains(existing.igstacname) ? existing.igstacname : null;
+        _sgstPerController.text = existing.sgstPer.toStringAsFixed(2);
+        _cgstPerController.text = existing.cgstPer.toStringAsFixed(2);
+        _igstPerController.text = existing.igstPer.toStringAsFixed(2);
       } else {
         _resetFormFields();
       }
@@ -122,12 +110,9 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
   void _resetFormFields() {
     _codeController.clear();
     _nameController.clear();
-    _sgstPerController.text = '0.0';
-    _cgstPerController.text = '0.0';
-    _igstPerController.text = '0.0';
-    _selectedSgstAc = null;
-    _selectedCgstAc = null;
-    _selectedIgstAc = null;
+    _sgstPerController.text = '1.50';
+    _cgstPerController.text = '1.50';
+    _igstPerController.text = '3.00';
   }
 
   void _closeForm() {
@@ -136,6 +121,13 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
       _editingRecord = null;
       _resetFormFields();
     });
+  }
+
+  void _autoCalculateIgst() {
+    final sgst = double.tryParse(_sgstPerController.text.trim()) ?? 0.0;
+    final cgst = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
+    _igstPerController.text = (sgst + cgst).toStringAsFixed(2);
+    setState(() {});
   }
 
   Future<void> _saveTaxForm() async {
@@ -152,17 +144,14 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
       final name = _nameController.text.trim();
       final sgst = double.tryParse(_sgstPerController.text.trim()) ?? 0.0;
       final cgst = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
-      final igst = double.tryParse(_igstPerController.text.trim()) ?? 0.0;
+      final igst = double.tryParse(_igstPerController.text.trim()) ?? (sgst + cgst);
 
       final record = TaxRecord(
         taxcode: code,
         taxname: name,
         sgstPer: sgst,
-        sgstacname: _selectedSgstAc ?? '',
         cgstPer: cgst,
-        cgstacname: _selectedCgstAc ?? '',
         igstPer: igst,
-        igstacname: _selectedIgstAc ?? '',
       );
 
       final isEditing = _editingRecord != null && _editingRecord!.taxid != null;
@@ -175,7 +164,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                isEditing ? "Tax Config '$code' updated successfully!" : "Tax Config '$code' created successfully!",
+                isEditing ? "Tax Rule '$code' updated successfully!" : "Tax Rule '$code' created successfully!",
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               backgroundColor: GlassTheme.accentEmerald,
@@ -205,179 +194,129 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
     }
   }
 
-  // ================= MAIN BUILD =================
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
-    final isMobile = MediaQuery.of(context).size.width < 700;
+    final isMobile = MediaQuery.of(context).size.width < 768;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header
-        _buildHeaderBar(context, auth, isMobile),
-        const SizedBox(height: 16),
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHeader(context, auth),
+            const SizedBox(height: 16),
 
-        // Embedded In-Page Form
-        if (_showForm) ...[
-          _buildInPageEntryForm(isMobile),
-          const SizedBox(height: 20),
-        ],
+            // In-Page Create / Edit Form
+            if (_showForm) ...[
+              _buildTaxForm(context, auth, isMobile),
+              const SizedBox(height: 20),
+            ],
 
-        // Search & View toggles
-        _buildSearchToolbar(isMobile),
-        const SizedBox(height: 16),
+            // Search & View Toggle Toolbar
+            _buildSearchToolbar(isMobile),
+            const SizedBox(height: 16),
 
-        // Body
-        if (_isLoading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 60),
-            child: Center(child: CircularProgressIndicator(color: GlassTheme.primaryNeon)),
-          )
-        else if (_filteredTaxRecords.isEmpty)
-          _buildEmptyState(context, auth)
-        else if (_isTableView && !isMobile)
-          _buildTableView(context, auth)
-        else
-          _buildCardsGridView(context, auth, isMobile),
-      ],
+            // Data View
+            if (_isLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(60.0),
+                  child: CircularProgressIndicator(color: Color(0xFF10B981)),
+                ),
+              )
+            else if (_filteredTaxRecords.isEmpty)
+              _buildEmptyState(context, auth)
+            else if (_isTableView)
+              _buildTableView(context, auth)
+            else
+              _buildCardsGridView(context, auth, isMobile),
+          ],
+        ),
+      ),
     );
   }
 
-  // ================= HEADER BAR =================
-  Widget _buildHeaderBar(BuildContext context, AuthProvider auth, bool isMobile) {
-    return GlassContainer(
-      borderRadius: 16,
+  // ================= HEADER & BREADCRUMB =================
+  Widget _buildHeader(BuildContext context, AuthProvider auth) {
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x060F172A), blurRadius: 10, offset: Offset(0, 3)),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.onBack != null) ...[
                 IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
-                  tooltip: "Back to Master Hub",
+                  tooltip: "Back",
                   onPressed: widget.onBack,
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 8),
               ],
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
-                child: const Icon(Icons.percent_rounded, color: Colors.white, size: 22),
+                child: const Icon(Icons.percent_rounded, color: Color(0xFF10B981), size: 24),
               ),
               const SizedBox(width: 14),
               const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        "Tax Master",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: GlassTheme.textPrimary,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      StatusBadge(label: "Rates & Accounts", color: GlassTheme.accentEmerald),
-                    ],
+                  Text(
+                    "Tax Master (GST Rates)",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: GlassTheme.textPrimary,
+                      letterSpacing: -0.5,
+                    ),
                   ),
                   SizedBox(height: 2),
                   Text(
-                    "Configure SGST, CGST & IGST tax configurations and ledger mappings",
-                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                    "Item Master > Tax Master",
+                    style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
             ],
           ),
 
-          // Actions
+          // Create Tax Config Button & Table Switcher
           Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              if (!isMobile)
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          Icons.grid_view_rounded,
-                          color: !_isTableView ? GlassTheme.primaryNeon : GlassTheme.textMuted,
-                          size: 18,
-                        ),
-                        tooltip: "Card Grid View",
-                        onPressed: () => setState(() => _isTableView = false),
-                      ),
-                      const SizedBox(
-                        height: 20,
-                        child: VerticalDivider(width: 1, color: Color(0xFFCBD5E1)),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.table_rows_rounded,
-                          color: _isTableView ? GlassTheme.primaryNeon : GlassTheme.textMuted,
-                          size: 18,
-                        ),
-                        tooltip: "Compact Table View",
-                        onPressed: () => setState(() => _isTableView = true),
-                      ),
-                    ],
-                  ),
-                ),
-              if (!isMobile) const SizedBox(width: 12),
               IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: GlassTheme.textPrimary),
-                tooltip: "Reload Taxes",
-                onPressed: _loadData,
+                icon: Icon(_isTableView ? Icons.grid_view_rounded : Icons.table_chart_rounded, color: GlassTheme.textSecondary),
+                tooltip: _isTableView ? "Switch to Card View" : "Switch to Table View",
+                onPressed: () => setState(() => _isTableView = !_isTableView),
               ),
               const SizedBox(width: 8),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _showForm ? const Color(0xFF334155) : const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shadowColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              if (!_showForm)
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: const Text("New Tax Rate", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  onPressed: () => _openForm(),
                 ),
-                icon: Icon(_showForm ? Icons.close_rounded : Icons.add_rounded, size: 18),
-                label: Text(
-                  _showForm ? "Close Form" : "Add Tax Config",
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                onPressed: () {
-                  if (_showForm) {
-                    _closeForm();
-                  } else {
-                    _openForm();
-                  }
-                },
-              ),
             ],
           ),
         ],
@@ -385,18 +324,21 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
     );
   }
 
-  // ================= IN-PAGE ENTRY FORM COMPONENT =================
-  Widget _buildInPageEntryForm(bool isMobile) {
+  // ================= IN-PAGE ENTRY FORM =================
+  Widget _buildTaxForm(BuildContext context, AuthProvider auth, bool isMobile) {
     final isEditing = _editingRecord != null;
-    final List<String> accountNames = _accountHeads.map((h) => h.accountname).toList();
+    final double sgstVal = double.tryParse(_sgstPerController.text) ?? 0.0;
+    final double cgstVal = double.tryParse(_cgstPerController.text) ?? 0.0;
+    final double igstVal = double.tryParse(_igstPerController.text) ?? (sgstVal + cgstVal);
+    final double totalRate = igstVal > 0 ? igstVal : (sgstVal + cgstVal);
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5), width: 1.5),
+        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.35)),
         boxShadow: const [
-          BoxShadow(color: Color(0x0C0F172A), blurRadius: 16, offset: Offset(0, 4)),
+          BoxShadow(color: Color(0x0A0F172A), blurRadius: 16, offset: Offset(0, 4)),
         ],
       ),
       padding: const EdgeInsets.all(22),
@@ -405,28 +347,15 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Form Top Bar
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    isEditing ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
-                    color: const Color(0xFF10B981),
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isEditing ? "Edit Tax Configuration (${_editingRecord!.taxcode})" : "Create New Tax Configuration",
+                        isEditing ? "Edit Tax Rule (${_editingRecord!.taxcode})" : "Create New Tax Rate Rule",
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
@@ -434,9 +363,9 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        isEditing ? "Modify tax rates and accounting ledger postings" : "Define tax identifier, GST rates and ledger account mapping",
-                        style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                      const Text(
+                        "Define GST rates for jewellery items, stones, making charges, or exempt goods.",
+                        style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -450,36 +379,33 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
             ),
             const Divider(height: 28, color: Color(0xFFE2E8F0)),
 
-            // Field Row 1: Tax Code & Tax Name
+            // Section 1: Basic Information
             Wrap(
               spacing: 16,
               runSpacing: 14,
+              crossAxisAlignment: WrapCrossAlignment.start,
               children: [
                 SizedBox(
-                  width: isMobile ? double.infinity : 200,
+                  width: isMobile ? double.infinity : 160,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        "Tax Code (max 3 chars) *",
+                        "Tax Code * (Max 3)",
                         style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _codeController,
-                        enabled: !isEditing,
-                        style: TextStyle(
-                          color: !isEditing ? GlassTheme.textPrimary : GlassTheme.textMuted,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        decoration: _inputDecoration("e.g. G03, G18"),
                         maxLength: 3,
-                        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                         inputFormatters: [
-                          LengthLimitingTextInputFormatter(3),
                           FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                          TextInputFormatter.withFunction(
+                            (oldVal, newVal) => newVal.copyWith(text: newVal.text.toUpperCase()),
+                          ),
                         ],
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+                        decoration: _inputDecoration("e.g. G03").copyWith(counterText: ""),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) return "Code required";
                           if (val.trim().length > 3) return "Max 3 chars";
@@ -490,19 +416,19 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                   ),
                 ),
                 SizedBox(
-                  width: isMobile ? double.infinity : 400,
+                  width: isMobile ? double.infinity : 360,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        "Tax Name *",
+                        "Tax Rule Description / Name *",
                         style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-                        decoration: _inputDecoration("e.g. GST 3.00% (Jewellery)"),
+                        decoration: _inputDecoration("e.g. GST 3.00% (Gold & Silver Jewellery)"),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) return "Tax Name is required";
                           return null;
@@ -515,148 +441,119 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
             ),
             const SizedBox(height: 18),
 
-            // Rates and posting accounts title
-            const Text(
-              "GST Rates & Ledger Postings",
-              style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
+            // Section 2: GST Rate Breakdown
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.calculate_rounded, color: Color(0xFF10B981), size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            "GST Percentage Breakdown",
+                            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          "Total GST: ${totalRate.toStringAsFixed(2)}%",
+                          style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w800, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
 
-            // Field Row 2: SGST % & Account
-            Wrap(
-              spacing: 16,
-              runSpacing: 14,
-              children: [
-                SizedBox(
-                  width: isMobile ? double.infinity : 150,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 14,
                     children: [
-                      const Text("SGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: _sgstPerController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
-                        decoration: _inputDecoration("0.0"),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) return "Required";
-                          if (double.tryParse(val) == null) return "Invalid";
-                          return null;
-                        },
+                      SizedBox(
+                        width: isMobile ? double.infinity : 150,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("SGST Rate % *", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _sgstPerController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("1.50"),
+                              onChanged: (_) => _autoCalculateIgst(),
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) return "Required";
+                                if (double.tryParse(val) == null) return "Invalid";
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: isMobile ? double.infinity : 150,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("CGST Rate % *", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _cgstPerController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("1.50"),
+                              onChanged: (_) => _autoCalculateIgst(),
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) return "Required";
+                                if (double.tryParse(val) == null) return "Invalid";
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: isMobile ? double.infinity : 150,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("IGST Rate % (Inter-state)", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _igstPerController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
+                              decoration: _inputDecoration("3.00"),
+                              onChanged: (_) => setState(() {}),
+                              validator: (val) {
+                                if (val == null || val.trim().isEmpty) return "Required";
+                                if (double.tryParse(val) == null) return "Invalid";
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 320,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("SGST Posting Ledger Account", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      _buildAccountDropdown(
-                        value: _selectedSgstAc,
-                        options: accountNames,
-                        hint: "Select SGST Account Head",
-                        onChanged: (val) => setState(() => _selectedSgstAc = val),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Field Row 3: CGST % & Account
-            Wrap(
-              spacing: 16,
-              runSpacing: 14,
-              children: [
-                SizedBox(
-                  width: isMobile ? double.infinity : 150,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("CGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: _cgstPerController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
-                        decoration: _inputDecoration("0.0"),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) return "Required";
-                          if (double.tryParse(val) == null) return "Invalid";
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 320,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("CGST Posting Ledger Account", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      _buildAccountDropdown(
-                        value: _selectedCgstAc,
-                        options: accountNames,
-                        hint: "Select CGST Account Head",
-                        onChanged: (val) => setState(() => _selectedCgstAc = val),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Field Row 4: IGST % & Account
-            Wrap(
-              spacing: 16,
-              runSpacing: 14,
-              children: [
-                SizedBox(
-                  width: isMobile ? double.infinity : 150,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("IGST %", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: _igstPerController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
-                        decoration: _inputDecoration("0.0"),
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) return "Required";
-                          if (double.tryParse(val) == null) return "Invalid";
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 320,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("IGST Posting Ledger Account", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 6),
-                      _buildAccountDropdown(
-                        value: _selectedIgstAc,
-                        options: accountNames,
-                        hint: "Select IGST Account Head",
-                        onChanged: (val) => setState(() => _selectedIgstAc = val),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 24),
 
@@ -676,7 +573,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                 ),
                 const SizedBox(width: 12),
                 GlassButton(
-                  label: isEditing ? "Update Tax Config" : "Save Tax Config",
+                  label: isEditing ? "Update Tax Rate" : "Save Tax Rate",
                   icon: Icons.check_circle_outline_rounded,
                   gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
                   isLoading: _isSaving,
@@ -716,34 +613,6 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
     );
   }
 
-  Widget _buildAccountDropdown({
-    required String? value,
-    required List<String> options,
-    required String hint,
-    required void Function(String?) onChanged,
-  }) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      dropdownColor: Colors.white,
-      style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
-      decoration: _inputDecoration(hint),
-      isExpanded: true,
-      items: [
-        const DropdownMenuItem<String>(
-          value: null,
-          child: Text("-- None (Optional) --", style: TextStyle(color: GlassTheme.textMuted, fontStyle: FontStyle.italic)),
-        ),
-        ...options.map((name) {
-          return DropdownMenuItem<String>(
-            value: name,
-            child: Text(name, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
-          );
-        }),
-      ],
-      onChanged: onChanged,
-    );
-  }
-
   // ================= SEARCH TOOLBAR =================
   Widget _buildSearchToolbar(bool isMobile) {
     return GlassContainer(
@@ -758,7 +627,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
               style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search_rounded, color: GlassTheme.textSecondary, size: 20),
-                hintText: "Search tax configs by name, code, posting accounts...",
+                hintText: "Search tax rules by code, description, or rates...",
                 hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 13),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
@@ -811,14 +680,14 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
             ),
             const SizedBox(height: 18),
             Text(
-              _searchQuery.isNotEmpty ? "No matching tax rates found" : "No Tax Configs created yet",
+              _searchQuery.isNotEmpty ? "No matching tax rates found" : "No Tax Master rules configured yet",
               style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
               _searchQuery.isNotEmpty
-                  ? "Try adjusting your search filters or clear keywords."
-                  : "Get started by adding your first tax configuration rate (e.g. GST, VAT).",
+                  ? "Try adjusting your search query."
+                  : "Get started by adding your GST tax slabs (e.g. GST 3%, GST 18%, Exempt).",
               style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
@@ -832,7 +701,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text("Create Tax Config", style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text("Create Tax Rule", style: TextStyle(fontWeight: FontWeight.bold)),
                 onPressed: () => _openForm(),
               ),
             ],
@@ -851,6 +720,8 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
           spacing: 16,
           runSpacing: 16,
           children: _filteredTaxRecords.map((tax) {
+            final totalRate = tax.igstPer > 0 ? tax.igstPer : (tax.sgstPer + tax.cgstPer);
+
             return SizedBox(
               width: isMobile ? constraints.maxWidth : cardWidth,
               child: Container(
@@ -874,7 +745,7 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                           child: Text(
                             tax.taxname,
                             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -886,12 +757,27 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                     const Divider(color: Color(0xFFE2E8F0)),
                     const SizedBox(height: 10),
 
-                    // Tax Rates & Mappings
-                    _buildTaxParamRow("SGST", tax.sgstPer, tax.sgstacname),
+                    // Tax Rates
+                    _buildTaxRateRow("SGST Rate", "${tax.sgstPer.toStringAsFixed(2)}%"),
+                    const SizedBox(height: 6),
+                    _buildTaxRateRow("CGST Rate", "${tax.cgstPer.toStringAsFixed(2)}%"),
+                    const SizedBox(height: 6),
+                    _buildTaxRateRow("IGST Rate", "${tax.igstPer.toStringAsFixed(2)}%"),
                     const SizedBox(height: 8),
-                    _buildTaxParamRow("CGST", tax.cgstPer, tax.cgstacname),
-                    const SizedBox(height: 8),
-                    _buildTaxParamRow("IGST", tax.igstPer, tax.igstacname),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Effective Total GST", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF047857))),
+                          Text("${totalRate.toStringAsFixed(2)}%", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF047857))),
+                        ],
+                      ),
+                    ),
 
                     const SizedBox(height: 14),
                     Row(
@@ -899,12 +785,12 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryNeon, size: 20),
-                          tooltip: "Edit Tax Config",
+                          tooltip: "Edit",
                           onPressed: () => _openForm(tax),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 20),
-                          tooltip: "Delete Tax Config",
+                          tooltip: "Delete",
                           onPressed: () => _confirmDelete(tax),
                         ),
                       ],
@@ -919,41 +805,12 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
     );
   }
 
-  Widget _buildTaxParamRow(String label, double percentage, String account) {
+  Widget _buildTaxRateRow(String label, String value) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Container(
-          width: 50,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          "${percentage.toStringAsFixed(2)}%",
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            account.isNotEmpty ? "Posting: $account" : "No account mapped",
-            style: TextStyle(
-              fontSize: 12,
-              color: account.isNotEmpty ? GlassTheme.primaryNeon : GlassTheme.textMuted,
-              fontWeight: FontWeight.w600,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600)),
+        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
       ],
     );
   }
@@ -978,26 +835,45 @@ class _TaxMasterScreenState extends State<TaxMasterScreen> {
             dataRowColor: WidgetStateProperty.all(Colors.white),
             columns: const [
               DataColumn(label: Text("CODE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-              DataColumn(label: Text("TAX NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("TAX DESCRIPTION / NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("SGST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-              DataColumn(label: Text("SGST ACCOUNT", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("CGST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-              DataColumn(label: Text("CGST ACCOUNT", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("IGST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-              DataColumn(label: Text("IGST ACCOUNT", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("TOTAL GST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("ACTIONS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
             ],
             rows: _filteredTaxRecords.map((tax) {
+              final totalRate = tax.igstPer > 0 ? tax.igstPer : (tax.sgstPer + tax.cgstPer);
+
               return DataRow(
                 cells: [
-                  DataCell(Text(tax.taxcode, style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w800, fontSize: 13))),
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(tax.taxcode, style: const TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.w900, fontSize: 13)),
+                    ),
+                  ),
                   DataCell(Text(tax.taxname, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(Text("${tax.sgstPer.toStringAsFixed(2)}%", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 13))),
-                  DataCell(Text(tax.sgstacname.isEmpty ? "-" : tax.sgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(Text("${tax.cgstPer.toStringAsFixed(2)}%", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 13))),
-                  DataCell(Text(tax.cgstacname.isEmpty ? "-" : tax.cgstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(Text("${tax.igstPer.toStringAsFixed(2)}%", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 13))),
-                  DataCell(Text(tax.igstacname.isEmpty ? "-" : tax.igstacname, style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w600, fontSize: 13))),
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        "${totalRate.toStringAsFixed(2)}%",
+                        style: const TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.w900, fontSize: 12),
+                      ),
+                    ),
+                  ),
                   DataCell(
                     Row(
                       mainAxisSize: MainAxisSize.min,
