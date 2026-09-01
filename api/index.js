@@ -42,6 +42,12 @@ import {
   recoverPasswordOtpController,
 } from "../backend/src/controllers/userController.js";
 import {
+  getEmployeesController,
+  createEmployeeController,
+  updateEmployeeController,
+  deleteEmployeeController,
+} from "../backend/src/controllers/employeeController.js";
+import {
   getAccountHeadsController,
   createAccountHeadController,
   updateAccountHeadController,
@@ -87,6 +93,13 @@ import {
   updateEstimateController,
   deleteEstimateController,
 } from "../backend/src/controllers/estimateController.js";
+import {
+  getLatestRatesController,
+  getRatesByDateController,
+  bulkUpdateRatesController,
+  getRateHistoryController,
+  deleteRateRecordController,
+} from "../backend/src/controllers/rateMasterController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -217,6 +230,12 @@ router.delete("/tenant/users/:id", requireAuth, deleteUserController);
 router.post("/tenant/users/:id/change-password", requireAuth, changePasswordController);
 router.post("/tenant/users/recover-password", requireAuth, recoverPasswordOtpController);
 
+// Tenant Employee Master CRUD Routes
+router.get("/tenant/employees", requireAuth, getEmployeesController);
+router.post("/tenant/employees", requireAuth, createEmployeeController);
+router.put("/tenant/employees/:id", requireAuth, updateEmployeeController);
+router.delete("/tenant/employees/:id", requireAuth, deleteEmployeeController);
+
 // Tenant Account Head CRUD Routes
 router.get("/tenant/account-heads", requireAuth, getAccountHeadsController);
 router.post("/tenant/account-heads", requireAuth, createAccountHeadController);
@@ -270,6 +289,13 @@ router.get("/tenant/estimates", requireAuth, getEstimatesController);
 router.post("/tenant/estimates", requireAuth, createEstimateController);
 router.put("/tenant/estimates/:id", requireAuth, updateEstimateController);
 router.delete("/tenant/estimates/:id", requireAuth, deleteEstimateController);
+
+// Tenant Daily Purity Rates & History Routes (Sales & Price Master)
+router.get("/tenant/rates/latest", requireAuth, getLatestRatesController);
+router.get("/tenant/rates/by-date", requireAuth, getRatesByDateController);
+router.post("/tenant/rates/bulk-update", requireAuth, bulkUpdateRatesController);
+router.get("/tenant/rates/history", requireAuth, getRateHistoryController);
+router.delete("/tenant/rates/:id", requireAuth, deleteRateRecordController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);

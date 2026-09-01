@@ -18,6 +18,9 @@ import 'subproduct_master_screen.dart';
 import 'database_status_screen.dart';
 import 'system_controls_screen.dart';
 import 'estimate_screen.dart';
+import 'employee_master_screen.dart';
+import 'sales_and_price_screen.dart';
+import '../services/api_service.dart';
 import '../constants/menu_registry.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -54,10 +57,39 @@ class _HomeScreenState extends State<HomeScreen> {
   String _masterSubmenu = "HUB"; // e.g. MenuRegistry.MASTER_ORGANIZATION, etc.
   String _settingsSubmenu = "HUB"; // e.g. "DB_STATUS" or "HUB"
 
+  final ApiService _api = ApiService();
+
   // Live gold & silver rate states
-  double _gold24k = 7250.0;
-  double _gold22k = 6650.0;
-  double _silver = 88.50;
+  double _gold24k = 7450.0;
+  double _gold22k = 6850.0;
+  double _silver = 92.50;
+  String _lastRateUpdated = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadLiveRates();
+    });
+  }
+
+  Future<void> _loadLiveRates() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) return;
+
+    try {
+      final summary = await _api.getLatestRates(token);
+      if (mounted) {
+        setState(() {
+          if (summary.gold24k > 0) _gold24k = summary.gold24k;
+          if (summary.gold22k > 0) _gold22k = summary.gold22k;
+          if (summary.silver > 0) _silver = summary.silver;
+          _lastRateUpdated = summary.lastUpdatedAt;
+        });
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -756,6 +788,20 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildRateItem("GOLD 22K (916)", "₹${_gold22k.toStringAsFixed(0)}/g", Icons.trending_up_rounded, GlassTheme.accentEmerald),
           Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
           _buildRateItem("SILVER", "₹${_silver.toStringAsFixed(2)}/g", Icons.trending_flat_rounded, GlassTheme.accentCyan),
+          if (_lastRateUpdated.isNotEmpty) ...[
+            Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.access_time_rounded, size: 14, color: GlassTheme.textSecondary),
+                const SizedBox(width: 4),
+                Text(
+                  "Updated: ${_lastRateUpdated.contains('T') ? _lastRateUpdated.split('T').first : _lastRateUpdated}",
+                  style: const TextStyle(fontSize: 10, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1114,13 +1160,20 @@ class _HomeScreenState extends State<HomeScreen> {
       case "INVENTORY":
         return _buildInventorySubmenu(auth);
       case "SALESANDPRICE":
-        return _buildSalesAndPriceSubmenu(auth);
+        return SalesAndPriceScreen(
+          onBack: () {
+            setState(() => _masterSubmenu = "HUB");
+            _loadLiveRates();
+          },
+        );
       case "LOGINUSERS":
         return UserMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "HUB"),
         );
       case "EMPLOYEES":
-        return _buildEmployeesSubmenu(auth);
+        return EmployeeMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "HUB"),
+        );
       case "ACCOUNTHEAD":
         return AccountHeadMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "HUB"),
@@ -1177,8 +1230,8 @@ class _HomeScreenState extends State<HomeScreen> {
       {
         "id": "SALESANDPRICE",
         "name": "SALES & PRICE",
-        "title": "Board Rates",
-        "desc": "Daily gold/silver rates & price rules",
+        "title": "Daily Metal Rates",
+        "desc": "Purity-based daily board rates, price rules & history",
         "icon": Icons.price_change_rounded,
         "color": GlassTheme.accentAmber,
       },
@@ -1193,8 +1246,8 @@ class _HomeScreenState extends State<HomeScreen> {
       {
         "id": "EMPLOYEES",
         "name": "EMPLOYEES",
-        "title": "Staff & Karigar",
-        "desc": "Sales executives, goldsmith directory & commissions",
+        "title": "Employee Master",
+        "desc": "Staff profiles, branch assignment & employee directory",
         "icon": Icons.badge_rounded,
         "color": GlassTheme.secondaryNeon,
       },
@@ -1732,164 +1785,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  // 3. SUBMENU: SALES AND PRICE
-  Widget _buildSalesAndPriceSubmenu(AuthProvider auth) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
-        ],
-      ),
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.price_change_rounded, color: GlassTheme.accentAmber, size: 24),
-              SizedBox(width: 10),
-              Text("SALES AND PRICE MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            "Manage live board rates, making charge tables (per gram / % of gold), wastage calculation rules, and stone pricing.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _buildRateEditCard("Gold 24K (Pure)", _gold24k, (v) => setState(() => _gold24k = v)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildRateEditCard("Gold 22K (916)", _gold22k, (v) => setState(() => _gold22k = v)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildRateEditCard("Silver (Fine)", _silver, (v) => setState(() => _silver = v)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          GlassButton(
-            label: "Update Today's Board Rates",
-            icon: Icons.save_rounded,
-            gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFD97706)]),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Board rates updated successfully!", style: TextStyle(fontWeight: FontWeight.w700))),
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: GlassTheme.accentAmber, side: const BorderSide(color: GlassTheme.accentAmber)),
-            icon: const Icon(Icons.arrow_back_rounded, size: 16),
-            label: const Text("Back to Master Menu", style: TextStyle(fontWeight: FontWeight.w700)),
-            onPressed: () => setState(() => _masterSubmenu = "HUB"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRateEditCard(String label, double val, ValueChanged<double> onChanged) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFCBD5E1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text("₹${val.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
-        ],
-      ),
-    );
-  }
-
-  // 5. SUBMENU: EMPLOYEES
-  Widget _buildEmployeesSubmenu(AuthProvider auth) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
-        ],
-      ),
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.badge_rounded, color: GlassTheme.secondaryNeon, size: 24),
-              const SizedBox(width: 10),
-              const Text("EMPLOYEES & KARIGARS MASTER", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
-              const Spacer(),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: GlassTheme.secondaryNeon, foregroundColor: Colors.white),
-                icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
-                label: const Text("Add Staff / Karigar", style: TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: () {},
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            "Manage store sales executives, goldsmiths / karigars, artisan accounts, commission %, and staff contact info.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFCBD5E1)),
-            ),
-            child: const Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: GlassTheme.secondaryNeon,
-                  child: Icon(Icons.engineering_rounded, color: Colors.white),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Artisan / Karigar Directory", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800)),
-                      Text("Track issue/receive metal weights, stone wastage, and crafting labor charges", style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: GlassTheme.secondaryNeon, side: const BorderSide(color: GlassTheme.secondaryNeon)),
-            icon: const Icon(Icons.arrow_back_rounded, size: 16),
-            label: const Text("Back to Master Menu", style: TextStyle(fontWeight: FontWeight.w700)),
-            onPressed: () => setState(() => _masterSubmenu = "HUB"),
-          ),
-        ],
       ),
     );
   }

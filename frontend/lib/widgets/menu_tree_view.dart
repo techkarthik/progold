@@ -111,8 +111,8 @@ class MenuTreeRegistry {
         ),
         MenuTreeNode(
           code: MenuRegistry.MASTER_SALES_AND_PRICE,
-          title: "Metal Rates & Pricing Rules",
-          subtitle: "Daily gold/silver board rates, wastage % & making charges",
+          title: "Daily Metal Rates & Pricing",
+          subtitle: "Purity-based daily board rates, price rules & rate history",
           icon: Icons.price_change_rounded,
           color: Color(0xFFF59E0B),
         ),
@@ -125,8 +125,8 @@ class MenuTreeRegistry {
         ),
         MenuTreeNode(
           code: MenuRegistry.MASTER_EMPLOYEES,
-          title: "Staff & Karigar Master",
-          subtitle: "Sales staff, goldsmiths / karigars & commissions",
+          title: "Employee Master",
+          subtitle: "Staff directory, branch assignment & contact details",
           icon: Icons.badge_rounded,
           color: Color(0xFF8B5CF6),
         ),

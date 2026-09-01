@@ -1,0 +1,468 @@
+import { createTenantClient } from "../config/turso.js";
+
+/**
+ * Ensures daily_rates and supporting tables exist in the tenant Turso database.
+ */
+async function ensureDailyRatesTable(client) {
+  // Ensure metals and purities exist first
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS metals (
+      metalid TEXT PRIMARY KEY NOT NULL,
+      metalname TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS purities (
+      purityid INTEGER PRIMARY KEY AUTOINCREMENT,
+      metalid TEXT NOT NULL,
+      purityname TEXT NOT NULL,
+      purityshortname TEXT NOT NULL,
+      purity REAL NOT NULL,
+      type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (metalid) REFERENCES metals(metalid)
+    );
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS daily_rates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ratedate TEXT NOT NULL,
+      purityid INTEGER NOT NULL,
+      metalid TEXT NOT NULL,
+      purityname TEXT NOT NULL,
+      purity REAL NOT NULL,
+      rate REAL NOT NULL,
+      buy_rate REAL DEFAULT 0.0,
+      sell_rate REAL DEFAULT 0.0,
+      notes TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (purityid) REFERENCES purities(purityid)
+    );
+  `);
+
+  // Safe index creation
+  try {
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_daily_rates_date_purity 
+      ON daily_rates (ratedate, purityid);
+    `);
+  } catch (_) {}
+}
+
+/**
+ * GET /api/tenant/rates/latest
+ * Fetches latest rate for every purity in Purity Master, along with summary ticker rates.
+ */
+export async function getLatestRatesController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureDailyRatesTable(client);
+
+    // Fetch all purities joined with metals and their latest rate entry
+    const result = await client.execute(`
+      SELECT 
+        p.purityid,
+        p.metalid,
+        COALESCE(m.metalname, p.metalid) AS metalname,
+        p.purityname,
+        p.purityshortname,
+        p.purity,
+        p.type,
+        r.id AS rate_id,
+        r.ratedate,
+        COALESCE(r.rate, 0.0) AS rate,
+        COALESCE(r.buy_rate, 0.0) AS buy_rate,
+        COALESCE(r.sell_rate, COALESCE(r.rate, 0.0)) AS sell_rate,
+        r.notes,
+        r.updated_at AS last_updated_at
+      FROM purities p
+      LEFT JOIN metals m ON p.metalid = m.metalid
+      LEFT JOIN daily_rates r ON r.id = (
+        SELECT dr.id 
+        FROM daily_rates dr 
+        WHERE dr.purityid = p.purityid 
+        ORDER BY dr.ratedate DESC, dr.updated_at DESC, dr.id DESC 
+        LIMIT 1
+      )
+      ORDER BY p.metalid ASC, p.purity DESC;
+    `);
+
+    const purityRates = result.rows || [];
+
+    // Derive ticker headlines (24K, 22K 916, Silver, etc.)
+    let gold24k = 0.0;
+    let gold22k = 0.0;
+    let silver = 0.0;
+    let platinum = 0.0;
+    let latestTimestamp = '';
+
+    for (const pr of purityRates) {
+      const rateVal = Number(pr.rate) || 0.0;
+      const metalId = String(pr.metalid || '').toUpperCase();
+      const purityVal = Number(pr.purity) || 0.0;
+      const name = String(pr.purityname || '').toUpperCase();
+      const shortName = String(pr.purityshortname || '').toUpperCase();
+
+      if (pr.last_updated_at && (!latestTimestamp || pr.last_updated_at > latestTimestamp)) {
+        latestTimestamp = pr.last_updated_at;
+      }
+
+      if (metalId === 'G' || name.includes('GOLD')) {
+        if (purityVal >= 99.0 || name.includes('24K') || shortName.includes('24K')) {
+          if (gold24k === 0 || purityVal >= 99.0) gold24k = rateVal;
+        } else if (purityVal >= 91.0 || name.includes('22K') || shortName.includes('916')) {
+          if (gold22k === 0) gold22k = rateVal;
+        }
+      } else if (metalId === 'S' || name.includes('SILVER')) {
+        if (silver === 0 || purityVal >= 99.0) {
+          silver = rateVal;
+        }
+      } else if (metalId === 'P' || name.includes('PLATINUM')) {
+        if (platinum === 0) platinum = rateVal;
+      }
+    }
+
+    // Fallbacks if no rate has been saved yet
+    if (gold24k === 0.0) gold24k = 7450.0;
+    if (gold22k === 0.0) gold22k = 6850.0;
+    if (silver === 0.0) silver = 92.50;
+
+    return res.json({
+      success: true,
+      purity_rates: purityRates,
+      ticker: {
+        gold_24k: gold24k,
+        gold_22k: gold22k,
+        silver: silver,
+        platinum: platinum,
+        last_updated_at: latestTimestamp,
+      },
+    });
+  } catch (error) {
+    console.error("getLatestRatesController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch latest rates.",
+    });
+  }
+}
+
+/**
+ * GET /api/tenant/rates/by-date?date=YYYY-MM-DD
+ * Retrieves rates for a specific target date, populated with latest known rates if none saved for that date.
+ */
+export async function getRatesByDateController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureDailyRatesTable(client);
+
+    const targetDate = (req.query.date || new Date().toISOString().split("T")[0]).trim();
+
+    // 1. Fetch all purities from Purity Master
+    const puritiesRes = await client.execute(`
+      SELECT 
+        p.purityid,
+        p.metalid,
+        COALESCE(m.metalname, p.metalid) AS metalname,
+        p.purityname,
+        p.purityshortname,
+        p.purity,
+        p.type
+      FROM purities p
+      LEFT JOIN metals m ON p.metalid = m.metalid
+      ORDER BY p.metalid ASC, p.purity DESC;
+    `);
+
+    const purities = puritiesRes.rows || [];
+
+    // 2. Fetch rates saved on the exact target date
+    const exactDateRatesRes = await client.execute({
+      sql: `SELECT * FROM daily_rates WHERE ratedate = ?;`,
+      args: [targetDate],
+    });
+    const exactMap = new Map();
+    for (const row of exactDateRatesRes.rows || []) {
+      exactMap.set(Number(row.purityid), row);
+    }
+
+    // 3. For purities without a record on targetDate, fetch their latest historical rate before or equal to targetDate
+    const items = [];
+    let isAlreadySavedForDate = exactMap.size > 0;
+
+    for (const p of purities) {
+      const pid = Number(p.purityid);
+      if (exactMap.has(pid)) {
+        const row = exactMap.get(pid);
+        items.push({
+          purityid: pid,
+          metalid: p.metalid,
+          metalname: p.metalname,
+          purityname: p.purityname,
+          purityshortname: p.purityshortname,
+          purity: p.purity,
+          type: p.type,
+          rate_id: row.id,
+          ratedate: row.ratedate,
+          rate: Number(row.rate) || 0.0,
+          buy_rate: Number(row.buy_rate) || 0.0,
+          sell_rate: Number(row.sell_rate) || 0.0,
+          notes: row.notes || "",
+          is_saved_for_date: true,
+          updated_at: row.updated_at,
+        });
+      } else {
+        // Fetch last known historical rate
+        const lastKnownRes = await client.execute({
+          sql: `
+            SELECT * FROM daily_rates 
+            WHERE purityid = ? AND ratedate <= ?
+            ORDER BY ratedate DESC, updated_at DESC, id DESC 
+            LIMIT 1;
+          `,
+          args: [pid, targetDate],
+        });
+
+        const lastKnown = lastKnownRes.rows?.[0];
+        items.push({
+          purityid: pid,
+          metalid: p.metalid,
+          metalname: p.metalname,
+          purityname: p.purityname,
+          purityshortname: p.purityshortname,
+          purity: p.purity,
+          type: p.type,
+          rate_id: null,
+          ratedate: targetDate,
+          rate: lastKnown ? Number(lastKnown.rate) || 0.0 : 0.0,
+          buy_rate: lastKnown ? Number(lastKnown.buy_rate) || 0.0 : 0.0,
+          sell_rate: lastKnown ? Number(lastKnown.sell_rate) || 0.0 : 0.0,
+          notes: "",
+          is_saved_for_date: false,
+          previous_rate_date: lastKnown?.ratedate || "",
+          updated_at: lastKnown?.updated_at || "",
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      target_date: targetDate,
+      is_already_saved_for_date: isAlreadySavedForDate,
+      rates: items,
+    });
+  } catch (error) {
+    console.error("getRatesByDateController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch rates for date.",
+    });
+  }
+}
+
+/**
+ * POST /api/tenant/rates/bulk-update
+ * Saves or updates daily rates for all purities for a given date in one operation.
+ */
+export async function bulkUpdateRatesController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureDailyRatesTable(client);
+
+    const { ratedate, rates } = req.body;
+
+    if (!ratedate || !String(ratedate).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Rate date (YYYY-MM-DD) is required.",
+      });
+    }
+
+    if (!Array.isArray(rates) || rates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No purity rates provided for update.",
+      });
+    }
+
+    const cleanDate = ratedate.trim();
+    const now = new Date().toISOString();
+
+    for (const r of rates) {
+      const purityId = parseInt(r.purityid, 10);
+      const metalId = String(r.metalid || "").trim().toUpperCase();
+      const purityName = String(r.purityname || "").trim();
+      const purityPercent = parseFloat(r.purity) || 0.0;
+      const rateVal = parseFloat(r.rate) || 0.0;
+      const buyRateVal = parseFloat(r.buy_rate) || 0.0;
+      const sellRateVal = parseFloat(r.sell_rate) || rateVal;
+      const notes = String(r.notes || "").trim();
+
+      if (!purityId) continue;
+
+      // Check if a rate record already exists for this exact date and purity
+      const existing = await client.execute({
+        sql: `SELECT id FROM daily_rates WHERE ratedate = ? AND purityid = ? LIMIT 1;`,
+        args: [cleanDate, purityId],
+      });
+
+      if (existing.rows.length > 0) {
+        const existingId = existing.rows[0].id;
+        await client.execute({
+          sql: `
+            UPDATE daily_rates SET
+              metalid = ?,
+              purityname = ?,
+              purity = ?,
+              rate = ?,
+              buy_rate = ?,
+              sell_rate = ?,
+              notes = ?,
+              updated_at = ?
+            WHERE id = ?;
+          `,
+          args: [metalId, purityName, purityPercent, rateVal, buyRateVal, sellRateVal, notes, now, existingId],
+        });
+      } else {
+        await client.execute({
+          sql: `
+            INSERT INTO daily_rates (
+              ratedate, purityid, metalid, purityname, purity,
+              rate, buy_rate, sell_rate, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+          `,
+          args: [
+            cleanDate,
+            purityId,
+            metalId,
+            purityName,
+            purityPercent,
+            rateVal,
+            buyRateVal,
+            sellRateVal,
+            notes,
+            now,
+            now,
+          ],
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Daily board rates for ${cleanDate} saved successfully (${rates.length} purities updated).`,
+      saved_date: cleanDate,
+    });
+  } catch (error) {
+    console.error("bulkUpdateRatesController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update daily rates.",
+    });
+  }
+}
+
+/**
+ * GET /api/tenant/rates/history
+ * Returns chronological history of daily rate entries with optional filters.
+ */
+export async function getRateHistoryController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureDailyRatesTable(client);
+
+    const { from_date, to_date, metalid, purityid, limit = 100 } = req.query;
+
+    let sql = `
+      SELECT 
+        r.*,
+        COALESCE(m.metalname, r.metalid) AS metalname,
+        p.purityshortname
+      FROM daily_rates r
+      LEFT JOIN metals m ON r.metalid = m.metalid
+      LEFT JOIN purities p ON r.purityid = p.purityid
+      WHERE 1=1
+    `;
+    const args = [];
+
+    if (from_date && from_date.trim()) {
+      sql += ` AND r.ratedate >= ?`;
+      args.push(from_date.trim());
+    }
+
+    if (to_date && to_date.trim()) {
+      sql += ` AND r.ratedate <= ?`;
+      args.push(to_date.trim());
+    }
+
+    if (metalid && metalid.trim() && metalid.trim() !== 'ALL') {
+      sql += ` AND UPPER(r.metalid) = ?`;
+      args.push(metalid.trim().toUpperCase());
+    }
+
+    if (purityid && parseInt(purityid, 10)) {
+      sql += ` AND r.purityid = ?`;
+      args.push(parseInt(purityid, 10));
+    }
+
+    sql += ` ORDER BY r.ratedate DESC, r.updated_at DESC, r.id DESC LIMIT ?;`;
+    args.push(parseInt(limit, 10) || 100);
+
+    const result = await client.execute({ sql, args });
+
+    return res.json({
+      success: true,
+      history: result.rows || [],
+      total_records: (result.rows || []).length,
+    });
+  } catch (error) {
+    console.error("getRateHistoryController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch rate history.",
+    });
+  }
+}
+
+/**
+ * DELETE /api/tenant/rates/:id
+ * Deletes a single rate history entry by ID.
+ */
+export async function deleteRateRecordController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureDailyRatesTable(client);
+
+    const { id } = req.params;
+    const rateId = parseInt(id, 10);
+    if (isNaN(rateId)) {
+      return res.status(400).json({ success: false, message: "Invalid rate entry ID." });
+    }
+
+    await client.execute({
+      sql: `DELETE FROM daily_rates WHERE id = ?;`,
+      args: [rateId],
+    });
+
+    return res.json({
+      success: true,
+      message: `Rate record #${rateId} deleted successfully.`,
+    });
+  } catch (error) {
+    console.error("deleteRateRecordController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete rate entry.",
+    });
+  }
+}

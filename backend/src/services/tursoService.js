@@ -393,6 +393,24 @@ export async function syncTenantDatabaseSchema(url, token) {
       );
     `);
 
+    // 2e. Tenant Employee Master Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS employees (
+        empid INTEGER PRIMARY KEY AUTOINCREMENT,
+        empname TEXT NOT NULL,
+        branchid TEXT NOT NULL,
+        dateofjoin TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        bloodgroup TEXT DEFAULT '',
+        mobile TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        image TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
     // 3. Live Gold & Silver Rates Table
     await client.execute(`
       CREATE TABLE IF NOT EXISTS gold_rates (
@@ -429,6 +447,25 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (metalid) REFERENCES metals(metalid)
+      );
+    `);
+
+    // 3d. Daily Purity Metal Rates & History Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS daily_rates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ratedate TEXT NOT NULL,
+        purityid INTEGER NOT NULL,
+        metalid TEXT NOT NULL,
+        purityname TEXT NOT NULL,
+        purity REAL NOT NULL,
+        rate REAL NOT NULL,
+        buy_rate REAL DEFAULT 0.0,
+        sell_rate REAL DEFAULT 0.0,
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (purityid) REFERENCES purities(purityid)
       );
     `);
 

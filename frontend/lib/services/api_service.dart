@@ -10,6 +10,8 @@ import '../models/tax_model.dart';
 import '../models/inventory_models.dart';
 import '../models/system_control_model.dart';
 import '../models/estimate_model.dart';
+import '../models/employee_model.dart';
+import '../models/rate_model.dart';
 
 class ApiService {
   // Automatically detects production Web origin (e.g. https://progold.vercel.app/api)
@@ -1072,4 +1074,198 @@ class ApiService {
       return {'success': false, 'message': e.toString()};
     }
   }
+
+  // ================= EMPLOYEE MASTER CRUD =================
+
+  /// Fetches employees with metadata (counts, next empid)
+  Future<Map<String, dynamic>> getEmployeesData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/employees'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['employees'] is List) {
+          final items = (data['employees'] as List).map((i) => EmployeeRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'employees': items,
+            'last_empid': data['last_empid'] ?? 0,
+            'next_empid': data['next_empid'] ?? 1001,
+            'total_count': data['total_count'] ?? items.length,
+            'active_count': data['active_count'] ?? 0,
+            'inactive_count': data['inactive_count'] ?? 0,
+          };
+        }
+      }
+      return {
+        'success': false,
+        'employees': <EmployeeRecord>[],
+        'last_empid': 0,
+        'next_empid': 1001,
+        'total_count': 0,
+        'active_count': 0,
+        'inactive_count': 0,
+      };
+    } catch (e) {
+      debugPrint("Error getEmployeesData: $e");
+      return {
+        'success': false,
+        'employees': <EmployeeRecord>[],
+        'last_empid': 0,
+        'next_empid': 1001,
+        'total_count': 0,
+        'active_count': 0,
+        'inactive_count': 0,
+      };
+    }
+  }
+
+  Future<List<EmployeeRecord>> getEmployees(String token) async {
+    final data = await getEmployeesData(token);
+    return data['employees'] as List<EmployeeRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createEmployee(String token, EmployeeRecord employee) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/employees'),
+        headers: _headers(token),
+        body: jsonEncode(employee.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateEmployee(String token, int empid, EmployeeRecord employee) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/employees/$empid'),
+        headers: _headers(token),
+        body: jsonEncode(employee.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteEmployee(String token, int empid) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/employees/$empid'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= DAILY PURITY RATES & HISTORY CRUD (Sales & Price Master) =================
+
+  /// Fetches latest purity rates and ticker summary (Gold 24K, 22K 916, Silver)
+  Future<LatestRatesSummary> getLatestRates(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/rates/latest'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true) {
+          return LatestRatesSummary.fromJson(data);
+        }
+      }
+      return LatestRatesSummary();
+    } catch (e) {
+      debugPrint("Error getLatestRates: $e");
+      return LatestRatesSummary();
+    }
+  }
+
+  /// Fetches rates configured for a specific date (or defaults to last known rates)
+  Future<Map<String, dynamic>> getRatesByDate(String token, String date) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/rates/by-date?date=${Uri.encodeComponent(date.trim())}'),
+        headers: _headers(token),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['rates'] is List) {
+          final items = (data['rates'] as List).map((i) => PurityRateItem.fromJson(i)).toList();
+          return {
+            'success': true,
+            'target_date': data['target_date'] ?? date,
+            'is_already_saved_for_date': data['is_already_saved_for_date'] ?? false,
+            'rates': items,
+          };
+        }
+      }
+      return {'success': false, 'rates': <PurityRateItem>[], 'is_already_saved_for_date': false};
+    } catch (e) {
+      debugPrint("Error getRatesByDate: $e");
+      return {'success': false, 'rates': <PurityRateItem>[], 'is_already_saved_for_date': false};
+    }
+  }
+
+  /// Saves or updates all daily purity rates for a given date in one operation
+  Future<Map<String, dynamic>> saveBulkRates(
+    String token,
+    String ratedate,
+    List<PurityRateItem> rates,
+  ) async {
+    try {
+      final payload = {
+        'ratedate': ratedate.trim(),
+        'rates': rates.map((r) => r.toJson()).toList(),
+      };
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/rates/bulk-update'),
+        headers: _headers(token),
+        body: jsonEncode(payload),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Fetches historical rate logs with optional filters
+  Future<List<RateHistoryRecord>> getRateHistory(
+    String token, {
+    String? fromDate,
+    String? toDate,
+    String? metalId,
+    int? purityId,
+    int limit = 100,
+  }) async {
+    try {
+      final queryParams = <String, String>{'limit': limit.toString()};
+      if (fromDate != null && fromDate.isNotEmpty) queryParams['from_date'] = fromDate;
+      if (toDate != null && toDate.isNotEmpty) queryParams['to_date'] = toDate;
+      if (metalId != null && metalId.isNotEmpty && metalId != 'ALL') queryParams['metalid'] = metalId;
+      if (purityId != null && purityId > 0) queryParams['purityid'] = purityId.toString();
+
+      final uri = Uri.parse('$baseUrl/tenant/rates/history').replace(queryParameters: queryParams);
+      final res = await http.get(uri, headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['history'] is List) {
+          return (data['history'] as List).map((i) => RateHistoryRecord.fromJson(i)).toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error getRateHistory: $e");
+      return [];
+    }
+  }
+
+  /// Deletes a specific historical rate record by ID
+  Future<Map<String, dynamic>> deleteRateRecord(String token, int rateId) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/rates/$rateId'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
 }
+
+

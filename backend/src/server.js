@@ -41,6 +41,12 @@ import {
   recoverPasswordOtpController,
 } from "./controllers/userController.js";
 import {
+  getEmployeesController,
+  createEmployeeController,
+  updateEmployeeController,
+  deleteEmployeeController,
+} from "./controllers/employeeController.js";
+import {
   getAccountHeadsController,
   createAccountHeadController,
   updateAccountHeadController,
@@ -86,6 +92,13 @@ import {
   updateEstimateController,
   deleteEstimateController,
 } from "./controllers/estimateController.js";
+import {
+  getLatestRatesController,
+  getRatesByDateController,
+  bulkUpdateRatesController,
+  getRateHistoryController,
+  deleteRateRecordController,
+} from "./controllers/rateMasterController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -161,6 +174,12 @@ app.delete("/api/tenant/users/:id", requireAuth, deleteUserController);
 app.post("/api/tenant/users/:id/change-password", requireAuth, changePasswordController);
 app.post("/api/tenant/users/recover-password", requireAuth, recoverPasswordOtpController);
 
+// Tenant Employee Master CRUD Routes
+app.get("/api/tenant/employees", requireAuth, getEmployeesController);
+app.post("/api/tenant/employees", requireAuth, createEmployeeController);
+app.put("/api/tenant/employees/:id", requireAuth, updateEmployeeController);
+app.delete("/api/tenant/employees/:id", requireAuth, deleteEmployeeController);
+
 // Tenant Account Head CRUD Routes
 app.get("/api/tenant/account-heads", requireAuth, getAccountHeadsController);
 app.post("/api/tenant/account-heads", requireAuth, createAccountHeadController);
@@ -214,6 +233,13 @@ app.get("/api/tenant/estimates", requireAuth, getEstimatesController);
 app.post("/api/tenant/estimates", requireAuth, createEstimateController);
 app.put("/api/tenant/estimates/:id", requireAuth, updateEstimateController);
 app.delete("/api/tenant/estimates/:id", requireAuth, deleteEstimateController);
+
+// Tenant Daily Purity Rates & History Routes (Sales & Price Master)
+app.get("/api/tenant/rates/latest", requireAuth, getLatestRatesController);
+app.get("/api/tenant/rates/by-date", requireAuth, getRatesByDateController);
+app.post("/api/tenant/rates/bulk-update", requireAuth, bulkUpdateRatesController);
+app.get("/api/tenant/rates/history", requireAuth, getRateHistoryController);
+app.delete("/api/tenant/rates/:id", requireAuth, deleteRateRecordController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {
