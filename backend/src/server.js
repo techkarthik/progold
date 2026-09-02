@@ -48,6 +48,8 @@ import {
 } from "./controllers/employeeController.js";
 import {
   getAccountHeadsController,
+  getAccountHeadOptionsController,
+  createAccountHeadOptionController,
   createAccountHeadController,
   updateAccountHeadController,
   deleteAccountHeadController,
@@ -182,6 +184,8 @@ app.delete("/api/tenant/employees/:id", requireAuth, deleteEmployeeController);
 
 // Tenant Account Head CRUD Routes
 app.get("/api/tenant/account-heads", requireAuth, getAccountHeadsController);
+app.get("/api/tenant/account-heads/options", requireAuth, getAccountHeadOptionsController);
+app.post("/api/tenant/account-heads/options", requireAuth, createAccountHeadOptionController);
 app.post("/api/tenant/account-heads", requireAuth, createAccountHeadController);
 app.put("/api/tenant/account-heads/:id", requireAuth, updateAccountHeadController);
 app.delete("/api/tenant/account-heads/:id", requireAuth, deleteAccountHeadController);

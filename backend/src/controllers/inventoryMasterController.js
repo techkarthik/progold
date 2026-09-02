@@ -34,6 +34,7 @@ async function ensureInventoryTables(client) {
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       metalid TEXT NOT NULL,
+      purityid INTEGER,
       catcode TEXT UNIQUE NOT NULL,
       catname TEXT NOT NULL,
       categorytype TEXT NOT NULL,
@@ -47,10 +48,14 @@ async function ensureInventoryTables(client) {
       igstacname TEXT DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      FOREIGN KEY (metalid) REFERENCES metals(metalid)
+      FOREIGN KEY (metalid) REFERENCES metals(metalid),
+      FOREIGN KEY (purityid) REFERENCES purities(purityid)
     );
   `);
 
+  try {
+    await client.execute(`ALTER TABLE categories ADD COLUMN purityid INTEGER;`);
+  } catch (_) {}
   try {
     await client.execute(`ALTER TABLE categories ADD COLUMN salesacname TEXT DEFAULT '';`);
   } catch (_) {}
@@ -357,6 +362,75 @@ export async function deletePurityController(req, res) {
   }
 }
 
+/**
+ * Helper to auto-create / ensure an Account Head in account_heads table.
+ */
+async function ensureAccountHead(client, accountName, groupName) {
+  if (!accountName || !accountName.trim()) return;
+  const trimmedName = accountName.trim().toUpperCase();
+  try {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS account_heads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        accode TEXT UNIQUE NOT NULL,
+        groupname TEXT NOT NULL,
+        accountname TEXT NOT NULL,
+        accounttype TEXT DEFAULT 'OTHER',
+        bank_details TEXT DEFAULT '[]',
+        address_line1 TEXT DEFAULT '',
+        address_line2 TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        country TEXT DEFAULT 'India',
+        pincode TEXT DEFAULT '',
+        phone_no TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        gstno TEXT DEFAULT '',
+        panno TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    const existing = await client.execute({
+      sql: `SELECT id FROM account_heads WHERE UPPER(TRIM(accountname)) = ? LIMIT 1;`,
+      args: [trimmedName],
+    });
+
+    if (existing.rows.length === 0) {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let accode = "";
+      let isUnique = false;
+      let attempts = 0;
+      while (!isUnique && attempts < 10) {
+        accode = "";
+        for (let i = 0; i < 7; i++) {
+          accode += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        const checkCode = await client.execute({
+          sql: `SELECT id FROM account_heads WHERE accode = ? LIMIT 1;`,
+          args: [accode],
+        });
+        if (checkCode.rows.length === 0) isUnique = true;
+        attempts++;
+      }
+
+      const now = new Date().toISOString();
+      await client.execute({
+        sql: `
+          INSERT INTO account_heads (
+            accode, groupname, accountname, accounttype, active, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        `,
+        args: [accode, groupName, trimmedName, 'INTERNAL', 1, now, now],
+      });
+    }
+  } catch (err) {
+    console.error("ensureAccountHead error:", err);
+  }
+}
+
 // ==========================================
 // 3. CATEGORIES CRUD CONTROLLERS
 // ==========================================
@@ -368,9 +442,10 @@ export async function getCategoriesController(req, res) {
     await ensureInventoryTables(client);
 
     const result = await client.execute(`
-      SELECT c.*, m.metalname 
+      SELECT c.*, m.metalname, p.purityname, p.purityshortname, p.purity
       FROM categories c
       JOIN metals m ON c.metalid = m.metalid
+      LEFT JOIN purities p ON c.purityid = p.purityid
       ORDER BY c.created_at DESC;
     `);
     return res.json({ success: true, categories: result.rows || [] });
@@ -388,6 +463,7 @@ export async function createCategoryController(req, res) {
 
     const {
       metalid,
+      purityid,
       catname,
       categorytype,
       sgst_per = 0.0,
@@ -407,6 +483,37 @@ export async function createCategoryController(req, res) {
     }
 
     const cleanMetalId = metalid.trim().toUpperCase();
+    const cleanPurityId = purityid ? Number(purityid) : null;
+
+    // Fetch purity details if purityid is given
+    let purityLabel = "";
+    if (cleanPurityId) {
+      const purityQuery = await client.execute({
+        sql: `SELECT purityname, purityshortname FROM purities WHERE purityid = ? LIMIT 1;`,
+        args: [cleanPurityId],
+      });
+      if (purityQuery.rows.length > 0) {
+        const row = purityQuery.rows[0];
+        purityLabel = (row.purityshortname || row.purityname || "").toString().trim();
+      }
+    }
+
+    // Compute total GST percentage
+    const totalGst = (Number(sgst_per) || 0) + (Number(cgst_per) || 0) || (Number(igst_per) || 0);
+    const gstStr = totalGst > 0 ? `${totalGst % 1 === 0 ? totalGst.toFixed(0) : totalGst.toFixed(2)}%` : '';
+
+    // Auto-generate Sales and Purchase Account Names if not explicitly provided
+    const purityPart = purityLabel ? `${purityLabel} ` : '';
+    const gstPart = gstStr ? `GST ${gstStr} ` : 'GST ';
+    const autoSalesAc = `${catname.trim()} ${purityPart}${gstPart}SALES`.replace(/\s+/g, ' ').trim().toUpperCase();
+    const autoPurchaseAc = `${catname.trim()} ${purityPart}${gstPart}PURCHASE`.replace(/\s+/g, ' ').trim().toUpperCase();
+
+    const resolvedSalesAc = (salesacname && salesacname.trim()) ? salesacname.trim().toUpperCase() : autoSalesAc;
+    const resolvedPurchaseAc = (purchaseacname && purchaseacname.trim()) ? purchaseacname.trim().toUpperCase() : autoPurchaseAc;
+
+    // Automatically create / ensure both Sales & Purchase Account Heads in Account Head Master
+    await ensureAccountHead(client, resolvedSalesAc, 'Sales Account');
+    await ensureAccountHead(client, resolvedPurchaseAc, 'Purchase Account');
 
     // Generate unique sequential alphanumeric Category Code
     const prefix = getCategoryPrefix(cleanMetalId, categorytype);
@@ -430,19 +537,20 @@ export async function createCategoryController(req, res) {
     await client.execute({
       sql: `
         INSERT INTO categories (
-          metalid, catcode, catname, categorytype, sgst_per, cgst_per, igst_per, salesacname, purchaseacname, sgstacname, cgstacname, igstacname, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+          metalid, purityid, catcode, catname, categorytype, sgst_per, cgst_per, igst_per, salesacname, purchaseacname, sgstacname, cgstacname, igstacname, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       args: [
         cleanMetalId,
+        cleanPurityId,
         catcode,
         catname.trim(),
         categorytype,
         Number(sgst_per) || 0.0,
         Number(cgst_per) || 0.0,
         Number(igst_per) || 0.0,
-        String(salesacname || "").trim(),
-        String(purchaseacname || "").trim(),
+        resolvedSalesAc,
+        resolvedPurchaseAc,
         String(sgstacname || "").trim(),
         String(cgstacname || "").trim(),
         String(igstacname || "").trim(),
@@ -455,6 +563,8 @@ export async function createCategoryController(req, res) {
       success: true,
       message: "Category created successfully!",
       catcode: catcode,
+      salesacname: resolvedSalesAc,
+      purchaseacname: resolvedPurchaseAc,
     });
   } catch (error) {
     console.error("createCategory error:", error);
@@ -471,6 +581,7 @@ export async function updateCategoryController(req, res) {
 
     const {
       metalid,
+      purityid,
       catname,
       categorytype,
       sgst_per,
@@ -523,11 +634,23 @@ export async function updateCategoryController(req, res) {
       finalCatcode = prefix + String(nextNum).padStart(5, '0');
     }
 
+    const cleanPurityId = purityid !== undefined ? (purityid ? Number(purityid) : null) : null;
+    const resolvedSales = salesacname !== undefined ? String(salesacname).trim().toUpperCase() : "";
+    const resolvedPurchase = purchaseacname !== undefined ? String(purchaseacname).trim().toUpperCase() : "";
+
+    if (resolvedSales) {
+      await ensureAccountHead(client, resolvedSales, 'Sales Account');
+    }
+    if (resolvedPurchase) {
+      await ensureAccountHead(client, resolvedPurchase, 'Purchase Account');
+    }
+
     const now = new Date().toISOString();
     await client.execute({
       sql: `
         UPDATE categories
         SET metalid = ?,
+            purityid = ?,
             catcode = ?,
             catname = ?,
             categorytype = ?,
@@ -544,14 +667,15 @@ export async function updateCategoryController(req, res) {
       `,
       args: [
         metalid.toUpperCase(),
+        cleanPurityId,
         finalCatcode,
         catname.trim(),
         categorytype,
         sgst_per !== undefined ? Number(sgst_per) : 0.0,
         cgst_per !== undefined ? Number(cgst_per) : 0.0,
         igst_per !== undefined ? Number(igst_per) : 0.0,
-        salesacname !== undefined ? String(salesacname).trim() : "",
-        purchaseacname !== undefined ? String(purchaseacname).trim() : "",
+        resolvedSales,
+        resolvedPurchase,
         sgstacname !== undefined ? String(sgstacname).trim() : "",
         cgstacname !== undefined ? String(cgstacname).trim() : "",
         igstacname !== undefined ? String(igstacname).trim() : "",

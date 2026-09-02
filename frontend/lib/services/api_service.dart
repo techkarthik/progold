@@ -585,6 +585,40 @@ class ApiService {
     }
   }
 
+  /// Fetches custom account head options (types & groups)
+  Future<Map<String, dynamic>> getAccountHeadOptions(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/account-heads/options'),
+        headers: _headers(token),
+      );
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body);
+      }
+      return {'success': false, 'options': []};
+    } catch (e) {
+      debugPrint("Error fetching account head options: $e");
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Creates a custom account head option (ACCOUNT_TYPE or FINANCIAL_GROUP)
+  Future<Map<String, dynamic>> createAccountHeadOption(String token, String optionType, String optionValue) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/account-heads/options'),
+        headers: _headers(token),
+        body: jsonEncode({
+          'option_type': optionType,
+          'option_value': optionValue,
+        }),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to save option: $e'};
+    }
+  }
+
   // ================= TAX MASTER CRUD =================
 
   /// Fetches all tax master records for tenant

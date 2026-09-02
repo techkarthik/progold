@@ -84,6 +84,7 @@ class Purity {
 class CategoryRecord {
   final int? id;
   final String metalid;
+  final int? purityid;
   final String catcode;
   final String catname;
   final String categorytype; // 'METAL' or 'ORNAMENTS/STONE'
@@ -96,12 +97,15 @@ class CategoryRecord {
   final String cgstacname;
   final String igstacname;
   final String? metalname;
+  final String? purityname;
+  final String? purityshortname;
   final String? createdAt;
   final String? updatedAt;
 
   CategoryRecord({
     this.id,
     required this.metalid,
+    this.purityid,
     required this.catcode,
     required this.catname,
     required this.categorytype,
@@ -114,6 +118,8 @@ class CategoryRecord {
     this.cgstacname = '',
     this.igstacname = '',
     this.metalname,
+    this.purityname,
+    this.purityshortname,
     this.createdAt,
     this.updatedAt,
   });
@@ -122,6 +128,7 @@ class CategoryRecord {
     return CategoryRecord(
       id: json['id'] != null ? int.tryParse(json['id'].toString()) : null,
       metalid: json['metalid']?.toString() ?? '',
+      purityid: json['purityid'] != null ? int.tryParse(json['purityid'].toString()) : null,
       catcode: json['catcode']?.toString() ?? '',
       catname: json['catname']?.toString() ?? '',
       categorytype: json['categorytype']?.toString() ?? 'ORNAMENTS/STONE',
@@ -134,6 +141,8 @@ class CategoryRecord {
       cgstacname: json['cgstacname']?.toString() ?? '',
       igstacname: json['igstacname']?.toString() ?? '',
       metalname: json['metalname']?.toString(),
+      purityname: json['purityname']?.toString(),
+      purityshortname: json['purityshortname']?.toString(),
       createdAt: json['created_at']?.toString(),
       updatedAt: json['updated_at']?.toString(),
     );
@@ -143,6 +152,7 @@ class CategoryRecord {
     return {
       if (id != null) 'id': id,
       'metalid': metalid,
+      if (purityid != null) 'purityid': purityid,
       'catcode': catcode,
       'catname': catname,
       'categorytype': categorytype,
@@ -162,6 +172,7 @@ class CategoryRecord {
   CategoryRecord copyWith({
     int? id,
     String? metalid,
+    int? purityid,
     String? catcode,
     String? catname,
     String? categorytype,
@@ -174,12 +185,15 @@ class CategoryRecord {
     String? cgstacname,
     String? igstacname,
     String? metalname,
+    String? purityname,
+    String? purityshortname,
     String? createdAt,
     String? updatedAt,
   }) {
     return CategoryRecord(
       id: id ?? this.id,
       metalid: metalid ?? this.metalid,
+      purityid: purityid ?? this.purityid,
       catcode: catcode ?? this.catcode,
       catname: catname ?? this.catname,
       categorytype: categorytype ?? this.categorytype,
@@ -192,6 +206,8 @@ class CategoryRecord {
       cgstacname: cgstacname ?? this.cgstacname,
       igstacname: igstacname ?? this.igstacname,
       metalname: metalname ?? this.metalname,
+      purityname: purityname ?? this.purityname,
+      purityshortname: purityshortname ?? this.purityshortname,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

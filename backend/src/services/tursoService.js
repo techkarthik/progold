@@ -660,14 +660,32 @@ export async function syncTenantDatabaseSchema(url, token) {
         accode TEXT UNIQUE NOT NULL,
         groupname TEXT NOT NULL,
         accountname TEXT NOT NULL,
+        accounttype TEXT DEFAULT 'OTHER',
+        bank_details TEXT DEFAULT '[]',
+        address_line1 TEXT DEFAULT '',
+        address_line2 TEXT DEFAULT '',
+        city TEXT DEFAULT '',
         state TEXT DEFAULT '',
         country TEXT DEFAULT 'India',
         pincode TEXT DEFAULT '',
+        phone_no TEXT DEFAULT '',
+        email TEXT DEFAULT '',
         active INTEGER DEFAULT 1,
         gstno TEXT DEFAULT '',
         panno TEXT DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      );
+    `);
+
+    // 13b-2. Account Head Options Table
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS account_head_options (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        option_type TEXT NOT NULL,
+        option_value TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(option_type, option_value)
       );
     `);
 

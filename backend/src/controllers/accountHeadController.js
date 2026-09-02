@@ -1,7 +1,7 @@
 import { createTenantClient } from "../config/turso.js";
 
 /**
- * Helper to ensure the account_heads table exists in the tenant's private Turso database.
+ * Helper to ensure the account_heads and account_head_options tables exist in the tenant's private Turso database.
  */
 async function ensureAccountHeadsTable(client) {
   await client.execute(`
@@ -10,9 +10,16 @@ async function ensureAccountHeadsTable(client) {
       accode TEXT UNIQUE NOT NULL,
       groupname TEXT NOT NULL,
       accountname TEXT NOT NULL,
+      accounttype TEXT DEFAULT 'OTHER',
+      bank_details TEXT DEFAULT '[]',
+      address_line1 TEXT DEFAULT '',
+      address_line2 TEXT DEFAULT '',
+      city TEXT DEFAULT '',
       state TEXT DEFAULT '',
       country TEXT DEFAULT 'India',
       pincode TEXT DEFAULT '',
+      phone_no TEXT DEFAULT '',
+      email TEXT DEFAULT '',
       active INTEGER DEFAULT 1,
       gstno TEXT DEFAULT '',
       panno TEXT DEFAULT '',
@@ -20,6 +27,52 @@ async function ensureAccountHeadsTable(client) {
       updated_at TEXT NOT NULL
     );
   `);
+
+  try {
+    await client.execute(`ALTER TABLE account_heads ADD COLUMN accounttype TEXT DEFAULT 'OTHER';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE account_heads ADD COLUMN bank_details TEXT DEFAULT '[]';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE account_heads ADD COLUMN address_line1 TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE account_heads ADD COLUMN address_line2 TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE account_heads ADD COLUMN city TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE account_heads ADD COLUMN phone_no TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE account_heads ADD COLUMN email TEXT DEFAULT '';`);
+  } catch (_) {}
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS account_head_options (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      option_type TEXT NOT NULL,
+      option_value TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(option_type, option_value)
+    );
+  `);
+}
+
+/**
+ * Helper to record custom option in account_head_options table.
+ */
+async function recordCustomOption(client, optionType, optionValue) {
+  if (!optionValue || !optionValue.trim()) return;
+  try {
+    const now = new Date().toISOString();
+    await client.execute({
+      sql: `INSERT OR IGNORE INTO account_head_options (option_type, option_value, created_at) VALUES (?, ?, ?);`,
+      args: [optionType.trim().toUpperCase(), optionValue.trim(), now],
+    });
+  } catch (_) {}
 }
 
 /**
@@ -35,8 +88,25 @@ function generateAccode() {
 }
 
 /**
+ * Helper to parse/normalize bank_details
+ */
+function normalizeBankDetails(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === "string") {
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
  * GET /api/tenant/account-heads
- * Retrieves all account heads for the authenticated tenant.
+ * Retrieves all account heads and custom options for the authenticated tenant.
  */
 export async function getAccountHeadsController(req, res) {
   try {
@@ -49,15 +119,114 @@ export async function getAccountHeadsController(req, res) {
       ORDER BY created_at DESC;
     `);
 
+    const optionsResult = await client.execute(`
+      SELECT option_type, option_value FROM account_head_options ORDER BY id ASC;
+    `);
+
+    const customAccountTypes = (optionsResult.rows || [])
+      .filter((r) => r.option_type === "ACCOUNT_TYPE")
+      .map((r) => r.option_value);
+
+    const customFinancialGroups = (optionsResult.rows || [])
+      .filter((r) => r.option_type === "FINANCIAL_GROUP")
+      .map((r) => r.option_value);
+
+    const formattedRows = (result.rows || []).map((row) => ({
+      ...row,
+      bank_details: normalizeBankDetails(row.bank_details),
+    }));
+
     return res.json({
       success: true,
-      accountHeads: result.rows || [],
+      accountHeads: formattedRows,
+      customAccountTypes,
+      customFinancialGroups,
     });
   } catch (error) {
     console.error("getAccountHeadsController error:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch account heads.",
+    });
+  }
+}
+
+/**
+ * GET /api/tenant/account-heads/options
+ * Retrieves all custom account types and financial groups.
+ */
+export async function getAccountHeadOptionsController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureAccountHeadsTable(client);
+
+    const optionsResult = await client.execute(`
+      SELECT * FROM account_head_options ORDER BY id ASC;
+    `);
+
+    return res.json({
+      success: true,
+      options: optionsResult.rows || [],
+    });
+  } catch (error) {
+    console.error("getAccountHeadOptionsController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch account head options.",
+    });
+  }
+}
+
+/**
+ * POST /api/tenant/account-heads/options
+ * Adds a new custom account type or financial group option.
+ */
+export async function createAccountHeadOptionController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureAccountHeadsTable(client);
+
+    const { option_type, option_value } = req.body;
+
+    if (!option_type || !option_type.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Option type is required (e.g. ACCOUNT_TYPE or FINANCIAL_GROUP).",
+      });
+    }
+
+    if (!option_value || !option_value.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Option value cannot be empty.",
+      });
+    }
+
+    const typeNormalized = option_type.trim().toUpperCase();
+    const valueTrimmed = option_value.trim();
+    const now = new Date().toISOString();
+
+    await client.execute({
+      sql: `INSERT OR IGNORE INTO account_head_options (option_type, option_value, created_at) VALUES (?, ?, ?);`,
+      args: [typeNormalized, valueTrimmed, now],
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Option saved successfully!",
+      option: {
+        option_type: typeNormalized,
+        option_value: valueTrimmed,
+        created_at: now,
+      },
+    });
+  } catch (error) {
+    console.error("createAccountHeadOptionController error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to save account head option.",
     });
   }
 }
@@ -75,9 +244,16 @@ export async function createAccountHeadController(req, res) {
     const {
       groupname,
       accountname,
+      accounttype = "OTHER",
+      bank_details = [],
+      address_line1 = "",
+      address_line2 = "",
+      city = "",
       state = "",
       country = "India",
       pincode = "",
+      phone_no = "",
+      email = "",
       active = 1,
       gstno = "",
       panno = "",
@@ -96,6 +272,11 @@ export async function createAccountHeadController(req, res) {
         message: "Account name is required.",
       });
     }
+
+    const resolvedAccountType = accounttype && accounttype.trim() ? accounttype.trim().toUpperCase() : "OTHER";
+    const resolvedGroupName = groupname.trim();
+    const normalizedBanks = normalizeBankDetails(bank_details);
+    const bankDetailsJson = JSON.stringify(normalizedBanks);
 
     // Generate a unique 7-digit alphanumeric accode
     let accode = "";
@@ -125,16 +306,25 @@ export async function createAccountHeadController(req, res) {
     const insertResult = await client.execute({
       sql: `
         INSERT INTO account_heads (
-          accode, groupname, accountname, state, country, pincode, active, gstno, panno, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          accode, groupname, accountname, accounttype, bank_details,
+          address_line1, address_line2, city, state, country, pincode, phone_no, email,
+          active, gstno, panno, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
         accode,
-        groupname.trim(),
+        resolvedGroupName,
         accountname.trim(),
+        resolvedAccountType,
+        bankDetailsJson,
+        address_line1.trim(),
+        address_line2.trim(),
+        city.trim(),
         state.trim(),
         country.trim(),
         pincode.trim(),
+        phone_no.trim(),
+        email.trim(),
         Number(active) === 0 ? 0 : 1,
         gstno.trim(),
         panno.trim(),
@@ -145,17 +335,28 @@ export async function createAccountHeadController(req, res) {
 
     const newId = Number(insertResult.lastInsertRowid);
 
+    // Record options asynchronously for persistent dropdown lists
+    await recordCustomOption(client, "ACCOUNT_TYPE", resolvedAccountType);
+    await recordCustomOption(client, "FINANCIAL_GROUP", resolvedGroupName);
+
     return res.status(201).json({
       success: true,
       message: "Account Head created successfully!",
       accountHead: {
         id: newId,
         accode,
-        groupname: groupname.trim(),
+        groupname: resolvedGroupName,
         accountname: accountname.trim(),
+        accounttype: resolvedAccountType,
+        bank_details: normalizedBanks,
+        address_line1: address_line1.trim(),
+        address_line2: address_line2.trim(),
+        city: city.trim(),
         state: state.trim(),
         country: country.trim(),
         pincode: pincode.trim(),
+        phone_no: phone_no.trim(),
+        email: email.trim(),
         active: Number(active) === 0 ? 0 : 1,
         gstno: gstno.trim(),
         panno: panno.trim(),
@@ -190,9 +391,16 @@ export async function updateAccountHeadController(req, res) {
     const {
       groupname,
       accountname,
+      accounttype,
+      bank_details,
+      address_line1,
+      address_line2,
+      city,
       state,
       country,
       pincode,
+      phone_no,
+      email,
       active,
       gstno,
       panno,
@@ -213,27 +421,44 @@ export async function updateAccountHeadController(req, res) {
     }
 
     const now = new Date().toISOString();
+    const resolvedAccountType = accounttype !== undefined ? (accounttype ? accounttype.trim().toUpperCase() : "OTHER") : null;
+    const resolvedGroupName = groupname !== undefined ? groupname.trim() : null;
+    const bankDetailsJson = bank_details !== undefined ? JSON.stringify(normalizeBankDetails(bank_details)) : null;
 
     await client.execute({
       sql: `
         UPDATE account_heads
         SET groupname = COALESCE(?, groupname),
-            accountname = COALESCE(?, accountname),
-            state = COALESCE(?, state),
-            country = COALESCE(?, country),
-            pincode = COALESCE(?, pincode),
-            active = COALESCE(?, active),
-            gstno = COALESCE(?, gstno),
-            panno = COALESCE(?, panno),
-            updated_at = ?
+          accountname = COALESCE(?, accountname),
+          accounttype = COALESCE(?, accounttype),
+          bank_details = COALESCE(?, bank_details),
+          address_line1 = COALESCE(?, address_line1),
+          address_line2 = COALESCE(?, address_line2),
+          city = COALESCE(?, city),
+          state = COALESCE(?, state),
+          country = COALESCE(?, country),
+          pincode = COALESCE(?, pincode),
+          phone_no = COALESCE(?, phone_no),
+          email = COALESCE(?, email),
+          active = COALESCE(?, active),
+          gstno = COALESCE(?, gstno),
+          panno = COALESCE(?, panno),
+          updated_at = ?
         WHERE id = ?
       `,
       args: [
-        groupname !== undefined ? groupname.trim() : null,
+        resolvedGroupName,
         accountname !== undefined ? accountname.trim() : null,
+        resolvedAccountType,
+        bankDetailsJson,
+        address_line1 !== undefined ? address_line1.trim() : null,
+        address_line2 !== undefined ? address_line2.trim() : null,
+        city !== undefined ? city.trim() : null,
         state !== undefined ? state.trim() : null,
         country !== undefined ? country.trim() : null,
         pincode !== undefined ? pincode.trim() : null,
+        phone_no !== undefined ? phone_no.trim() : null,
+        email !== undefined ? email.trim() : null,
         active !== undefined ? (Number(active) === 0 ? 0 : 1) : null,
         gstno !== undefined ? gstno.trim() : null,
         panno !== undefined ? panno.trim() : null,
@@ -241,6 +466,13 @@ export async function updateAccountHeadController(req, res) {
         Number(id),
       ],
     });
+
+    if (resolvedAccountType) {
+      await recordCustomOption(client, "ACCOUNT_TYPE", resolvedAccountType);
+    }
+    if (resolvedGroupName) {
+      await recordCustomOption(client, "FINANCIAL_GROUP", resolvedGroupName);
+    }
 
     return res.json({
       success: true,

@@ -23,6 +23,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   List<CategoryRecord> _categories = [];
   List<CategoryRecord> _filteredCategories = [];
   List<Metal> _metals = [];
+  List<Purity> _purities = [];
   List<AccountHead> _accountHeads = [];
   List<TaxRecord> _taxRecords = [];
   bool _isLoading = false;
@@ -37,6 +38,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   final _formKey = GlobalKey<FormState>();
 
   String? _selectedMetalId;
+  int? _selectedPurityId;
   final _nameController = TextEditingController();
   String _selectedType = 'ORNAMENTS/STONE';
 
@@ -82,6 +84,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     final results = await Future.wait([
       _api.getCategories(token),
       _api.getMetals(token),
+      _api.getPurities(token),
       _api.getAccountHeads(token),
       _api.getTaxRecords(token),
     ]);
@@ -90,8 +93,9 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
       setState(() {
         _categories = results[0] as List<CategoryRecord>;
         _metals = results[1] as List<Metal>;
-        _accountHeads = results[2] as List<AccountHead>;
-        _taxRecords = results[3] as List<TaxRecord>;
+        _purities = results[2] as List<Purity>;
+        _accountHeads = results[3] as List<AccountHead>;
+        _taxRecords = results[4] as List<TaxRecord>;
         _applyFilter(_searchQuery);
         _isLoading = false;
       });
@@ -108,6 +112,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
             c.catname.toLowerCase().contains(_searchQuery) ||
             c.categorytype.toLowerCase().contains(_searchQuery) ||
             (c.metalname ?? '').toLowerCase().contains(_searchQuery) ||
+            (c.purityname ?? '').toLowerCase().contains(_searchQuery) ||
+            (c.purityshortname ?? '').toLowerCase().contains(_searchQuery) ||
             c.salesacname.toLowerCase().contains(_searchQuery) ||
             c.purchaseacname.toLowerCase().contains(_searchQuery) ||
             c.sgstacname.toLowerCase().contains(_searchQuery) ||
@@ -141,12 +147,41 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     });
   }
 
+  String _getAutoSalesAcName() {
+    final catName = _nameController.text.trim();
+    if (catName.isEmpty) return "";
+    final purity = _purities.where((p) => p.purityid == _selectedPurityId).firstOrNull;
+    final purityLabel = (purity?.purityshortname.isNotEmpty == true ? purity!.purityshortname : purity?.purityname ?? '').trim();
+    final sgst = double.tryParse(_sgstPerController.text.trim()) ?? 0.0;
+    final cgst = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
+    final totalGst = sgst + cgst;
+    final gstStr = totalGst > 0 ? "${totalGst % 1 == 0 ? totalGst.toStringAsFixed(0) : totalGst.toStringAsFixed(2)}%" : "";
+    final purityPart = purityLabel.isNotEmpty ? "$purityLabel " : "";
+    final gstPart = gstStr.isNotEmpty ? "GST $gstStr " : "GST ";
+    return "$catName $purityPart${gstPart}SALES".replaceAll(RegExp(r'\s+'), ' ').trim().toUpperCase();
+  }
+
+  String _getAutoPurchaseAcName() {
+    final catName = _nameController.text.trim();
+    if (catName.isEmpty) return "";
+    final purity = _purities.where((p) => p.purityid == _selectedPurityId).firstOrNull;
+    final purityLabel = (purity?.purityshortname.isNotEmpty == true ? purity!.purityshortname : purity?.purityname ?? '').trim();
+    final sgst = double.tryParse(_sgstPerController.text.trim()) ?? 0.0;
+    final cgst = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
+    final totalGst = sgst + cgst;
+    final gstStr = totalGst > 0 ? "${totalGst % 1 == 0 ? totalGst.toStringAsFixed(0) : totalGst.toStringAsFixed(2)}%" : "";
+    final purityPart = purityLabel.isNotEmpty ? "$purityLabel " : "";
+    final gstPart = gstStr.isNotEmpty ? "GST $gstStr " : "GST ";
+    return "$catName $purityPart${gstPart}PURCHASE".replaceAll(RegExp(r'\s+'), ' ').trim().toUpperCase();
+  }
+
   void _openForm([CategoryRecord? existing]) {
     setState(() {
       _editingCategory = existing;
       _showForm = true;
       if (existing != null) {
         _selectedMetalId = existing.metalid;
+        _selectedPurityId = existing.purityid;
         _nameController.text = existing.catname;
         _selectedType = existing.categorytype.isNotEmpty ? existing.categorytype : 'ORNAMENTS/STONE';
         _sgstPerController.text = existing.sgstPer.toStringAsFixed(2);
@@ -173,6 +208,10 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
 
   void _resetFormFields() {
     _selectedMetalId = _metals.isNotEmpty ? _metals.first.metalid : null;
+    final availablePurities = _selectedMetalId != null
+        ? _purities.where((p) => p.metalid == _selectedMetalId).toList()
+        : <Purity>[];
+    _selectedPurityId = availablePurities.isNotEmpty ? availablePurities.first.purityid : null;
     _nameController.clear();
     _selectedType = 'ORNAMENTS/STONE';
     _selectedSalesAc = null;
@@ -234,6 +273,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         id: _editingCategory?.id,
         catcode: _editingCategory?.catcode ?? '',
         metalid: _selectedMetalId!,
+        purityid: _selectedPurityId,
         catname: name,
         categorytype: _selectedType,
         sgstPer: sgst,
@@ -256,7 +296,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                isEditing ? "Category '$name' updated successfully!" : "Category '$name' created successfully!",
+                isEditing ? "Category '$name' updated successfully!" : "Category '$name' created successfully (Sales & Purchase accounts registered)!",
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               backgroundColor: GlassTheme.accentEmerald,
@@ -547,7 +587,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
               runSpacing: 14,
               children: [
                 SizedBox(
-                  width: isMobile ? double.infinity : 220,
+                  width: isMobile ? double.infinity : 200,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -567,13 +607,63 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             child: Text("${m.metalname} (${m.metalid})", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
                           );
                         }).toList(),
-                        onChanged: (val) => setState(() => _selectedMetalId = val),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedMetalId = val;
+                            final available = _purities.where((p) => p.metalid == val).toList();
+                            _selectedPurityId = available.isNotEmpty ? available.first.purityid : null;
+                          });
+                        },
                       ),
                     ],
                   ),
                 ),
                 SizedBox(
-                  width: isMobile ? double.infinity : 320,
+                  width: isMobile ? double.infinity : 240,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.workspace_premium_rounded, color: Color(0xFFEAB308), size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            "Purity *",
+                            style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<int>(
+                        value: _selectedPurityId,
+                        dropdownColor: Colors.white,
+                        style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                        decoration: _inputDecoration("Select Purity"),
+                        isExpanded: true,
+                        items: [
+                          const DropdownMenuItem<int>(
+                            value: null,
+                            child: Text("-- Select Purity --", style: TextStyle(color: GlassTheme.textMuted, fontStyle: FontStyle.italic)),
+                          ),
+                          ..._purities
+                              .where((p) => _selectedMetalId == null || p.metalid == _selectedMetalId)
+                              .map((p) {
+                            return DropdownMenuItem<int>(
+                              value: p.purityid,
+                              child: Text(
+                                "${p.purityname} (${p.purityshortname} - ${p.purity}%)",
+                                style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700),
+                              ),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) => setState(() => _selectedPurityId = val),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: isMobile ? double.infinity : 280,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -584,6 +674,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _nameController,
+                        onChanged: (_) => setState(() {}),
                         style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
                         decoration: _inputDecoration("e.g. Rings, Bangles, Chains, Gold Coins"),
                         validator: (val) {
@@ -595,7 +686,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                   ),
                 ),
                 SizedBox(
-                  width: isMobile ? double.infinity : 240,
+                  width: isMobile ? double.infinity : 220,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -790,10 +881,44 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    "Specify which Account Head from Master the sales and purchase transactions of this category will be posted into.",
+                    "Leave blank to automatically create dedicated Sales and Purchase Account Heads in Master upon save.",
                     style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
+
+                  // Auto Generation Banner Preview
+                  if (_getAutoSalesAcName().isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF86EFAC)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.auto_awesome_rounded, color: GlassTheme.accentEmerald, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  "Automatic Account Head Creation (if left unselected):",
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF166534)),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  "Sales: ${_getAutoSalesAcName()}\nPurchase: ${_getAutoPurchaseAcName()}",
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
                   Wrap(
                     spacing: 16,
@@ -810,7 +935,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                                 Icon(Icons.point_of_sale_rounded, color: GlassTheme.accentEmerald, size: 16),
                                 SizedBox(width: 6),
                                 Text(
-                                  "Sales Account Head (Where Sales Goes) *",
+                                  "Sales Account Head (Where Sales Goes)",
                                   style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
                                 ),
                               ],
@@ -819,7 +944,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             _buildAccountDropdown(
                               value: _selectedSalesAc,
                               options: ledgerNames,
-                              hint: "Select Sales Ledger (e.g. Gold Sales A/c)",
+                              hint: _getAutoSalesAcName().isNotEmpty ? "Auto: ${_getAutoSalesAcName()}" : "Select Sales Ledger (e.g. Gold Sales A/c)",
                               onChanged: (val) => setState(() => _selectedSalesAc = val),
                             ),
                           ],
@@ -837,7 +962,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                                 Icon(Icons.shopping_bag_outlined, color: Color(0xFF3B82F6), size: 16),
                                 SizedBox(width: 6),
                                 Text(
-                                  "Purchase Account Head (Where Purchase Goes) *",
+                                  "Purchase Account Head (Where Purchase Goes)",
                                   style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
                                 ),
                               ],
@@ -846,7 +971,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             _buildAccountDropdown(
                               value: _selectedPurchaseAc,
                               options: ledgerNames,
-                              hint: "Select Purchase Ledger (e.g. Gold Purchase A/c)",
+                              hint: _getAutoPurchaseAcName().isNotEmpty ? "Auto: ${_getAutoPurchaseAcName()}" : "Select Purchase Ledger (e.g. Gold Purchase A/c)",
                               onChanged: (val) => setState(() => _selectedPurchaseAc = val),
                             ),
                           ],
@@ -1089,6 +1214,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
 
                     _buildInfoRow("Metal", "${cat.metalname ?? cat.metalid} (${cat.metalid})"),
                     const SizedBox(height: 6),
+                    _buildInfoRow("Purity", cat.purityname != null && cat.purityname!.isNotEmpty ? "${cat.purityname!} (${cat.purityshortname ?? ''})" : (cat.purityshortname ?? "-")),
+                    const SizedBox(height: 6),
                     _buildInfoRow("Category Code", cat.catcode),
                     const SizedBox(height: 6),
                     _buildInfoRow("Type", cat.categorytype),
@@ -1133,10 +1260,12 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   List<CategoryRecord> _filteredCategoriesWithMeta() {
     return _filteredCategories.map((c) {
       final metalMatch = _metals.where((m) => m.metalid == c.metalid).firstOrNull;
-      if (metalMatch != null && (c.metalname == null || c.metalname!.isEmpty)) {
-        return c.copyWith(metalname: metalMatch.metalname);
-      }
-      return c;
+      final purityMatch = _purities.where((p) => p.purityid == c.purityid).firstOrNull;
+      return c.copyWith(
+        metalname: (c.metalname == null || c.metalname!.isEmpty) ? metalMatch?.metalname : c.metalname,
+        purityname: (c.purityname == null || c.purityname!.isEmpty) ? purityMatch?.purityname : c.purityname,
+        purityshortname: (c.purityshortname == null || c.purityshortname!.isEmpty) ? purityMatch?.purityshortname : c.purityshortname,
+      );
     }).toList();
   }
 
@@ -1180,6 +1309,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
               DataColumn(label: Text("CODE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("CATEGORY NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("METAL", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+              DataColumn(label: Text("PURITY", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("TYPE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("GST %", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
               DataColumn(label: Text("SALES A/C (POSTING)", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
@@ -1194,6 +1324,21 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                   DataCell(Text(cat.catcode, style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 13))),
                   DataCell(Text(cat.catname, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
                   DataCell(Text("${cat.metalname ?? cat.metalid} (${cat.metalid})", style: const TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w700, fontSize: 13))),
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        cat.purityshortname?.isNotEmpty == true
+                            ? cat.purityshortname!
+                            : (cat.purityname?.isNotEmpty == true ? cat.purityname! : "-"),
+                        style: const TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.w800, fontSize: 12),
+                      ),
+                    ),
+                  ),
                   DataCell(Text(cat.categorytype, style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 12))),
                   DataCell(
                     Container(
