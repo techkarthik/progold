@@ -521,15 +521,40 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Drawer Footer with Logout
+          // Drawer Footer with Version and Logout
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: GlassTheme.accentEmerald,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      "ProGold v2.4.0 • Build: 03-Sep-2026 22:45 IST",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: GlassTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFF1F5F9),
@@ -763,6 +788,45 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 }).toList(),
               ),
+
+              const SizedBox(height: 48),
+
+              // Version and Build Date Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x080F172A), blurRadius: 8, offset: Offset(0, 2)),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        color: GlassTheme.accentEmerald,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "ProGold v2.4.0 • Build: 03-Sep-2026 22:45 IST • Cloud Active",
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: GlassTheme.textSecondary,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
             ],
           ),
         ),

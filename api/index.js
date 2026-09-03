@@ -49,6 +49,8 @@ import {
 } from "../backend/src/controllers/employeeController.js";
 import {
   getAccountHeadsController,
+  getAccountHeadOptionsController,
+  createAccountHeadOptionController,
   createAccountHeadController,
   updateAccountHeadController,
   deleteAccountHeadController,
@@ -80,6 +82,14 @@ import {
   createSubProductController,
   updateSubProductController,
   deleteSubProductController,
+  getStylesController,
+  createStyleController,
+  updateStyleController,
+  deleteStyleController,
+  getSizesController,
+  createSizeController,
+  updateSizeController,
+  deleteSizeController,
 } from "../backend/src/controllers/inventoryMasterController.js";
 import {
   getSystemControlsController,
@@ -238,6 +248,8 @@ router.delete("/tenant/employees/:id", requireAuth, deleteEmployeeController);
 
 // Tenant Account Head CRUD Routes
 router.get("/tenant/account-heads", requireAuth, getAccountHeadsController);
+router.get("/tenant/account-heads/options", requireAuth, getAccountHeadOptionsController);
+router.post("/tenant/account-heads/options", requireAuth, createAccountHeadOptionController);
 router.post("/tenant/account-heads", requireAuth, createAccountHeadController);
 router.put("/tenant/account-heads/:id", requireAuth, updateAccountHeadController);
 router.delete("/tenant/account-heads/:id", requireAuth, deleteAccountHeadController);
@@ -277,6 +289,18 @@ router.get("/tenant/subproducts", requireAuth, getSubProductsController);
 router.post("/tenant/subproducts", requireAuth, createSubProductController);
 router.put("/tenant/subproducts/:id", requireAuth, updateSubProductController);
 router.delete("/tenant/subproducts/:id", requireAuth, deleteSubProductController);
+
+// Tenant Styles CRUD Routes (6th Master under Inventory)
+router.get("/tenant/styles", requireAuth, getStylesController);
+router.post("/tenant/styles", requireAuth, createStyleController);
+router.put("/tenant/styles/:id", requireAuth, updateStyleController);
+router.delete("/tenant/styles/:id", requireAuth, deleteStyleController);
+
+// Tenant Sizes CRUD Routes (7th Master under Inventory)
+router.get("/tenant/sizes", requireAuth, getSizesController);
+router.post("/tenant/sizes", requireAuth, createSizeController);
+router.put("/tenant/sizes/:id", requireAuth, updateSizeController);
+router.delete("/tenant/sizes/:id", requireAuth, deleteSizeController);
 
 // Tenant System Controls CRUD Routes (4th Menu under Settings)
 router.get("/tenant/system-controls", requireAuth, getSystemControlsController);
