@@ -41,6 +41,11 @@ async function ensureInventoryTables(client) {
       sgst_per REAL DEFAULT 0.0,
       cgst_per REAL DEFAULT 0.0,
       igst_per REAL DEFAULT 0.0,
+      sales_accode TEXT DEFAULT '',
+      purchase_accode TEXT DEFAULT '',
+      sgst_accode TEXT DEFAULT '',
+      cgst_accode TEXT DEFAULT '',
+      igst_accode TEXT DEFAULT '',
       salesacname TEXT DEFAULT '',
       purchaseacname TEXT DEFAULT '',
       sgstacname TEXT DEFAULT '',
@@ -57,10 +62,47 @@ async function ensureInventoryTables(client) {
     await client.execute(`ALTER TABLE categories ADD COLUMN purityid INTEGER;`);
   } catch (_) {}
   try {
+    await client.execute(`ALTER TABLE categories ADD COLUMN sales_accode TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE categories ADD COLUMN purchase_accode TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE categories ADD COLUMN sgst_accode TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE categories ADD COLUMN cgst_accode TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`ALTER TABLE categories ADD COLUMN igst_accode TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
     await client.execute(`ALTER TABLE categories ADD COLUMN salesacname TEXT DEFAULT '';`);
   } catch (_) {}
   try {
     await client.execute(`ALTER TABLE categories ADD COLUMN purchaseacname TEXT DEFAULT '';`);
+  } catch (_) {}
+  try {
+    await client.execute(`
+      UPDATE categories
+      SET sales_accode = (
+        SELECT accode FROM account_heads 
+        WHERE UPPER(TRIM(account_heads.accountname)) = UPPER(TRIM(categories.salesacname)) 
+        LIMIT 1
+      )
+      WHERE (sales_accode IS NULL OR sales_accode = '') AND salesacname != '';
+    `);
+  } catch (_) {}
+  try {
+    await client.execute(`
+      UPDATE categories
+      SET purchase_accode = (
+        SELECT accode FROM account_heads 
+        WHERE UPPER(TRIM(account_heads.accountname)) = UPPER(TRIM(categories.purchaseacname)) 
+        LIMIT 1
+      )
+      WHERE (purchase_accode IS NULL OR purchase_accode = '') AND purchaseacname != '';
+    `);
   } catch (_) {}
 
   // Products (New 4th Master under Inventory)
@@ -96,6 +138,32 @@ async function ensureInventoryTables(client) {
       updated_at TEXT NOT NULL,
       FOREIGN KEY (productid) REFERENCES products(productid),
       UNIQUE (productid, subproductname)
+    );
+  `);
+
+  // Styles (6th Master under Inventory)
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS styles (
+      styleid INTEGER PRIMARY KEY AUTOINCREMENT,
+      productid INTEGER NOT NULL,
+      stylename TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (productid) REFERENCES products(productid),
+      UNIQUE (productid, stylename)
+    );
+  `);
+
+  // Sizes (7th Master under Inventory)
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS sizes (
+      sizeid INTEGER PRIMARY KEY AUTOINCREMENT,
+      productid INTEGER NOT NULL,
+      sizename TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (productid) REFERENCES products(productid),
+      UNIQUE (productid, sizename)
     );
   `);
 }
@@ -363,10 +431,10 @@ export async function deletePurityController(req, res) {
 }
 
 /**
- * Helper to auto-create / ensure an Account Head in account_heads table.
+ * Helper to auto-create / ensure an Account Head in account_heads table, returning its accode.
  */
 async function ensureAccountHead(client, accountName, groupName) {
-  if (!accountName || !accountName.trim()) return;
+  if (!accountName || !accountName.trim()) return "";
   const trimmedName = accountName.trim().toUpperCase();
   try {
     await client.execute(`
@@ -394,40 +462,44 @@ async function ensureAccountHead(client, accountName, groupName) {
     `);
 
     const existing = await client.execute({
-      sql: `SELECT id FROM account_heads WHERE UPPER(TRIM(accountname)) = ? LIMIT 1;`,
+      sql: `SELECT accode FROM account_heads WHERE UPPER(TRIM(accountname)) = ? LIMIT 1;`,
       args: [trimmedName],
     });
 
-    if (existing.rows.length === 0) {
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-      let accode = "";
-      let isUnique = false;
-      let attempts = 0;
-      while (!isUnique && attempts < 10) {
-        accode = "";
-        for (let i = 0; i < 7; i++) {
-          accode += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        const checkCode = await client.execute({
-          sql: `SELECT id FROM account_heads WHERE accode = ? LIMIT 1;`,
-          args: [accode],
-        });
-        if (checkCode.rows.length === 0) isUnique = true;
-        attempts++;
-      }
-
-      const now = new Date().toISOString();
-      await client.execute({
-        sql: `
-          INSERT INTO account_heads (
-            accode, groupname, accountname, accounttype, active, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?);
-        `,
-        args: [accode, groupName, trimmedName, 'INTERNAL', 1, now, now],
-      });
+    if (existing.rows.length > 0) {
+      return String(existing.rows[0].accode || "").trim();
     }
+
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let accode = "";
+    let isUnique = false;
+    let attempts = 0;
+    while (!isUnique && attempts < 10) {
+      accode = "";
+      for (let i = 0; i < 7; i++) {
+        accode += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      const checkCode = await client.execute({
+        sql: `SELECT id FROM account_heads WHERE accode = ? LIMIT 1;`,
+        args: [accode],
+      });
+      if (checkCode.rows.length === 0) isUnique = true;
+      attempts++;
+    }
+
+    const now = new Date().toISOString();
+    await client.execute({
+      sql: `
+        INSERT INTO account_heads (
+          accode, groupname, accountname, accounttype, active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?);
+      `,
+      args: [accode, groupName, trimmedName, 'INTERNAL', 1, now, now],
+    });
+    return accode;
   } catch (err) {
     console.error("ensureAccountHead error:", err);
+    return "";
   }
 }
 
@@ -442,10 +514,25 @@ export async function getCategoriesController(req, res) {
     await ensureInventoryTables(client);
 
     const result = await client.execute(`
-      SELECT c.*, m.metalname, p.purityname, p.purityshortname, p.purity
+      SELECT 
+        c.*, 
+        m.metalname, 
+        p.purityname, 
+        p.purityshortname, 
+        p.purity,
+        COALESCE(ah_sales.accountname, c.salesacname, '') AS salesacname,
+        COALESCE(ah_purch.accountname, c.purchaseacname, '') AS purchaseacname,
+        COALESCE(ah_sgst.accountname, c.sgstacname, '') AS sgstacname,
+        COALESCE(ah_cgst.accountname, c.cgstacname, '') AS cgstacname,
+        COALESCE(ah_igst.accountname, c.igstacname, '') AS igstacname
       FROM categories c
       JOIN metals m ON c.metalid = m.metalid
       LEFT JOIN purities p ON c.purityid = p.purityid
+      LEFT JOIN account_heads ah_sales ON (c.sales_accode != '' AND c.sales_accode = ah_sales.accode)
+      LEFT JOIN account_heads ah_purch ON (c.purchase_accode != '' AND c.purchase_accode = ah_purch.accode)
+      LEFT JOIN account_heads ah_sgst ON (c.sgst_accode != '' AND c.sgst_accode = ah_sgst.accode)
+      LEFT JOIN account_heads ah_cgst ON (c.cgst_accode != '' AND c.cgst_accode = ah_cgst.accode)
+      LEFT JOIN account_heads ah_igst ON (c.igst_accode != '' AND c.igst_accode = ah_igst.accode)
       ORDER BY c.created_at DESC;
     `);
     return res.json({ success: true, categories: result.rows || [] });
@@ -469,6 +556,11 @@ export async function createCategoryController(req, res) {
       sgst_per = 0.0,
       cgst_per = 0.0,
       igst_per = 0.0,
+      sales_accode = "",
+      purchase_accode = "",
+      sgst_accode = "",
+      cgst_accode = "",
+      igst_accode = "",
       salesacname = "",
       purchaseacname = "",
       sgstacname = "",
@@ -505,15 +597,27 @@ export async function createCategoryController(req, res) {
     // Auto-generate Sales and Purchase Account Names if not explicitly provided
     const purityPart = purityLabel ? `${purityLabel} ` : '';
     const gstPart = gstStr ? `GST ${gstStr} ` : 'GST ';
-    const autoSalesAc = `${catname.trim()} ${purityPart}${gstPart}SALES`.replace(/\s+/g, ' ').trim().toUpperCase();
-    const autoPurchaseAc = `${catname.trim()} ${purityPart}${gstPart}PURCHASE`.replace(/\s+/g, ' ').trim().toUpperCase();
+    const autoSalesAcName = `${catname.trim()} ${purityPart}${gstPart}SALES`.replace(/\s+/g, ' ').trim().toUpperCase();
+    const autoPurchaseAcName = `${catname.trim()} ${purityPart}${gstPart}PURCHASE`.replace(/\s+/g, ' ').trim().toUpperCase();
 
-    const resolvedSalesAc = (salesacname && salesacname.trim()) ? salesacname.trim().toUpperCase() : autoSalesAc;
-    const resolvedPurchaseAc = (purchaseacname && purchaseacname.trim()) ? purchaseacname.trim().toUpperCase() : autoPurchaseAc;
+    // Resolve Sales accode
+    let finalSalesAccode = (sales_accode && String(sales_accode).trim()) ? String(sales_accode).trim().toUpperCase() : "";
+    let finalSalesAcName = (salesacname && String(salesacname).trim()) ? String(salesacname).trim().toUpperCase() : autoSalesAcName;
+    if (!finalSalesAccode) {
+      finalSalesAccode = await ensureAccountHead(client, finalSalesAcName, 'Sales Account');
+    }
 
-    // Automatically create / ensure both Sales & Purchase Account Heads in Account Head Master
-    await ensureAccountHead(client, resolvedSalesAc, 'Sales Account');
-    await ensureAccountHead(client, resolvedPurchaseAc, 'Purchase Account');
+    // Resolve Purchase accode
+    let finalPurchaseAccode = (purchase_accode && String(purchase_accode).trim()) ? String(purchase_accode).trim().toUpperCase() : "";
+    let finalPurchaseAcName = (purchaseacname && String(purchaseacname).trim()) ? String(purchaseacname).trim().toUpperCase() : autoPurchaseAcName;
+    if (!finalPurchaseAccode) {
+      finalPurchaseAccode = await ensureAccountHead(client, finalPurchaseAcName, 'Purchase Account');
+    }
+
+    // Resolve tax accodes if names provided
+    let finalSgstAccode = (sgst_accode && String(sgst_accode).trim()) ? String(sgst_accode).trim() : "";
+    let finalCgstAccode = (cgst_accode && String(cgst_accode).trim()) ? String(cgst_accode).trim() : "";
+    let finalIgstAccode = (igst_accode && String(igst_accode).trim()) ? String(igst_accode).trim() : "";
 
     // Generate unique sequential alphanumeric Category Code
     const prefix = getCategoryPrefix(cleanMetalId, categorytype);
@@ -537,8 +641,11 @@ export async function createCategoryController(req, res) {
     await client.execute({
       sql: `
         INSERT INTO categories (
-          metalid, purityid, catcode, catname, categorytype, sgst_per, cgst_per, igst_per, salesacname, purchaseacname, sgstacname, cgstacname, igstacname, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+          metalid, purityid, catcode, catname, categorytype, sgst_per, cgst_per, igst_per,
+          sales_accode, purchase_accode, sgst_accode, cgst_accode, igst_accode,
+          salesacname, purchaseacname, sgstacname, cgstacname, igstacname,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       args: [
         cleanMetalId,
@@ -549,8 +656,13 @@ export async function createCategoryController(req, res) {
         Number(sgst_per) || 0.0,
         Number(cgst_per) || 0.0,
         Number(igst_per) || 0.0,
-        resolvedSalesAc,
-        resolvedPurchaseAc,
+        finalSalesAccode,
+        finalPurchaseAccode,
+        finalSgstAccode,
+        finalCgstAccode,
+        finalIgstAccode,
+        finalSalesAcName,
+        finalPurchaseAcName,
         String(sgstacname || "").trim(),
         String(cgstacname || "").trim(),
         String(igstacname || "").trim(),
@@ -563,8 +675,10 @@ export async function createCategoryController(req, res) {
       success: true,
       message: "Category created successfully!",
       catcode: catcode,
-      salesacname: resolvedSalesAc,
-      purchaseacname: resolvedPurchaseAc,
+      sales_accode: finalSalesAccode,
+      purchase_accode: finalPurchaseAccode,
+      salesacname: finalSalesAcName,
+      purchaseacname: finalPurchaseAcName,
     });
   } catch (error) {
     console.error("createCategory error:", error);
@@ -587,6 +701,11 @@ export async function updateCategoryController(req, res) {
       sgst_per,
       cgst_per,
       igst_per,
+      sales_accode,
+      purchase_accode,
+      sgst_accode,
+      cgst_accode,
+      igst_accode,
       salesacname,
       purchaseacname,
       sgstacname,
@@ -602,7 +721,7 @@ export async function updateCategoryController(req, res) {
 
     // Verify existing category
     const checkCat = await client.execute({
-      sql: `SELECT metalid, categorytype, catcode FROM categories WHERE id = ? LIMIT 1;`,
+      sql: `SELECT metalid, categorytype, catcode, sales_accode, purchase_accode FROM categories WHERE id = ? LIMIT 1;`,
       args: [Number(id)],
     });
 
@@ -635,14 +754,15 @@ export async function updateCategoryController(req, res) {
     }
 
     const cleanPurityId = purityid !== undefined ? (purityid ? Number(purityid) : null) : null;
-    const resolvedSales = salesacname !== undefined ? String(salesacname).trim().toUpperCase() : "";
-    const resolvedPurchase = purchaseacname !== undefined ? String(purchaseacname).trim().toUpperCase() : "";
 
-    if (resolvedSales) {
-      await ensureAccountHead(client, resolvedSales, 'Sales Account');
+    let finalSalesAccode = sales_accode !== undefined ? String(sales_accode).trim().toUpperCase() : checkCat.rows[0].sales_accode;
+    if (!finalSalesAccode && salesacname && salesacname.trim()) {
+      finalSalesAccode = await ensureAccountHead(client, salesacname.trim(), 'Sales Account');
     }
-    if (resolvedPurchase) {
-      await ensureAccountHead(client, resolvedPurchase, 'Purchase Account');
+
+    let finalPurchaseAccode = purchase_accode !== undefined ? String(purchase_accode).trim().toUpperCase() : checkCat.rows[0].purchase_accode;
+    if (!finalPurchaseAccode && purchaseacname && purchaseacname.trim()) {
+      finalPurchaseAccode = await ensureAccountHead(client, purchaseacname.trim(), 'Purchase Account');
     }
 
     const now = new Date().toISOString();
@@ -657,6 +777,11 @@ export async function updateCategoryController(req, res) {
             sgst_per = ?,
             cgst_per = ?,
             igst_per = ?,
+            sales_accode = ?,
+            purchase_accode = ?,
+            sgst_accode = ?,
+            cgst_accode = ?,
+            igst_accode = ?,
             salesacname = ?,
             purchaseacname = ?,
             sgstacname = ?,
@@ -674,8 +799,13 @@ export async function updateCategoryController(req, res) {
         sgst_per !== undefined ? Number(sgst_per) : 0.0,
         cgst_per !== undefined ? Number(cgst_per) : 0.0,
         igst_per !== undefined ? Number(igst_per) : 0.0,
-        resolvedSales,
-        resolvedPurchase,
+        finalSalesAccode || "",
+        finalPurchaseAccode || "",
+        sgst_accode !== undefined ? String(sgst_accode).trim() : "",
+        cgst_accode !== undefined ? String(cgst_accode).trim() : "",
+        igst_accode !== undefined ? String(igst_accode).trim() : "",
+        salesacname !== undefined ? String(salesacname).trim().toUpperCase() : "",
+        purchaseacname !== undefined ? String(purchaseacname).trim().toUpperCase() : "",
         sgstacname !== undefined ? String(sgstacname).trim() : "",
         cgstacname !== undefined ? String(cgstacname).trim() : "",
         igstacname !== undefined ? String(igstacname).trim() : "",
@@ -684,7 +814,13 @@ export async function updateCategoryController(req, res) {
       ],
     });
 
-    return res.json({ success: true, message: "Category updated successfully!", catcode: finalCatcode });
+    return res.json({
+      success: true,
+      message: "Category updated successfully!",
+      catcode: finalCatcode,
+      sales_accode: finalSalesAccode,
+      purchase_accode: finalPurchaseAccode,
+    });
   } catch (error) {
     console.error("updateCategory error:", error);
     return res.status(500).json({ success: false, message: error.message });
@@ -1186,6 +1322,418 @@ export async function deleteSubProductController(req, res) {
     return res.json({ success: true, message: "Sub-Product deleted successfully!" });
   } catch (error) {
     console.error("deleteSubProduct error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// ==========================================
+// 6. STYLES CRUD CONTROLLERS (6th Inventory Master)
+// ==========================================
+
+export async function getStylesController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const result = await client.execute(`
+      SELECT s.*, p.productname, c.catname, c.catcode, m.metalname, m.metalid
+      FROM styles s
+      JOIN products p ON s.productid = p.productid
+      JOIN categories c ON p.categoryid = c.id
+      JOIN metals m ON c.metalid = m.metalid
+      ORDER BY s.styleid DESC;
+    `);
+
+    const metaResult = await client.execute(`
+      SELECT MAX(styleid) AS max_id, COUNT(*) AS total_count FROM styles;
+    `);
+
+    const maxId = Number(metaResult.rows[0]?.max_id || 0);
+    const nextId = maxId + 1;
+    const totalCount = Number(metaResult.rows[0]?.total_count || 0);
+
+    return res.json({
+      success: true,
+      styles: result.rows || [],
+      last_styleid: maxId,
+      next_styleid: nextId,
+      total_count: totalCount,
+    });
+  } catch (error) {
+    console.error("getStyles error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function createStyleController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      productid,
+      stylename,
+    } = req.body;
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Product selection is required." });
+    }
+
+    if (!stylename || !stylename.trim()) {
+      return res.status(400).json({ success: false, message: "Style Name is required." });
+    }
+
+    const cleanName = stylename.trim().substring(0, 100);
+
+    // 1. Verify parent product exists
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Product does not exist." });
+    }
+
+    const parentProd = prodCheck.rows[0];
+
+    // 2. Check uniqueness of (productid, stylename)
+    const duplicateCheck = await client.execute({
+      sql: `SELECT styleid FROM styles WHERE productid = ? AND LOWER(stylename) = LOWER(?) LIMIT 1;`,
+      args: [Number(productid), cleanName],
+    });
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Style '${cleanName}' already exists under '${parentProd.productname}'. Style name must be unique per product.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    const insertResult = await client.execute({
+      sql: `
+        INSERT INTO styles (
+          productid, stylename, created_at, updated_at
+        ) VALUES (?, ?, ?, ?);
+      `,
+      args: [
+        Number(productid),
+        cleanName,
+        now,
+        now,
+      ],
+    });
+
+    const newId = insertResult.lastInsertRowid ? Number(insertResult.lastInsertRowid) : null;
+
+    return res.status(201).json({
+      success: true,
+      message: "Style created successfully!",
+      styleid: newId,
+    });
+  } catch (error) {
+    console.error("createStyle error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function updateStyleController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      productid,
+      stylename,
+    } = req.body;
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Product selection is required." });
+    }
+
+    if (!stylename || !stylename.trim()) {
+      return res.status(400).json({ success: false, message: "Style Name is required." });
+    }
+
+    const cleanName = stylename.trim().substring(0, 100);
+
+    // 1. Verify parent product exists
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Product does not exist." });
+    }
+
+    const parentProd = prodCheck.rows[0];
+
+    // 2. Check uniqueness of (productid, stylename) for other records
+    const duplicateCheck = await client.execute({
+      sql: `SELECT styleid FROM styles WHERE productid = ? AND LOWER(stylename) = LOWER(?) AND styleid != ? LIMIT 1;`,
+      args: [Number(productid), cleanName, Number(id)],
+    });
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Style '${cleanName}' already exists under '${parentProd.productname}'.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    await client.execute({
+      sql: `
+        UPDATE styles
+        SET productid = ?,
+            stylename = ?,
+            updated_at = ?
+        WHERE styleid = ?;
+      `,
+      args: [
+        Number(productid),
+        cleanName,
+        now,
+        Number(id),
+      ],
+    });
+
+    return res.json({ success: true, message: "Style updated successfully!" });
+  } catch (error) {
+    console.error("updateStyle error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deleteStyleController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    await client.execute({
+      sql: `DELETE FROM styles WHERE styleid = ?;`,
+      args: [Number(id)],
+    });
+
+    return res.json({ success: true, message: "Style deleted successfully!" });
+  } catch (error) {
+    console.error("deleteStyle error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// ==========================================
+// 7. SIZES CRUD CONTROLLERS (7th Inventory Master)
+// ==========================================
+
+export async function getSizesController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const result = await client.execute(`
+      SELECT sz.*, p.productname, c.catname, c.catcode, m.metalname, m.metalid
+      FROM sizes sz
+      JOIN products p ON sz.productid = p.productid
+      JOIN categories c ON p.categoryid = c.id
+      JOIN metals m ON c.metalid = m.metalid
+      ORDER BY sz.sizeid DESC;
+    `);
+
+    const metaResult = await client.execute(`
+      SELECT MAX(sizeid) AS max_id, COUNT(*) AS total_count FROM sizes;
+    `);
+
+    const maxId = Number(metaResult.rows[0]?.max_id || 0);
+    const nextId = maxId + 1;
+    const totalCount = Number(metaResult.rows[0]?.total_count || 0);
+
+    return res.json({
+      success: true,
+      sizes: result.rows || [],
+      last_sizeid: maxId,
+      next_sizeid: nextId,
+      total_count: totalCount,
+    });
+  } catch (error) {
+    console.error("getSizes error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function createSizeController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      productid,
+      sizename,
+    } = req.body;
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Product selection is required." });
+    }
+
+    if (!sizename || !sizename.trim()) {
+      return res.status(400).json({ success: false, message: "Size Name is required." });
+    }
+
+    const cleanName = sizename.trim().substring(0, 100);
+
+    // 1. Verify parent product exists
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Product does not exist." });
+    }
+
+    const parentProd = prodCheck.rows[0];
+
+    // 2. Check uniqueness of (productid, sizename)
+    const duplicateCheck = await client.execute({
+      sql: `SELECT sizeid FROM sizes WHERE productid = ? AND LOWER(sizename) = LOWER(?) LIMIT 1;`,
+      args: [Number(productid), cleanName],
+    });
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Size '${cleanName}' already exists under '${parentProd.productname}'. Size name must be unique per product.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    const insertResult = await client.execute({
+      sql: `
+        INSERT INTO sizes (
+          productid, sizename, created_at, updated_at
+        ) VALUES (?, ?, ?, ?);
+      `,
+      args: [
+        Number(productid),
+        cleanName,
+        now,
+        now,
+      ],
+    });
+
+    const newId = insertResult.lastInsertRowid ? Number(insertResult.lastInsertRowid) : null;
+
+    return res.status(201).json({
+      success: true,
+      message: "Size created successfully!",
+      sizeid: newId,
+    });
+  } catch (error) {
+    console.error("createSize error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function updateSizeController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      productid,
+      sizename,
+    } = req.body;
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Product selection is required." });
+    }
+
+    if (!sizename || !sizename.trim()) {
+      return res.status(400).json({ success: false, message: "Size Name is required." });
+    }
+
+    const cleanName = sizename.trim().substring(0, 100);
+
+    // 1. Verify parent product exists
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Product does not exist." });
+    }
+
+    const parentProd = prodCheck.rows[0];
+
+    // 2. Check uniqueness of (productid, sizename) for other records
+    const duplicateCheck = await client.execute({
+      sql: `SELECT sizeid FROM sizes WHERE productid = ? AND LOWER(sizename) = LOWER(?) AND sizeid != ? LIMIT 1;`,
+      args: [Number(productid), cleanName, Number(id)],
+    });
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Size '${cleanName}' already exists under '${parentProd.productname}'.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    await client.execute({
+      sql: `
+        UPDATE sizes
+        SET productid = ?,
+            sizename = ?,
+            updated_at = ?
+        WHERE sizeid = ?;
+      `,
+      args: [
+        Number(productid),
+        cleanName,
+        now,
+        Number(id),
+      ],
+    });
+
+    return res.json({ success: true, message: "Size updated successfully!" });
+  } catch (error) {
+    console.error("updateSize error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deleteSizeController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    await client.execute({
+      sql: `DELETE FROM sizes WHERE sizeid = ?;`,
+      args: [Number(id)],
+    });
+
+    return res.json({ success: true, message: "Size deleted successfully!" });
+  } catch (error) {
+    console.error("deleteSize error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 }

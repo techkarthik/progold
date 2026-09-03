@@ -81,6 +81,14 @@ import {
   createSubProductController,
   updateSubProductController,
   deleteSubProductController,
+  getStylesController,
+  createStyleController,
+  updateStyleController,
+  deleteStyleController,
+  getSizesController,
+  createSizeController,
+  updateSizeController,
+  deleteSizeController,
 } from "./controllers/inventoryMasterController.js";
 import {
   getSystemControlsController,
@@ -225,6 +233,18 @@ app.get("/api/tenant/subproducts", requireAuth, getSubProductsController);
 app.post("/api/tenant/subproducts", requireAuth, createSubProductController);
 app.put("/api/tenant/subproducts/:id", requireAuth, updateSubProductController);
 app.delete("/api/tenant/subproducts/:id", requireAuth, deleteSubProductController);
+
+// Tenant Styles CRUD Routes (6th Master under Inventory)
+app.get("/api/tenant/styles", requireAuth, getStylesController);
+app.post("/api/tenant/styles", requireAuth, createStyleController);
+app.put("/api/tenant/styles/:id", requireAuth, updateStyleController);
+app.delete("/api/tenant/styles/:id", requireAuth, deleteStyleController);
+
+// Tenant Sizes CRUD Routes (7th Master under Inventory)
+app.get("/api/tenant/sizes", requireAuth, getSizesController);
+app.post("/api/tenant/sizes", requireAuth, createSizeController);
+app.put("/api/tenant/sizes/:id", requireAuth, updateSizeController);
+app.delete("/api/tenant/sizes/:id", requireAuth, deleteSizeController);
 
 // Tenant System Controls CRUD Routes (4th Menu under Settings)
 app.get("/api/tenant/system-controls", requireAuth, getSystemControlsController);

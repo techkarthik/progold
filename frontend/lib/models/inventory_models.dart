@@ -91,6 +91,11 @@ class CategoryRecord {
   final double sgstPer;
   final double cgstPer;
   final double igstPer;
+  final String salesAccode;
+  final String purchaseAccode;
+  final String sgstAccode;
+  final String cgstAccode;
+  final String igstAccode;
   final String salesacname;
   final String purchaseacname;
   final String sgstacname;
@@ -112,6 +117,11 @@ class CategoryRecord {
     this.sgstPer = 0.0,
     this.cgstPer = 0.0,
     this.igstPer = 0.0,
+    this.salesAccode = '',
+    this.purchaseAccode = '',
+    this.sgstAccode = '',
+    this.cgstAccode = '',
+    this.igstAccode = '',
     this.salesacname = '',
     this.purchaseacname = '',
     this.sgstacname = '',
@@ -135,6 +145,11 @@ class CategoryRecord {
       sgstPer: json['sgst_per'] != null ? double.tryParse(json['sgst_per'].toString()) ?? 0.0 : 0.0,
       cgstPer: json['cgst_per'] != null ? double.tryParse(json['cgst_per'].toString()) ?? 0.0 : 0.0,
       igstPer: json['igst_per'] != null ? double.tryParse(json['igst_per'].toString()) ?? 0.0 : 0.0,
+      salesAccode: (json['sales_accode'] ?? json['salesaccode'])?.toString() ?? '',
+      purchaseAccode: (json['purchase_accode'] ?? json['purchaseaccode'])?.toString() ?? '',
+      sgstAccode: (json['sgst_accode'] ?? json['sgstaccode'])?.toString() ?? '',
+      cgstAccode: (json['cgst_accode'] ?? json['cgstaccode'])?.toString() ?? '',
+      igstAccode: (json['igst_accode'] ?? json['igstaccode'])?.toString() ?? '',
       salesacname: json['salesacname']?.toString() ?? '',
       purchaseacname: json['purchaseacname']?.toString() ?? '',
       sgstacname: json['sgstacname']?.toString() ?? '',
@@ -159,6 +174,11 @@ class CategoryRecord {
       'sgst_per': sgstPer,
       'cgst_per': cgstPer,
       'igst_per': igstPer,
+      'sales_accode': salesAccode,
+      'purchase_accode': purchaseAccode,
+      'sgst_accode': sgstAccode,
+      'cgst_accode': cgstAccode,
+      'igst_accode': igstAccode,
       'salesacname': salesacname,
       'purchaseacname': purchaseacname,
       'sgstacname': sgstacname,
@@ -179,6 +199,11 @@ class CategoryRecord {
     double? sgstPer,
     double? cgstPer,
     double? igstPer,
+    String? salesAccode,
+    String? purchaseAccode,
+    String? sgstAccode,
+    String? cgstAccode,
+    String? igstAccode,
     String? salesacname,
     String? purchaseacname,
     String? sgstacname,
@@ -200,6 +225,11 @@ class CategoryRecord {
       sgstPer: sgstPer ?? this.sgstPer,
       cgstPer: cgstPer ?? this.cgstPer,
       igstPer: igstPer ?? this.igstPer,
+      salesAccode: salesAccode ?? this.salesAccode,
+      purchaseAccode: purchaseAccode ?? this.purchaseAccode,
+      sgstAccode: sgstAccode ?? this.sgstAccode,
+      cgstAccode: cgstAccode ?? this.cgstAccode,
+      igstAccode: igstAccode ?? this.igstAccode,
       salesacname: salesacname ?? this.salesacname,
       purchaseacname: purchaseacname ?? this.purchaseacname,
       sgstacname: sgstacname ?? this.sgstacname,
@@ -387,6 +417,160 @@ class SubProductRecord {
       productid: productid ?? this.productid,
       subproductname: subproductname ?? this.subproductname,
       havestoneDiamond: havestoneDiamond ?? this.havestoneDiamond,
+      productname: productname ?? this.productname,
+      catname: catname ?? this.catname,
+      catcode: catcode ?? this.catcode,
+      metalname: metalname ?? this.metalname,
+      metalid: metalid ?? this.metalid,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+class StyleRecord {
+  final int? styleid;
+  final int productid;
+  final String stylename;
+  final String? productname;
+  final String? catname;
+  final String? catcode;
+  final String? metalname;
+  final String? metalid;
+  final String? createdAt;
+  final String? updatedAt;
+
+  StyleRecord({
+    this.styleid,
+    required this.productid,
+    required this.stylename,
+    this.productname,
+    this.catname,
+    this.catcode,
+    this.metalname,
+    this.metalid,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory StyleRecord.fromJson(Map<String, dynamic> json) {
+    return StyleRecord(
+      styleid: json['styleid'] != null ? int.tryParse(json['styleid'].toString()) : null,
+      productid: int.tryParse(json['productid']?.toString() ?? '0') ?? 0,
+      stylename: json['stylename']?.toString() ?? '',
+      productname: json['productname']?.toString(),
+      catname: json['catname']?.toString(),
+      catcode: json['catcode']?.toString(),
+      metalname: json['metalname']?.toString(),
+      metalid: json['metalid']?.toString(),
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (styleid != null) 'styleid': styleid,
+      'productid': productid,
+      'stylename': stylename,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
+
+  StyleRecord copyWith({
+    int? styleid,
+    int? productid,
+    String? stylename,
+    String? productname,
+    String? catname,
+    String? catcode,
+    String? metalname,
+    String? metalid,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return StyleRecord(
+      styleid: styleid ?? this.styleid,
+      productid: productid ?? this.productid,
+      stylename: stylename ?? this.stylename,
+      productname: productname ?? this.productname,
+      catname: catname ?? this.catname,
+      catcode: catcode ?? this.catcode,
+      metalname: metalname ?? this.metalname,
+      metalid: metalid ?? this.metalid,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+class SizeRecord {
+  final int? sizeid;
+  final int productid;
+  final String sizename;
+  final String? productname;
+  final String? catname;
+  final String? catcode;
+  final String? metalname;
+  final String? metalid;
+  final String? createdAt;
+  final String? updatedAt;
+
+  SizeRecord({
+    this.sizeid,
+    required this.productid,
+    required this.sizename,
+    this.productname,
+    this.catname,
+    this.catcode,
+    this.metalname,
+    this.metalid,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory SizeRecord.fromJson(Map<String, dynamic> json) {
+    return SizeRecord(
+      sizeid: json['sizeid'] != null ? int.tryParse(json['sizeid'].toString()) : null,
+      productid: int.tryParse(json['productid']?.toString() ?? '0') ?? 0,
+      sizename: json['sizename']?.toString() ?? '',
+      productname: json['productname']?.toString(),
+      catname: json['catname']?.toString(),
+      catcode: json['catcode']?.toString(),
+      metalname: json['metalname']?.toString(),
+      metalid: json['metalid']?.toString(),
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (sizeid != null) 'sizeid': sizeid,
+      'productid': productid,
+      'sizename': sizename,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
+
+  SizeRecord copyWith({
+    int? sizeid,
+    int? productid,
+    String? sizename,
+    String? productname,
+    String? catname,
+    String? catcode,
+    String? metalname,
+    String? metalid,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return SizeRecord(
+      sizeid: sizeid ?? this.sizeid,
+      productid: productid ?? this.productid,
+      sizename: sizename ?? this.sizename,
       productname: productname ?? this.productname,
       catname: catname ?? this.catname,
       catcode: catcode ?? this.catcode,

@@ -15,6 +15,8 @@ import 'purity_master_screen.dart';
 import 'category_master_screen.dart';
 import 'product_master_screen.dart';
 import 'subproduct_master_screen.dart';
+import 'style_master_screen.dart';
+import 'size_master_screen.dart';
 import 'database_status_screen.dart';
 import 'system_controls_screen.dart';
 import 'estimate_screen.dart';
@@ -1121,6 +1123,12 @@ class _HomeScreenState extends State<HomeScreen> {
       case "SUBPRODUCTS":
         submenuCode = MenuRegistry.MASTER_INVENTORY_SUBPRODUCTS;
         break;
+      case "STYLES":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_STYLES;
+        break;
+      case "SIZES":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_SIZES;
+        break;
     }
 
     if (submenuCode.isNotEmpty && !_hasAccess(auth, submenuCode)) {
@@ -1200,6 +1208,14 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       case "SUBPRODUCTS":
         return SubProductMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
+      case "STYLES":
+        return StyleMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
+      case "SIZES":
+        return SizeMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
         );
       case "HUB":
@@ -1737,6 +1753,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.account_tree_rounded,
                   color: const Color(0xFFEC4899),
                   onTap: () => setState(() => _masterSubmenu = "SUBPRODUCTS"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_STYLES))
+                _buildSubmenuGridCard(
+                  title: "Style Master",
+                  desc: "Define product design styles, models & variant patterns",
+                  icon: Icons.style_rounded,
+                  color: const Color(0xFF06B6D4),
+                  onTap: () => setState(() => _masterSubmenu = "STYLES"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_SIZES))
+                _buildSubmenuGridCard(
+                  title: "Size Master",
+                  desc: "Define ring sizes, bangle diameters & chain length dimensions",
+                  icon: Icons.straighten_rounded,
+                  color: const Color(0xFFF59E0B),
+                  onTap: () => setState(() => _masterSubmenu = "SIZES"),
                 ),
             ],
           ),

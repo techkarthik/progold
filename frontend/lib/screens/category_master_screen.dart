@@ -48,14 +48,14 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   final _cgstPerController = TextEditingController(text: '1.50');
   final _igstPerController = TextEditingController(text: '3.00');
 
-  // Sales & Purchase Account Heads (Where sales and purchases post)
-  String? _selectedSalesAc;
-  String? _selectedPurchaseAc;
+  // Sales & Purchase Account Heads (Where sales and purchases post - stored by accode)
+  String? _selectedSalesAccode;
+  String? _selectedPurchaseAccode;
 
-  // Tax Posting Ledgers (Optional)
-  String? _selectedSgstAc;
-  String? _selectedCgstAc;
-  String? _selectedIgstAc;
+  // Tax Posting Ledgers (Optional - stored by accode)
+  String? _selectedSgstAccode;
+  String? _selectedCgstAccode;
+  String? _selectedIgstAccode;
   bool _isSaving = false;
 
   @override
@@ -114,6 +114,8 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
             (c.metalname ?? '').toLowerCase().contains(_searchQuery) ||
             (c.purityname ?? '').toLowerCase().contains(_searchQuery) ||
             (c.purityshortname ?? '').toLowerCase().contains(_searchQuery) ||
+            c.salesAccode.toLowerCase().contains(_searchQuery) ||
+            c.purchaseAccode.toLowerCase().contains(_searchQuery) ||
             c.salesacname.toLowerCase().contains(_searchQuery) ||
             c.purchaseacname.toLowerCase().contains(_searchQuery) ||
             c.sgstacname.toLowerCase().contains(_searchQuery) ||
@@ -133,16 +135,13 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         _igstPerController.text = tax.igstPer.toStringAsFixed(2);
 
         // Auto-assign posting ledgers if configured in Tax Master
-        final ledgerNames = _accountHeads.map((h) => h.accountname).toList();
-        if (tax.sgstacname.isNotEmpty && ledgerNames.contains(tax.sgstacname)) {
-          _selectedSgstAc = tax.sgstacname;
-        }
-        if (tax.cgstacname.isNotEmpty && ledgerNames.contains(tax.cgstacname)) {
-          _selectedCgstAc = tax.cgstacname;
-        }
-        if (tax.igstacname.isNotEmpty && ledgerNames.contains(tax.igstacname)) {
-          _selectedIgstAc = tax.igstacname;
-        }
+        final matchingSgst = _accountHeads.where((h) => h.accountname.toUpperCase() == tax.sgstacname.toUpperCase()).firstOrNull;
+        final matchingCgst = _accountHeads.where((h) => h.accountname.toUpperCase() == tax.cgstacname.toUpperCase()).firstOrNull;
+        final matchingIgst = _accountHeads.where((h) => h.accountname.toUpperCase() == tax.igstacname.toUpperCase()).firstOrNull;
+
+        if (matchingSgst != null) _selectedSgstAccode = matchingSgst.accode;
+        if (matchingCgst != null) _selectedCgstAccode = matchingCgst.accode;
+        if (matchingIgst != null) _selectedIgstAccode = matchingIgst.accode;
       }
     });
   }
@@ -188,12 +187,22 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         _cgstPerController.text = existing.cgstPer.toStringAsFixed(2);
         _igstPerController.text = existing.igstPer.toStringAsFixed(2);
 
-        final ledgerNames = _accountHeads.map((h) => h.accountname).toList();
-        _selectedSalesAc = ledgerNames.contains(existing.salesacname) ? existing.salesacname : (existing.salesacname.isNotEmpty ? existing.salesacname : null);
-        _selectedPurchaseAc = ledgerNames.contains(existing.purchaseacname) ? existing.purchaseacname : (existing.purchaseacname.isNotEmpty ? existing.purchaseacname : null);
-        _selectedSgstAc = ledgerNames.contains(existing.sgstacname) ? existing.sgstacname : null;
-        _selectedCgstAc = ledgerNames.contains(existing.cgstacname) ? existing.cgstacname : null;
-        _selectedIgstAc = ledgerNames.contains(existing.igstacname) ? existing.igstacname : null;
+        // Match existing category sales / purchase accode or match by name
+        _selectedSalesAccode = existing.salesAccode.isNotEmpty
+            ? existing.salesAccode
+            : (existing.salesacname.isNotEmpty
+                ? _accountHeads.where((h) => h.accountname.toUpperCase() == existing.salesacname.toUpperCase()).firstOrNull?.accode
+                : null);
+
+        _selectedPurchaseAccode = existing.purchaseAccode.isNotEmpty
+            ? existing.purchaseAccode
+            : (existing.purchaseacname.isNotEmpty
+                ? _accountHeads.where((h) => h.accountname.toUpperCase() == existing.purchaseacname.toUpperCase()).firstOrNull?.accode
+                : null);
+
+        _selectedSgstAccode = existing.sgstAccode.isNotEmpty ? existing.sgstAccode : null;
+        _selectedCgstAccode = existing.cgstAccode.isNotEmpty ? existing.cgstAccode : null;
+        _selectedIgstAccode = existing.igstAccode.isNotEmpty ? existing.igstAccode : null;
 
         // Try matching with existing Tax Master record
         _selectedTaxRecord = _taxRecords.where((t) {
@@ -214,8 +223,11 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     _selectedPurityId = availablePurities.isNotEmpty ? availablePurities.first.purityid : null;
     _nameController.clear();
     _selectedType = 'ORNAMENTS/STONE';
-    _selectedSalesAc = null;
-    _selectedPurchaseAc = null;
+    _selectedSalesAccode = null;
+    _selectedPurchaseAccode = null;
+    _selectedSgstAccode = null;
+    _selectedCgstAccode = null;
+    _selectedIgstAccode = null;
 
     // Default to first tax record if available (e.g. 3% GST), otherwise 1.5% SGST + 1.5% CGST
     if (_taxRecords.isNotEmpty) {
@@ -223,19 +235,11 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
       _sgstPerController.text = _taxRecords.first.sgstPer.toStringAsFixed(2);
       _cgstPerController.text = _taxRecords.first.cgstPer.toStringAsFixed(2);
       _igstPerController.text = _taxRecords.first.igstPer.toStringAsFixed(2);
-
-      final ledgerNames = _accountHeads.map((h) => h.accountname).toList();
-      _selectedSgstAc = ledgerNames.contains(_taxRecords.first.sgstacname) ? _taxRecords.first.sgstacname : null;
-      _selectedCgstAc = ledgerNames.contains(_taxRecords.first.cgstacname) ? _taxRecords.first.cgstacname : null;
-      _selectedIgstAc = ledgerNames.contains(_taxRecords.first.igstacname) ? _taxRecords.first.igstacname : null;
     } else {
       _selectedTaxRecord = null;
       _sgstPerController.text = '1.50';
       _cgstPerController.text = '1.50';
       _igstPerController.text = '3.00';
-      _selectedSgstAc = null;
-      _selectedCgstAc = null;
-      _selectedIgstAc = null;
     }
   }
 
@@ -269,6 +273,9 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
       final cgst = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
       final igst = double.tryParse(_igstPerController.text.trim()) ?? (sgst + cgst);
 
+      final salesHead = _accountHeads.where((h) => h.accode == _selectedSalesAccode).firstOrNull;
+      final purchaseHead = _accountHeads.where((h) => h.accode == _selectedPurchaseAccode).firstOrNull;
+
       final record = CategoryRecord(
         id: _editingCategory?.id,
         catcode: _editingCategory?.catcode ?? '',
@@ -279,11 +286,13 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
         sgstPer: sgst,
         cgstPer: cgst,
         igstPer: igst,
-        salesacname: _selectedSalesAc ?? '',
-        purchaseacname: _selectedPurchaseAc ?? '',
-        sgstacname: _selectedSgstAc ?? '',
-        cgstacname: _selectedCgstAc ?? '',
-        igstacname: _selectedIgstAc ?? '',
+        salesAccode: _selectedSalesAccode ?? '',
+        purchaseAccode: _selectedPurchaseAccode ?? '',
+        sgstAccode: _selectedSgstAccode ?? '',
+        cgstAccode: _selectedCgstAccode ?? '',
+        igstAccode: _selectedIgstAccode ?? '',
+        salesacname: salesHead?.accountname ?? '',
+        purchaseacname: purchaseHead?.accountname ?? '',
       );
 
       final isEditing = _editingCategory != null && _editingCategory!.id != null;
@@ -296,7 +305,9 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                isEditing ? "Category '$name' updated successfully!" : "Category '$name' created successfully (Sales & Purchase accounts registered)!",
+                isEditing
+                    ? "Category '$name' updated successfully!"
+                    : "Category '$name' created successfully (Account Head linked via accode)!",
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               backgroundColor: GlassTheme.accentEmerald,
@@ -509,7 +520,6 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   // ================= IN-PAGE ENTRY FORM COMPONENT =================
   Widget _buildInPageEntryForm(bool isMobile) {
     final isEditing = _editingCategory != null;
-    final List<String> ledgerNames = _accountHeads.map((h) => h.accountname).toList();
 
     final sgstVal = double.tryParse(_sgstPerController.text.trim()) ?? 0.0;
     final cgstVal = double.tryParse(_cgstPerController.text.trim()) ?? 0.0;
@@ -942,10 +952,10 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             ),
                             const SizedBox(height: 6),
                             _buildAccountDropdown(
-                              value: _selectedSalesAc,
-                              options: ledgerNames,
+                              value: _selectedSalesAccode,
+                              heads: _accountHeads,
                               hint: _getAutoSalesAcName().isNotEmpty ? "Auto: ${_getAutoSalesAcName()}" : "Select Sales Ledger (e.g. Gold Sales A/c)",
-                              onChanged: (val) => setState(() => _selectedSalesAc = val),
+                              onChanged: (val) => setState(() => _selectedSalesAccode = val),
                             ),
                           ],
                         ),
@@ -969,10 +979,10 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             ),
                             const SizedBox(height: 6),
                             _buildAccountDropdown(
-                              value: _selectedPurchaseAc,
-                              options: ledgerNames,
+                              value: _selectedPurchaseAccode,
+                              heads: _accountHeads,
                               hint: _getAutoPurchaseAcName().isNotEmpty ? "Auto: ${_getAutoPurchaseAcName()}" : "Select Purchase Ledger (e.g. Gold Purchase A/c)",
-                              onChanged: (val) => setState(() => _selectedPurchaseAc = val),
+                              onChanged: (val) => setState(() => _selectedPurchaseAccode = val),
                             ),
                           ],
                         ),
@@ -1042,12 +1052,15 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
 
   Widget _buildAccountDropdown({
     required String? value,
-    required List<String> options,
+    required List<AccountHead> heads,
     required String hint,
     required void Function(String?) onChanged,
   }) {
+    final hasMatch = value != null && heads.any((h) => h.accode == value);
+    final selectedValue = hasMatch ? value : null;
+
     return DropdownButtonFormField<String>(
-      value: value,
+      value: selectedValue,
       dropdownColor: Colors.white,
       style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
       decoration: _inputDecoration(hint),
@@ -1055,12 +1068,12 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
       items: [
         const DropdownMenuItem<String>(
           value: null,
-          child: Text("-- None (Optional) --", style: TextStyle(color: GlassTheme.textMuted, fontStyle: FontStyle.italic)),
+          child: Text("-- Auto Generate & Link New Ledger --", style: TextStyle(color: GlassTheme.textMuted, fontStyle: FontStyle.italic)),
         ),
-        ...options.map((name) {
+        ...heads.map((head) {
           return DropdownMenuItem<String>(
-            value: name,
-            child: Text(name, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
+            value: head.accode,
+            child: Text("${head.accountname} (${head.accode})", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700)),
           );
         }),
       ],
@@ -1177,6 +1190,14 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
           children: _filteredCategoriesWithMeta().map((cat) {
             final double totalGstRate = cat.sgstPer + cat.cgstPer + (cat.igstPer > 0 && cat.sgstPer == 0 ? cat.igstPer : 0);
 
+            final salesDisplay = cat.salesacname.isNotEmpty
+                ? "${cat.salesacname}${cat.salesAccode.isNotEmpty ? ' (${cat.salesAccode})' : ''}"
+                : (cat.salesAccode.isNotEmpty ? cat.salesAccode : "Not Assigned");
+
+            final purchaseDisplay = cat.purchaseacname.isNotEmpty
+                ? "${cat.purchaseacname}${cat.purchaseAccode.isNotEmpty ? ' (${cat.purchaseAccode})' : ''}"
+                : (cat.purchaseAccode.isNotEmpty ? cat.purchaseAccode : "Not Assigned");
+
             return SizedBox(
               width: isMobile ? constraints.maxWidth : cardWidth,
               child: Container(
@@ -1227,9 +1248,9 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                           : "0.00% (Exempt)",
                     ),
                     const SizedBox(height: 6),
-                    _buildInfoRow("Sales A/c", cat.salesacname.isNotEmpty ? cat.salesacname : "Not Assigned"),
+                    _buildInfoRow("Sales A/c", salesDisplay),
                     const SizedBox(height: 6),
-                    _buildInfoRow("Purchase A/c", cat.purchaseacname.isNotEmpty ? cat.purchaseacname : "Not Assigned"),
+                    _buildInfoRow("Purchase A/c", purchaseDisplay),
 
                     const SizedBox(height: 14),
                     Row(
@@ -1319,6 +1340,14 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
             rows: _filteredCategoriesWithMeta().map((cat) {
               final double totalGstRate = cat.sgstPer + cat.cgstPer + (cat.igstPer > 0 && cat.sgstPer == 0 ? cat.igstPer : 0);
 
+              final salesDisplay = cat.salesacname.isNotEmpty
+                  ? "${cat.salesacname}${cat.salesAccode.isNotEmpty ? ' (${cat.salesAccode})' : ''}"
+                  : (cat.salesAccode.isNotEmpty ? cat.salesAccode : "-");
+
+              final purchaseDisplay = cat.purchaseacname.isNotEmpty
+                  ? "${cat.purchaseacname}${cat.purchaseAccode.isNotEmpty ? ' (${cat.purchaseAccode})' : ''}"
+                  : (cat.purchaseAccode.isNotEmpty ? cat.purchaseAccode : "-");
+
               return DataRow(
                 cells: [
                   DataCell(Text(cat.catcode, style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 13))),
@@ -1361,7 +1390,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        cat.salesacname.isEmpty ? "-" : cat.salesacname,
+                        salesDisplay,
                         style: const TextStyle(color: GlassTheme.accentEmerald, fontWeight: FontWeight.w800, fontSize: 12),
                       ),
                     ),
@@ -1374,7 +1403,7 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        cat.purchaseacname.isEmpty ? "-" : cat.purchaseacname,
+                        purchaseDisplay,
                         style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 12),
                       ),
                     ),

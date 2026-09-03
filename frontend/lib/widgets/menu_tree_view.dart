@@ -107,6 +107,20 @@ class MenuTreeRegistry {
               icon: Icons.account_tree_rounded,
               color: Color(0xFFEC4899),
             ),
+            MenuTreeNode(
+              code: MenuRegistry.MASTER_INVENTORY_STYLES,
+              title: "Style Master",
+              subtitle: "Product styles, design variants & model patterns",
+              icon: Icons.style_rounded,
+              color: Color(0xFF06B6D4),
+            ),
+            MenuTreeNode(
+              code: MenuRegistry.MASTER_INVENTORY_SIZES,
+              title: "Size Master",
+              subtitle: "Product sizes, dimensions & length specifications",
+              icon: Icons.straighten_rounded,
+              color: Color(0xFFF59E0B),
+            ),
           ],
         ),
         MenuTreeNode(

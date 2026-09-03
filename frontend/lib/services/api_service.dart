@@ -975,6 +975,138 @@ class ApiService {
     }
   }
 
+  // ================= STYLES CRUD (6th Master under Inventory) =================
+
+  /// Fetches styles along with last_styleid and next_styleid metadata
+  Future<Map<String, dynamic>> getStylesData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/styles'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['styles'] is List) {
+          final items = (data['styles'] as List).map((i) => StyleRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'styles': items,
+            'last_styleid': data['last_styleid'] ?? 0,
+            'next_styleid': data['next_styleid'] ?? 1,
+            'total_count': data['total_count'] ?? items.length,
+          };
+        }
+      }
+      return {'success': false, 'styles': <StyleRecord>[], 'last_styleid': 0, 'next_styleid': 1};
+    } catch (e) {
+      debugPrint("Error getStylesData: $e");
+      return {'success': false, 'styles': <StyleRecord>[], 'last_styleid': 0, 'next_styleid': 1};
+    }
+  }
+
+  Future<List<StyleRecord>> getStyles(String token) async {
+    final data = await getStylesData(token);
+    return data['styles'] as List<StyleRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createStyle(String token, StyleRecord style) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/styles'),
+        headers: _headers(token),
+        body: jsonEncode(style.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateStyle(String token, int styleid, StyleRecord style) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/styles/$styleid'),
+        headers: _headers(token),
+        body: jsonEncode(style.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteStyle(String token, int styleid) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/styles/$styleid'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= SIZES CRUD (7th Master under Inventory) =================
+
+  /// Fetches sizes along with last_sizeid and next_sizeid metadata
+  Future<Map<String, dynamic>> getSizesData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/sizes'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['sizes'] is List) {
+          final items = (data['sizes'] as List).map((i) => SizeRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'sizes': items,
+            'last_sizeid': data['last_sizeid'] ?? 0,
+            'next_sizeid': data['next_sizeid'] ?? 1,
+            'total_count': data['total_count'] ?? items.length,
+          };
+        }
+      }
+      return {'success': false, 'sizes': <SizeRecord>[], 'last_sizeid': 0, 'next_sizeid': 1};
+    } catch (e) {
+      debugPrint("Error getSizesData: $e");
+      return {'success': false, 'sizes': <SizeRecord>[], 'last_sizeid': 0, 'next_sizeid': 1};
+    }
+  }
+
+  Future<List<SizeRecord>> getSizes(String token) async {
+    final data = await getSizesData(token);
+    return data['sizes'] as List<SizeRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createSize(String token, SizeRecord size) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/sizes'),
+        headers: _headers(token),
+        body: jsonEncode(size.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateSize(String token, int sizeid, SizeRecord size) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/sizes/$sizeid'),
+        headers: _headers(token),
+        body: jsonEncode(size.toJson()),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteSize(String token, int sizeid) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/sizes/$sizeid'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
   // ================= SYSTEM CONTROLS CRUD (4th Menu under Settings) =================
 
   /// Fetches system controls along with last_sno and next_sno metadata
