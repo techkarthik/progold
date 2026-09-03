@@ -20,6 +20,7 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
 
   bool _isLoading = false;
   bool _isOptimizing = false;
+  bool _isSyncingSchema = false;
   Map<String, dynamic>? _dbStatus;
   List<Map<String, dynamic>> _tables = [];
   List<Map<String, dynamic>> _filteredTables = [];
@@ -86,6 +87,79 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
         return name.contains(_tableSearch);
       }).toList();
     }
+  }
+
+  Future<void> _reinstallDatabaseSchema() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) return;
+
+    setState(() => _isSyncingSchema = true);
+
+    try {
+      final res = await _api.reinstallTenantDatabase(token);
+      if (mounted) {
+        final isOk = res['success'] == true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res['message']?.toString() ?? (isOk ? "Schema synchronized successfully!" : "Reinstall failed")),
+            backgroundColor: isOk ? GlassTheme.accentEmerald : GlassTheme.accentRose,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        if (isOk) {
+          await _loadDatabaseStatus();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Schema sync error: $e"), backgroundColor: GlassTheme.accentRose),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncingSchema = false);
+    }
+  }
+
+  void _showReinstallDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.system_update_rounded, color: Color(0xFF6366F1), size: 24),
+            SizedBox(width: 10),
+            Text("Reinstall / Sync Schema", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          ],
+        ),
+        content: const Text(
+          "This action will safely apply all latest table schemas, missing columns, and database indexes into your private tenant database without altering or deleting any existing records.\n\nDo you want to proceed with schema reinstallation?",
+          style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            icon: const Icon(Icons.sync_rounded, size: 16),
+            label: const Text("Run Schema Sync", style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _reinstallDatabaseSchema();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _optimizeDatabase() async {
@@ -222,24 +296,38 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
           ),
 
           // Actions
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 1,
+                ),
+                icon: _isSyncingSchema
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.system_update_rounded, size: 16),
+                label: Text(_isSyncingSchema ? "Syncing..." : "Reinstall / Sync Schema", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                onPressed: _isSyncingSchema ? null : _showReinstallDialog,
+              ),
               GlassSecondaryButton(
-                label: _isOptimizing ? "Optimizing..." : "Optimize Storage",
+                label: _isOptimizing ? "Optimizing..." : "Optimize",
                 icon: Icons.auto_fix_high_rounded,
                 onPressed: _isOptimizing ? () {} : _optimizeDatabase,
               ),
-              const SizedBox(width: 10),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF06B6D4),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text("Refresh Status", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text("Refresh", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                 onPressed: _loadDatabaseStatus,
               ),
             ],

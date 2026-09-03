@@ -2197,6 +2197,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: const Color(0xFFF59E0B),
                 onTap: () => setState(() => _settingsSubmenu = "SYSTEM_CONTROLS"),
               ),
+
+              // 5. Reinstall / Sync Schema
+              _buildSubmenuGridCard(
+                title: "Reinstall / Sync Schema",
+                desc: "Synchronize new database tables, missing columns, and system migrations safely",
+                icon: Icons.system_update_rounded,
+                color: const Color(0xFF6366F1),
+                onTap: () => _showReinstallSchemaDialog(context, auth),
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -2394,6 +2403,105 @@ class _HomeScreenState extends State<HomeScreen> {
             child: const Text("Close", style: TextStyle(color: GlassTheme.primaryNeon, fontWeight: FontWeight.w700)),
           ),
         ],
+      ),
+    );
+  }
+
+  // Reinstall & Sync Schema Modal Dialog
+  void _showReinstallSchemaDialog(BuildContext context, AuthProvider auth) {
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.system_update_rounded, color: Color(0xFF6366F1), size: 24),
+                SizedBox(width: 10),
+                Text("Reinstall / Sync Database Schema", style: TextStyle(color: GlassTheme.textPrimary, fontSize: 17, fontWeight: FontWeight.w800)),
+              ],
+            ),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.security_rounded, color: Color(0xFF16A34A), size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "Safe & Non-Destructive: No existing records, transactions, or products will be altered or deleted.",
+                            style: TextStyle(color: Color(0xFF15803D), fontSize: 12, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    "This operation applies the latest ProGold ERP database structures, newly added master tables (Styles, Sizes, Sub-products, System Controls), and new schema columns to your private store database.",
+                    style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13, height: 1.4, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Whenever the application is updated, simply run this tool once to keep your tenant database 100% in sync with the latest frontend features.",
+                    style: TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: auth.isReinstallingDb ? null : () => Navigator.pop(ctx),
+                child: const Text("Cancel", style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.bold)),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                icon: auth.isReinstallingDb
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.sync_rounded, size: 16),
+                label: Text(auth.isReinstallingDb ? "Synchronizing Schema..." : "Run Reinstall & Sync Now", style: const TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: auth.isReinstallingDb
+                    ? null
+                    : () async {
+                        setModalState(() {});
+                        final result = await auth.reinstallDatabase();
+                        if (context.mounted) {
+                          Navigator.pop(ctx);
+                          final isSuccess = result['success'] == true;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result['message'] ?? (isSuccess ? "Database schema reinstalled and synchronized successfully!" : "Reinstall failed."),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              backgroundColor: isSuccess ? GlassTheme.accentEmerald : GlassTheme.accentRose,
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        }
+                      },
+              ),
+            ],
+          );
+        },
       ),
     );
   }

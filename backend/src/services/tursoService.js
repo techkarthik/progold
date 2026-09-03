@@ -474,41 +474,102 @@ export async function syncTenantDatabaseSchema(url, token) {
       CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         metalid TEXT NOT NULL,
+        purityid INTEGER,
         catcode TEXT UNIQUE NOT NULL,
         catname TEXT NOT NULL,
         categorytype TEXT NOT NULL,
         sgst_per REAL DEFAULT 0.0,
         cgst_per REAL DEFAULT 0.0,
         igst_per REAL DEFAULT 0.0,
+        sales_accode TEXT DEFAULT '',
+        purchase_accode TEXT DEFAULT '',
+        sgst_accode TEXT DEFAULT '',
+        cgst_accode TEXT DEFAULT '',
+        igst_accode TEXT DEFAULT '',
+        salesacname TEXT DEFAULT '',
+        purchaseacname TEXT DEFAULT '',
         sgstacname TEXT DEFAULT '',
         cgstacname TEXT DEFAULT '',
         igstacname TEXT DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        FOREIGN KEY (metalid) REFERENCES metals(metalid)
+        FOREIGN KEY (metalid) REFERENCES metals(metalid),
+        FOREIGN KEY (purityid) REFERENCES purities(purityid)
       );
     `);
 
-    // 5. Products & Inventory Items Table
+    // 5. Products Master Table (4th Master under Inventory)
     await client.execute(`
       CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        sku TEXT UNIQUE NOT NULL,
-        category_id INTEGER,
-        purity TEXT DEFAULT '22K',
-        gross_weight REAL DEFAULT 0.0,
-        stone_weight REAL DEFAULT 0.0,
-        net_weight REAL DEFAULT 0.0,
-        making_charges REAL DEFAULT 0.0,
-        wastage_percent REAL DEFAULT 0.0,
-        price REAL DEFAULT 0.0,
-        stock INTEGER DEFAULT 0,
-        description TEXT DEFAULT '',
-        image_url TEXT DEFAULT '',
-        is_active INTEGER DEFAULT 1,
+        productid INTEGER PRIMARY KEY AUTOINCREMENT,
+        categoryid INTEGER NOT NULL,
+        productname TEXT NOT NULL,
+        calctype TEXT NOT NULL DEFAULT 'WEIGHT',
+        stocktype TEXT NOT NULL DEFAULT 'SKU',
+        havestone_diamond TEXT NOT NULL DEFAULT 'NO',
+        havesubproduct TEXT NOT NULL DEFAULT 'NO',
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (categoryid) REFERENCES categories(id)
+      );
+    `);
+
+    // 5b. Sub-Products Master Table (5th Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS subproducts (
+        subproductid INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        subproductname TEXT NOT NULL,
+        havestone_diamond TEXT NOT NULL DEFAULT 'NO',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        UNIQUE (productid, subproductname)
+      );
+    `);
+
+    // 5c. Styles Master Table (6th Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS styles (
+        styleid INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        stylename TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        UNIQUE (productid, stylename)
+      );
+    `);
+
+    // 5d. Sizes Master Table (7th Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS sizes (
+        sizeid INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        sizename TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        UNIQUE (productid, sizename)
+      );
+    `);
+
+    // 5e. System Controls Table (4th Menu under Settings)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS system_controls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        module_name TEXT NOT NULL,
+        control_key TEXT NOT NULL,
+        control_label TEXT NOT NULL,
+        control_type TEXT DEFAULT 'TEXT',
+        control_value TEXT DEFAULT '',
+        default_value TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        is_system INTEGER DEFAULT 0,
+        branchid TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (control_key, branchid)
       );
     `);
 
@@ -516,9 +577,9 @@ export async function syncTenantDatabaseSchema(url, token) {
     await client.execute(`
       CREATE TABLE IF NOT EXISTS inventory_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        product_id INTEGER NOT NULL,
+        product_id INTEGER,
         change_type TEXT NOT NULL,
-        change_amount INTEGER NOT NULL,
+        change_amount REAL NOT NULL,
         reason TEXT DEFAULT '',
         reference_id TEXT DEFAULT '',
         created_at TEXT NOT NULL
@@ -718,10 +779,20 @@ export async function syncTenantDatabaseSchema(url, token) {
       );
     `);
 
-    // --- SAFE NON-DESTRUCTIVE COLUMN MIGRATIONS ---
+    // --- SAFE NON-DESTRUCTIVE COLUMN MIGRATIONS (Preserves all existing data) ---
     const safeAddColumns = [
-      `ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1;`,
-      `ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN purityid INTEGER;`,
+      `ALTER TABLE categories ADD COLUMN sales_accode TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN purchase_accode TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN sgst_accode TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN cgst_accode TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN igst_accode TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN salesacname TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN purchaseacname TEXT DEFAULT '';`,
+      `ALTER TABLE products ADD COLUMN calctype TEXT DEFAULT 'WEIGHT';`,
+      `ALTER TABLE products ADD COLUMN stocktype TEXT DEFAULT 'SKU';`,
+      `ALTER TABLE products ADD COLUMN havestone_diamond TEXT DEFAULT 'NO';`,
+      `ALTER TABLE products ADD COLUMN havesubproduct TEXT DEFAULT 'NO';`,
       `ALTER TABLE customers ADD COLUMN pan_number TEXT DEFAULT '';`,
       `ALTER TABLE customers ADD COLUMN gstin TEXT DEFAULT '';`,
       `ALTER TABLE customers ADD COLUMN current_balance REAL DEFAULT 0.0;`,
@@ -732,6 +803,9 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE branches ADD COLUMN state_id INTEGER DEFAULT 0;`,
       `ALTER TABLE branches ADD COLUMN country_id INTEGER DEFAULT 1;`,
       `ALTER TABLE branches ADD COLUMN is_active INTEGER DEFAULT 1;`,
+      `ALTER TABLE users ADD COLUMN centlogin TEXT DEFAULT 'NO';`,
+      `ALTER TABLE users ADD COLUMN profile_image TEXT DEFAULT '';`,
+      `ALTER TABLE users ADD COLUMN allowed_menus TEXT DEFAULT '[]';`,
     ];
 
     for (const alterSql of safeAddColumns) {
