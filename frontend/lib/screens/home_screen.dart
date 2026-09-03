@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/tenant_model.dart';
 import '../providers/auth_provider.dart';
 import '../theme/glass_theme.dart';
@@ -91,6 +92,33 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _launchDigiGoldUrl() async {
+    final uri = Uri.parse('https://digigold360.vercel.app/');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Could not open DigiGold at https://digigold360.vercel.app/"),
+              backgroundColor: GlassTheme.accentRose,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to open DigiGold: $e"),
+            backgroundColor: GlassTheme.accentRose,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -448,11 +476,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildDrawerItem(
                     icon: Icons.monetization_on_rounded,
                     title: "DigiGold Module",
-                    subtitle: "Vault, buy/sell & SIP",
-                    isSelected: _selectedModule == "DIGIGOLD",
+                    subtitle: "Vault, buy/sell & SIP (External)",
+                    isSelected: false,
                     onTap: () {
                       Navigator.pop(context);
-                      setState(() => _selectedModule = "DIGIGOLD");
+                      _launchDigiGoldUrl();
                     },
                   ),
                 ],
@@ -778,6 +806,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: () {
                       if (item["id"] == "ADD_MORE") {
                         _showAddModuleDialog(context);
+                      } else if (item["id"] == "DIGIGOLD") {
+                        _launchDigiGoldUrl();
                       } else {
                         setState(() {
                           _selectedModule = item["id"];
@@ -2007,21 +2037,62 @@ class _HomeScreenState extends State<HomeScreen> {
           BoxShadow(color: Color(0x080F172A), blurRadius: 12, offset: Offset(0, 4)),
         ],
       ),
-      padding: const EdgeInsets.all(22),
-      child: const Column(
+      padding: const EdgeInsets.all(24),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.monetization_on_rounded, color: Color(0xFFFFD700), size: 24),
-              SizedBox(width: 10),
-              Text("DigiGold Digital Vault & Micro-SIP", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFD97706)]),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.monetization_on_rounded, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 14),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Text("DigiGold Digital Vault & Micro-SIP", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
+                      SizedBox(width: 8),
+                      StatusBadge(label: "External Portal", color: Color(0xFFD97706)),
+                    ],
+                  ),
+                  SizedBox(height: 2),
+                  Text("24K 99.9% pure digital gold accumulation, SIPs & wallet balance", style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600)),
+                ],
+              ),
             ],
           ),
-          SizedBox(height: 16),
-          Text(
-            "Offer 24K 99.9% Pure Digital Gold investment schemes, customer vault passbooks, and monthly SIP accumulation.",
+          const SizedBox(height: 20),
+          const Text(
+            "Access the full DigiGold 360 cloud platform to manage customer gold vaults, daily SIP buy/sell orders, physical delivery redemptions, and gold savings passbooks.",
             style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD97706),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+            ),
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: const Text("Launch DigiGold 360 (https://digigold360.vercel.app/)", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            onPressed: _launchDigiGoldUrl,
           ),
         ],
       ),
