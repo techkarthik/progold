@@ -1339,9 +1339,9 @@ export async function getStylesController(req, res) {
     const result = await client.execute(`
       SELECT s.*, p.productname, c.catname, c.catcode, m.metalname, m.metalid
       FROM styles s
-      JOIN products p ON s.productid = p.productid
-      JOIN categories c ON p.categoryid = c.id
-      JOIN metals m ON c.metalid = m.metalid
+      LEFT JOIN products p ON s.productid = p.productid
+      LEFT JOIN categories c ON p.categoryid = c.id
+      LEFT JOIN metals m ON c.metalid = m.metalid
       ORDER BY s.styleid DESC;
     `);
 
@@ -1401,7 +1401,7 @@ export async function createStyleController(req, res) {
 
     // 2. Check uniqueness of (productid, stylename)
     const duplicateCheck = await client.execute({
-      sql: `SELECT styleid FROM styles WHERE productid = ? AND LOWER(stylename) = LOWER(?) LIMIT 1;`,
+      sql: `SELECT styleid FROM styles WHERE productid = ? AND UPPER(TRIM(stylename)) = UPPER(?) LIMIT 1;`,
       args: [Number(productid), cleanName],
     });
 
@@ -1437,6 +1437,12 @@ export async function createStyleController(req, res) {
     });
   } catch (error) {
     console.error("createStyle error:", error);
+    if (error.message && error.message.includes("UNIQUE constraint failed")) {
+      return res.status(400).json({
+        success: false,
+        message: "Style name already exists for this product.",
+      });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 }
@@ -1477,7 +1483,7 @@ export async function updateStyleController(req, res) {
 
     // 2. Check uniqueness of (productid, stylename) for other records
     const duplicateCheck = await client.execute({
-      sql: `SELECT styleid FROM styles WHERE productid = ? AND LOWER(stylename) = LOWER(?) AND styleid != ? LIMIT 1;`,
+      sql: `SELECT styleid FROM styles WHERE productid = ? AND UPPER(TRIM(stylename)) = UPPER(?) AND styleid != ? LIMIT 1;`,
       args: [Number(productid), cleanName, Number(id)],
     });
 
@@ -1509,6 +1515,12 @@ export async function updateStyleController(req, res) {
     return res.json({ success: true, message: "Style updated successfully!" });
   } catch (error) {
     console.error("updateStyle error:", error);
+    if (error.message && error.message.includes("UNIQUE constraint failed")) {
+      return res.status(400).json({
+        success: false,
+        message: "Style name already exists for this product.",
+      });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 }
@@ -1545,9 +1557,9 @@ export async function getSizesController(req, res) {
     const result = await client.execute(`
       SELECT sz.*, p.productname, c.catname, c.catcode, m.metalname, m.metalid
       FROM sizes sz
-      JOIN products p ON sz.productid = p.productid
-      JOIN categories c ON p.categoryid = c.id
-      JOIN metals m ON c.metalid = m.metalid
+      LEFT JOIN products p ON sz.productid = p.productid
+      LEFT JOIN categories c ON p.categoryid = c.id
+      LEFT JOIN metals m ON c.metalid = m.metalid
       ORDER BY sz.sizeid DESC;
     `);
 
@@ -1607,7 +1619,7 @@ export async function createSizeController(req, res) {
 
     // 2. Check uniqueness of (productid, sizename)
     const duplicateCheck = await client.execute({
-      sql: `SELECT sizeid FROM sizes WHERE productid = ? AND LOWER(sizename) = LOWER(?) LIMIT 1;`,
+      sql: `SELECT sizeid FROM sizes WHERE productid = ? AND UPPER(TRIM(sizename)) = UPPER(?) LIMIT 1;`,
       args: [Number(productid), cleanName],
     });
 
@@ -1643,6 +1655,12 @@ export async function createSizeController(req, res) {
     });
   } catch (error) {
     console.error("createSize error:", error);
+    if (error.message && error.message.includes("UNIQUE constraint failed")) {
+      return res.status(400).json({
+        success: false,
+        message: "Size name already exists for this product.",
+      });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 }
@@ -1683,7 +1701,7 @@ export async function updateSizeController(req, res) {
 
     // 2. Check uniqueness of (productid, sizename) for other records
     const duplicateCheck = await client.execute({
-      sql: `SELECT sizeid FROM sizes WHERE productid = ? AND LOWER(sizename) = LOWER(?) AND sizeid != ? LIMIT 1;`,
+      sql: `SELECT sizeid FROM sizes WHERE productid = ? AND UPPER(TRIM(sizename)) = UPPER(?) AND sizeid != ? LIMIT 1;`,
       args: [Number(productid), cleanName, Number(id)],
     });
 
@@ -1715,6 +1733,12 @@ export async function updateSizeController(req, res) {
     return res.json({ success: true, message: "Size updated successfully!" });
   } catch (error) {
     console.error("updateSize error:", error);
+    if (error.message && error.message.includes("UNIQUE constraint failed")) {
+      return res.status(400).json({
+        success: false,
+        message: "Size name already exists for this product.",
+      });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 }

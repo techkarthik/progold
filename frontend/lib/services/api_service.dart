@@ -1013,7 +1013,12 @@ class ApiService {
         headers: _headers(token),
         body: jsonEncode(style.toJson()),
       );
-      return jsonDecode(res.body);
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200 || res.statusCode == 201, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
@@ -1026,7 +1031,12 @@ class ApiService {
         headers: _headers(token),
         body: jsonEncode(style.toJson()),
       );
-      return jsonDecode(res.body);
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
@@ -1035,7 +1045,12 @@ class ApiService {
   Future<Map<String, dynamic>> deleteStyle(String token, int styleid) async {
     try {
       final res = await http.delete(Uri.parse('$baseUrl/tenant/styles/$styleid'), headers: _headers(token));
-      return jsonDecode(res.body);
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
@@ -1079,7 +1094,12 @@ class ApiService {
         headers: _headers(token),
         body: jsonEncode(size.toJson()),
       );
-      return jsonDecode(res.body);
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200 || res.statusCode == 201, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
@@ -1092,7 +1112,12 @@ class ApiService {
         headers: _headers(token),
         body: jsonEncode(size.toJson()),
       );
-      return jsonDecode(res.body);
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
@@ -1101,7 +1126,12 @@ class ApiService {
   Future<Map<String, dynamic>> deleteSize(String token, int sizeid) async {
     try {
       final res = await http.delete(Uri.parse('$baseUrl/tenant/sizes/$sizeid'), headers: _headers(token));
-      return jsonDecode(res.body);
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }

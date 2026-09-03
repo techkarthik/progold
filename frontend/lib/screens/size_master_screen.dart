@@ -77,6 +77,11 @@ class _SizeMasterScreenState extends State<SizeMasterScreen> {
           _nextSizeId = int.tryParse(sizesData['next_sizeid']?.toString() ?? '1') ?? 1;
           _allProducts = products;
 
+          if ((_selectedProductId == null || !_allProducts.any((p) => p.productid == _selectedProductId)) &&
+              _allProducts.isNotEmpty) {
+            _selectedProductId = _allProducts.first.productid;
+          }
+
           _applyFilter();
           _isLoading = false;
         });
@@ -139,11 +144,20 @@ class _SizeMasterScreenState extends State<SizeMasterScreen> {
 
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final token = auth.authToken;
-    if (token == null) return;
-
-    if (_selectedProductId == null) {
+    if (token == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select a Product"), backgroundColor: GlassTheme.accentRose),
+        const SnackBar(content: Text("Session expired. Please log in again."), backgroundColor: GlassTheme.accentRose),
+      );
+      return;
+    }
+
+    final effectiveProductId = (_selectedProductId != null && _allProducts.any((p) => p.productid == _selectedProductId))
+        ? _selectedProductId!
+        : (_allProducts.isNotEmpty ? _allProducts.first.productid! : null);
+
+    if (effectiveProductId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a Product from Product Master."), backgroundColor: GlassTheme.accentRose),
       );
       return;
     }
@@ -155,7 +169,7 @@ class _SizeMasterScreenState extends State<SizeMasterScreen> {
 
       final record = SizeRecord(
         sizeid: _editingSize?.sizeid,
-        productid: _selectedProductId!,
+        productid: effectiveProductId,
         sizename: name,
       );
 
@@ -184,6 +198,7 @@ class _SizeMasterScreenState extends State<SizeMasterScreen> {
             SnackBar(
               content: Text(response['message']?.toString() ?? "Failed to save size"),
               backgroundColor: GlassTheme.accentRose,
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -438,7 +453,9 @@ class _SizeMasterScreenState extends State<SizeMasterScreen> {
                         )
                       else
                         DropdownButtonFormField<int>(
-                          initialValue: _selectedProductId,
+                          value: (_selectedProductId != null && _allProducts.any((p) => p.productid == _selectedProductId))
+                              ? _selectedProductId
+                              : (_allProducts.isNotEmpty ? _allProducts.first.productid : null),
                           dropdownColor: Colors.white,
                           style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
                           decoration: _inputDecoration("Select Product"),
