@@ -339,13 +339,13 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
 
   // ================= STORAGE & QUOTA HERO GAUGES =================
   Widget _buildStorageGauges(bool isMobile) {
-    final totalSizeFormatted = _dbStatus?['total_size_formatted'] ?? '0.00 KB';
-    final availableFormatted = _dbStatus?['available_formatted'] ?? '9.00 GB';
-    final quotaFormatted = _dbStatus?['quota_formatted'] ?? '9.00 GB';
-    final usedPercentage = (_dbStatus?['used_percentage'] as num?)?.toDouble() ?? 0.0;
-    final latencyMs = _dbStatus?['latency_ms'] ?? 0;
-    final totalTables = _dbStatus?['total_tables'] ?? 0;
-    final totalRows = _dbStatus?['total_rows'] ?? 0;
+    final totalSizeFormatted = _dbStatus?['total_size_formatted']?.toString() ?? '0.00 KB';
+    final availableFormatted = _dbStatus?['available_formatted']?.toString() ?? '9.00 GB';
+    final quotaFormatted = _dbStatus?['quota_formatted']?.toString() ?? '9.00 GB';
+    final usedPercentage = double.tryParse(_dbStatus?['used_percentage']?.toString() ?? '0.0') ?? 0.0;
+    final latencyMs = int.tryParse(_dbStatus?['latency_ms']?.toString() ?? '0') ?? 0;
+    final totalTables = int.tryParse(_dbStatus?['total_tables']?.toString() ?? '0') ?? 0;
+    final totalRows = int.tryParse(_dbStatus?['total_rows']?.toString() ?? '0') ?? 0;
 
     return Column(
       children: [
@@ -706,8 +706,8 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
                 rows: _filteredTables.map((t) {
                   final name = t['name']?.toString() ?? '';
                   final type = t['type']?.toString() ?? 'table';
-                  final rowCount = t['rowCount'] ?? 0;
-                  final columnCount = t['columnCount'] ?? 0;
+                  final rowCount = int.tryParse(t['rowCount']?.toString() ?? '0') ?? 0;
+                  final columnCount = int.tryParse(t['columnCount']?.toString() ?? '0') ?? 0;
                   final sizeFormatted = t['estimatedSizeFormatted']?.toString() ?? '4.00 KB';
 
                   return DataRow(

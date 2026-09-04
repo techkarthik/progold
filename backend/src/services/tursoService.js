@@ -557,19 +557,14 @@ export async function syncTenantDatabaseSchema(url, token) {
     // 5e. System Controls Table (4th Menu under Settings)
     await client.execute(`
       CREATE TABLE IF NOT EXISTS system_controls (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        module_name TEXT NOT NULL,
-        control_key TEXT NOT NULL,
-        control_label TEXT NOT NULL,
-        control_type TEXT DEFAULT 'TEXT',
-        control_value TEXT DEFAULT '',
-        default_value TEXT DEFAULT '',
-        description TEXT DEFAULT '',
-        is_system INTEGER DEFAULT 0,
-        branchid TEXT DEFAULT '',
+        sno INTEGER PRIMARY KEY AUTOINCREMENT,
+        ctlid TEXT NOT NULL,
+        ctlname TEXT NOT NULL,
+        ctlvalue TEXT NOT NULL,
+        module TEXT NOT NULL,
+        branch_id TEXT NOT NULL DEFAULT 'ALL',
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        UNIQUE (control_key, branchid)
+        updated_at TEXT NOT NULL
       );
     `);
 
@@ -682,18 +677,28 @@ export async function syncTenantDatabaseSchema(url, token) {
       );
     `);
 
-    // 12. Quotations / Estimates
+    // 12. Quotations / Estimates (3rd Main Menu)
     await client.execute(`
       CREATE TABLE IF NOT EXISTS estimates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        estimate_number TEXT UNIQUE NOT NULL,
+        estimate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        estimate_no TEXT UNIQUE NOT NULL,
         customer_name TEXT NOT NULL,
-        customer_phone TEXT DEFAULT '',
-        total_amount REAL NOT NULL,
-        issue_date TEXT NOT NULL,
-        valid_until TEXT DEFAULT '',
-        status TEXT DEFAULT 'PENDING',
-        created_at TEXT NOT NULL
+        customer_mobile TEXT NOT NULL DEFAULT '',
+        customer_address TEXT DEFAULT '',
+        gross_weight REAL DEFAULT 0.0,
+        net_weight REAL DEFAULT 0.0,
+        total_metal_value REAL DEFAULT 0.0,
+        total_making_charges REAL DEFAULT 0.0,
+        total_stone_charges REAL DEFAULT 0.0,
+        taxable_amount REAL DEFAULT 0.0,
+        tax_amount REAL DEFAULT 0.0,
+        net_amount REAL DEFAULT 0.0,
+        valid_days INTEGER DEFAULT 7,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        items_json TEXT NOT NULL DEFAULT '[]',
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       );
     `);
 
@@ -781,6 +786,7 @@ export async function syncTenantDatabaseSchema(url, token) {
 
     // --- SAFE NON-DESTRUCTIVE COLUMN MIGRATIONS (Preserves all existing data) ---
     const safeAddColumns = [
+      // Categories migrations
       `ALTER TABLE categories ADD COLUMN purityid INTEGER;`,
       `ALTER TABLE categories ADD COLUMN sales_accode TEXT DEFAULT '';`,
       `ALTER TABLE categories ADD COLUMN purchase_accode TEXT DEFAULT '';`,
@@ -789,23 +795,113 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE categories ADD COLUMN igst_accode TEXT DEFAULT '';`,
       `ALTER TABLE categories ADD COLUMN salesacname TEXT DEFAULT '';`,
       `ALTER TABLE categories ADD COLUMN purchaseacname TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN sgstacname TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN cgstacname TEXT DEFAULT '';`,
+      `ALTER TABLE categories ADD COLUMN igstacname TEXT DEFAULT '';`,
+      // Products migrations
       `ALTER TABLE products ADD COLUMN calctype TEXT DEFAULT 'WEIGHT';`,
       `ALTER TABLE products ADD COLUMN stocktype TEXT DEFAULT 'SKU';`,
       `ALTER TABLE products ADD COLUMN havestone_diamond TEXT DEFAULT 'NO';`,
       `ALTER TABLE products ADD COLUMN havesubproduct TEXT DEFAULT 'NO';`,
+      // Subproducts migrations
+      `ALTER TABLE subproducts ADD COLUMN havestone_diamond TEXT DEFAULT 'NO';`,
+      // Customers migrations
       `ALTER TABLE customers ADD COLUMN pan_number TEXT DEFAULT '';`,
       `ALTER TABLE customers ADD COLUMN gstin TEXT DEFAULT '';`,
+      `ALTER TABLE customers ADD COLUMN opening_balance REAL DEFAULT 0.0;`,
       `ALTER TABLE customers ADD COLUMN current_balance REAL DEFAULT 0.0;`,
+      `ALTER TABLE customers ADD COLUMN notes TEXT DEFAULT '';`,
+      // Invoices migrations
       `ALTER TABLE invoices ADD COLUMN customer_phone TEXT DEFAULT '';`,
+      `ALTER TABLE invoices ADD COLUMN subtotal REAL DEFAULT 0.0;`,
+      `ALTER TABLE invoices ADD COLUMN making_charges REAL DEFAULT 0.0;`,
+      `ALTER TABLE invoices ADD COLUMN gst_percent REAL DEFAULT 3.0;`,
+      `ALTER TABLE invoices ADD COLUMN gst_amount REAL DEFAULT 0.0;`,
+      `ALTER TABLE invoices ADD COLUMN discount REAL DEFAULT 0.0;`,
+      // Organization Profile migrations
       `ALTER TABLE organization_profile ADD COLUMN currency_symbol TEXT DEFAULT '₹';`,
+      `ALTER TABLE organization_profile ADD COLUMN tagline TEXT DEFAULT 'Fine Gold & Bullion Jewelers';`,
+      `ALTER TABLE organization_profile ADD COLUMN phone TEXT DEFAULT '';`,
+      `ALTER TABLE organization_profile ADD COLUMN email TEXT DEFAULT '';`,
+      `ALTER TABLE organization_profile ADD COLUMN address TEXT DEFAULT '';`,
+      `ALTER TABLE organization_profile ADD COLUMN city TEXT DEFAULT '';`,
+      `ALTER TABLE organization_profile ADD COLUMN state TEXT DEFAULT '';`,
+      `ALTER TABLE organization_profile ADD COLUMN pincode TEXT DEFAULT '';`,
+      `ALTER TABLE organization_profile ADD COLUMN gstin TEXT DEFAULT '';`,
+      `ALTER TABLE organization_profile ADD COLUMN pan_number TEXT DEFAULT '';`,
+      // Company migrations
       `ALTER TABLE company ADD COLUMN state_id INTEGER DEFAULT 0;`,
       `ALTER TABLE company ADD COLUMN country_id INTEGER DEFAULT 1;`,
+      `ALTER TABLE company ADD COLUMN accountname TEXT DEFAULT '';`,
+      `ALTER TABLE company ADD COLUMN branchid TEXT DEFAULT '';`,
+      // Branches migrations
       `ALTER TABLE branches ADD COLUMN state_id INTEGER DEFAULT 0;`,
       `ALTER TABLE branches ADD COLUMN country_id INTEGER DEFAULT 1;`,
       `ALTER TABLE branches ADD COLUMN is_active INTEGER DEFAULT 1;`,
+      `ALTER TABLE branches ADD COLUMN accountname TEXT DEFAULT '';`,
+      // Users migrations
       `ALTER TABLE users ADD COLUMN centlogin TEXT DEFAULT 'NO';`,
       `ALTER TABLE users ADD COLUMN profile_image TEXT DEFAULT '';`,
       `ALTER TABLE users ADD COLUMN allowed_menus TEXT DEFAULT '[]';`,
+      `ALTER TABLE users ADD COLUMN email TEXT DEFAULT '';`,
+      `ALTER TABLE users ADD COLUMN branchid TEXT DEFAULT '';`,
+      `ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1;`,
+      // Employees migrations
+      `ALTER TABLE employees ADD COLUMN dateofjoin TEXT DEFAULT '';`,
+      `ALTER TABLE employees ADD COLUMN active INTEGER DEFAULT 1;`,
+      `ALTER TABLE employees ADD COLUMN bloodgroup TEXT DEFAULT '';`,
+      `ALTER TABLE employees ADD COLUMN mobile TEXT DEFAULT '';`,
+      `ALTER TABLE employees ADD COLUMN email TEXT DEFAULT '';`,
+      `ALTER TABLE employees ADD COLUMN address TEXT DEFAULT '';`,
+      `ALTER TABLE employees ADD COLUMN image TEXT DEFAULT '';`,
+      // Account Heads migrations
+      `ALTER TABLE account_heads ADD COLUMN accounttype TEXT DEFAULT 'OTHER';`,
+      `ALTER TABLE account_heads ADD COLUMN bank_details TEXT DEFAULT '[]';`,
+      `ALTER TABLE account_heads ADD COLUMN address_line1 TEXT DEFAULT '';`,
+      `ALTER TABLE account_heads ADD COLUMN address_line2 TEXT DEFAULT '';`,
+      `ALTER TABLE account_heads ADD COLUMN city TEXT DEFAULT '';`,
+      `ALTER TABLE account_heads ADD COLUMN state TEXT DEFAULT '';`,
+      `ALTER TABLE account_heads ADD COLUMN country TEXT DEFAULT 'India';`,
+      `ALTER TABLE account_heads ADD COLUMN pincode TEXT DEFAULT '';`,
+      `ALTER TABLE account_heads ADD COLUMN phone_no TEXT DEFAULT '';`,
+      `ALTER TABLE account_heads ADD COLUMN email TEXT DEFAULT '';`,
+      `ALTER TABLE account_heads ADD COLUMN active INTEGER DEFAULT 1;`,
+      `ALTER TABLE account_heads ADD COLUMN gstno TEXT DEFAULT '';`,
+      `ALTER TABLE account_heads ADD COLUMN panno TEXT DEFAULT '';`,
+      // Tax Master migrations
+      `ALTER TABLE tax_master ADD COLUMN sgst_per REAL DEFAULT 0.0;`,
+      `ALTER TABLE tax_master ADD COLUMN sgstacname TEXT DEFAULT '';`,
+      `ALTER TABLE tax_master ADD COLUMN cgst_per REAL DEFAULT 0.0;`,
+      `ALTER TABLE tax_master ADD COLUMN cgstacname TEXT DEFAULT '';`,
+      `ALTER TABLE tax_master ADD COLUMN igst_per REAL DEFAULT 0.0;`,
+      `ALTER TABLE tax_master ADD COLUMN igstacname TEXT DEFAULT '';`,
+      // Daily Rates migrations
+      `ALTER TABLE daily_rates ADD COLUMN batch_id INTEGER DEFAULT 1;`,
+      `ALTER TABLE daily_rates ADD COLUMN buy_rate REAL DEFAULT 0.0;`,
+      `ALTER TABLE daily_rates ADD COLUMN sell_rate REAL DEFAULT 0.0;`,
+      `ALTER TABLE daily_rates ADD COLUMN notes TEXT DEFAULT '';`,
+      // System Controls migrations
+      `ALTER TABLE system_controls ADD COLUMN ctlid TEXT;`,
+      `ALTER TABLE system_controls ADD COLUMN ctlname TEXT;`,
+      `ALTER TABLE system_controls ADD COLUMN ctlvalue TEXT;`,
+      `ALTER TABLE system_controls ADD COLUMN module TEXT;`,
+      `ALTER TABLE system_controls ADD COLUMN branch_id TEXT DEFAULT 'ALL';`,
+      // Estimates migrations
+      `ALTER TABLE estimates ADD COLUMN estimate_no TEXT;`,
+      `ALTER TABLE estimates ADD COLUMN customer_mobile TEXT DEFAULT '';`,
+      `ALTER TABLE estimates ADD COLUMN customer_address TEXT DEFAULT '';`,
+      `ALTER TABLE estimates ADD COLUMN gross_weight REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN net_weight REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN total_metal_value REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN total_making_charges REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN total_stone_charges REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN taxable_amount REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN tax_amount REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN net_amount REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN valid_days INTEGER DEFAULT 7;`,
+      `ALTER TABLE estimates ADD COLUMN items_json TEXT DEFAULT '[]';`,
+      `ALTER TABLE estimates ADD COLUMN notes TEXT DEFAULT '';`,
+      `ALTER TABLE estimates ADD COLUMN updated_at TEXT;`,
     ];
 
     for (const alterSql of safeAddColumns) {
@@ -818,8 +914,8 @@ export async function syncTenantDatabaseSchema(url, token) {
 
     // --- PERFORMANCE INDEXES ---
     const indexes = [
-      `CREATE INDEX IF NOT EXISTS idx_products_sku ON products (sku);`,
-      `CREATE INDEX IF NOT EXISTS idx_products_category ON products (category_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_products_categoryid ON products (categoryid);`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_products_productname_unique ON products (UPPER(TRIM(productname)));`,
       `CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers (phone);`,
       `CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices (invoice_number);`,
       `CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices (customer_id);`,
@@ -827,6 +923,9 @@ export async function syncTenantDatabaseSchema(url, token) {
       `CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments (customer_id);`,
       `CREATE INDEX IF NOT EXISTS idx_account_heads_accode ON account_heads (accode);`,
       `CREATE INDEX IF NOT EXISTS idx_tax_master_taxcode ON tax_master (taxcode);`,
+      `CREATE INDEX IF NOT EXISTS idx_daily_rates_purity_id ON daily_rates (purityid, id DESC);`,
+      `CREATE INDEX IF NOT EXISTS idx_company_companyname ON company (companyname);`,
+      `CREATE INDEX IF NOT EXISTS idx_branches_companyid ON branches (companyid);`,
     ];
 
     for (const indexSql of indexes) {
