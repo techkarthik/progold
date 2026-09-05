@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
 import '../models/employee_model.dart';
 import '../models/branch_model.dart';
 import '../providers/auth_provider.dart';
@@ -68,6 +69,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
   final _addressController = TextEditingController();
   final _imageController = TextEditingController();
   bool _isSaving = false;
+  bool _isUploadingImage = false;
 
   @override
   void initState() {
@@ -243,6 +245,99 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
       setState(() {
         _dojController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
       });
+    }
+  }
+
+  /// Opens native file picker and uploads selected photo directly to ImageKit CDN
+  Future<void> _pickAndUploadImage() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Session expired. Please log in again."),
+          backgroundColor: GlassTheme.accentRose,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final pickedFile = result.files.first;
+        final bytes = pickedFile.bytes;
+        if (bytes == null || bytes.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Could not read image file. Please select another image."),
+                backgroundColor: GlassTheme.accentRose,
+              ),
+            );
+          }
+          return;
+        }
+
+        setState(() => _isUploadingImage = true);
+
+        final ext = pickedFile.extension ?? 'png';
+        final empIdStr = _empIdController.text.trim().isNotEmpty ? _empIdController.text.trim() : 'emp';
+        final fileName = "emp_${empIdStr}_${DateTime.now().millisecondsSinceEpoch}.$ext";
+
+        final uploadRes = await _api.uploadImage(
+          token: token,
+          fileBytes: bytes,
+          fileName: fileName,
+          folder: 'employees',
+        );
+
+        if (mounted) {
+          setState(() => _isUploadingImage = false);
+
+          if (uploadRes['success'] == true && uploadRes['url'] != null) {
+            final imageUrl = uploadRes['url'].toString();
+            setState(() {
+              _imageController.text = imageUrl;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Row(
+                  children: [
+                    Icon(Icons.cloud_done_rounded, color: Colors.white, size: 20),
+                    SizedBox(width: 10),
+                    Text("Photo uploaded to ImageKit successfully!"),
+                  ],
+                ),
+                backgroundColor: GlassTheme.accentEmerald,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(uploadRes['message']?.toString() ?? "Failed to upload photo"),
+                backgroundColor: GlassTheme.accentRose,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Image upload error: $e"),
+            backgroundColor: GlassTheme.accentRose,
+          ),
+        );
+      }
     }
   }
 
@@ -855,10 +950,10 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Form Row 3: Mobile, Email, Image URL
+            // Form Row 3: Mobile, Email, ImageKit Photo Upload
             LayoutBuilder(
               builder: (context, constraints) {
-                final isWide = constraints.maxWidth > 750;
+                final isWide = constraints.maxWidth > 800;
                 if (isWide) {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -884,13 +979,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: _buildTextField(
-                          controller: _imageController,
-                          label: "Profile Image URL",
-                          hint: "https://... or avatar URL",
-                          icon: Icons.image_rounded,
-                          onChanged: (_) => setState(() {}),
-                        ),
+                        child: _buildPhotoUploadField(),
                       ),
                     ],
                   );
@@ -913,13 +1002,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                         keyboardType: TextInputType.emailAddress,
                       ),
                       const SizedBox(height: 14),
-                      _buildTextField(
-                        controller: _imageController,
-                        label: "Profile Image URL",
-                        hint: "https://... or avatar URL",
-                        icon: Icons.image_rounded,
-                        onChanged: (_) => setState(() {}),
-                      ),
+                      _buildPhotoUploadField(),
                     ],
                   );
                 }
@@ -1245,6 +1328,397 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
     );
   }
 
+  // ================= IMAGEKIT PHOTO UPLOAD WIDGET =================
+  Widget _buildPhotoUploadField() {
+    final imageText = _imageController.text.trim();
+    final hasImage = imageText.isNotEmpty;
+    final isImageKit = imageText.contains("imagekit.io");
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              "Employee Photo",
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
+            ),
+            if (hasImage && isImageKit)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: GlassTheme.accentEmerald.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_done_rounded, size: 10, color: GlassTheme.accentEmerald),
+                    SizedBox(width: 4),
+                    Text(
+                      "ImageKit Hosted",
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: GlassTheme.accentEmerald),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: hasImage ? GlassTheme.secondaryNeon.withOpacity(0.5) : const Color(0xFFCBD5E1),
+              width: hasImage ? 1.5 : 1.0,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Large, Prominent Picture Box Preview
+              InkWell(
+                onTap: hasImage
+                    ? () => _showFullImagePreview(imageText, _nameController.text.trim())
+                    : _pickAndUploadImage,
+                borderRadius: BorderRadius.circular(10),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x080F172A), blurRadius: 6, offset: Offset(0, 2)),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(9),
+                        child: hasImage
+                            ? Image.network(
+                                imageText,
+                                width: 76,
+                                height: 76,
+                                fit: BoxFit.cover,
+                                loadingBuilder: (context, child, progress) {
+                                  if (progress == null) return child;
+                                  return const Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: GlassTheme.secondaryNeon),
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    color: const Color(0xFFF1F5F9),
+                                    child: const Center(
+                                      child: Icon(Icons.broken_image_rounded, size: 28, color: GlassTheme.accentRose),
+                                    ),
+                                  );
+                                },
+                              )
+                            : Container(
+                                color: GlassTheme.secondaryNeon.withOpacity(0.06),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.add_a_photo_outlined, size: 24, color: GlassTheme.secondaryNeon.withOpacity(0.7)),
+                                      const SizedBox(height: 4),
+                                      const Text("Add Photo", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: GlassTheme.secondaryNeon)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                    if (hasImage)
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.65),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.zoom_in_rounded, size: 12, color: Colors.white),
+                        ),
+                      ),
+                    if (_isUploadingImage)
+                      Container(
+                        width: 76,
+                        height: 76,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+
+              // Control & Action Area
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      hasImage ? "Photo Attached" : "No photo attached",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: hasImage ? GlassTheme.textPrimary : GlassTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasImage ? "Click picture to zoom preview" : "Upload JPG, PNG, or WEBP",
+                      style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _isUploadingImage ? null : _pickAndUploadImage,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: hasImage ? Colors.white : GlassTheme.secondaryNeon,
+                            foregroundColor: hasImage ? GlassTheme.textPrimary : Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            elevation: 0,
+                            side: hasImage ? const BorderSide(color: Color(0xFFCBD5E1)) : BorderSide.none,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          icon: _isUploadingImage
+                              ? const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                                )
+                              : Icon(
+                                  hasImage ? Icons.cached_rounded : Icons.cloud_upload_rounded,
+                                  size: 14,
+                                ),
+                          label: Text(
+                            _isUploadingImage
+                                ? "Uploading..."
+                                : (hasImage ? "Change" : "Upload Photo"),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        if (hasImage) ...[
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: GlassTheme.secondaryNeon,
+                              side: BorderSide(color: GlassTheme.secondaryNeon.withOpacity(0.4)),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            icon: const Icon(Icons.fullscreen_rounded, size: 14),
+                            label: const Text("View", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                            onPressed: () => _showFullImagePreview(imageText, _nameController.text.trim()),
+                          ),
+                          IconButton(
+                            tooltip: "Clear Photo",
+                            icon: const Icon(Icons.delete_outline_rounded, size: 18, color: GlassTheme.accentRose),
+                            onPressed: () {
+                              setState(() {
+                                _imageController.clear();
+                              });
+                            },
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                          ),
+                        ],
+                        IconButton(
+                          tooltip: "Edit Raw URL",
+                          icon: const Icon(Icons.link_rounded, size: 18, color: GlassTheme.textSecondary),
+                          onPressed: () => _showManualUrlDialog(),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showFullImagePreview(String imageUrl, String empName) {
+    if (imageUrl.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(color: Color(0x20000000), blurRadius: 24, offset: Offset(0, 8)),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.account_box_rounded, color: GlassTheme.secondaryNeon, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        empName.isNotEmpty ? empName : "Employee Photo",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: GlassTheme.textPrimary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20, color: GlassTheme.textSecondary),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ),
+              // Image Container
+              Flexible(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  color: const Color(0xFF0F172A),
+                  child: Center(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        imageUrl,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) return child;
+                          return const Center(child: CircularProgressIndicator(color: Colors.white));
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.broken_image_rounded, color: Colors.white70, size: 40),
+                                SizedBox(height: 8),
+                                Text("Failed to load image", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Footer
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      imageUrl.contains('imagekit.io') ? "Hosted on ImageKit CDN" : "External URL",
+                      style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text("Close", style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showManualUrlDialog() {
+    final tempController = TextEditingController(text: _imageController.text);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Edit Image URL", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Enter or paste a direct image URL:", style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: tempController,
+              decoration: InputDecoration(
+                hintText: "https://...",
+                prefixIcon: const Icon(Icons.image_rounded, size: 18),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: GlassTheme.secondaryNeon, foregroundColor: Colors.white),
+            onPressed: () {
+              setState(() {
+                _imageController.text = tempController.text.trim();
+              });
+              Navigator.of(ctx).pop();
+            },
+            child: const Text("Apply"),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ================= ACTION BAR (SEARCH & FILTERS) =================
   Widget _buildActionBar() {
     return Container(
@@ -1509,34 +1983,38 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar with Active Indicator
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 22,
-                    backgroundColor: GlassTheme.secondaryNeon.withOpacity(0.15),
-                    backgroundImage: emp.image.isNotEmpty ? NetworkImage(emp.image) : null,
-                    child: emp.image.isEmpty
-                        ? Text(
-                            emp.empname.isNotEmpty ? emp.empname[0].toUpperCase() : "E",
-                            style: const TextStyle(fontWeight: FontWeight.w800, color: GlassTheme.secondaryNeon, fontSize: 16),
-                          )
-                        : null,
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: emp.active ? GlassTheme.accentEmerald : const Color(0xFF94A3B8),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+              // Avatar with Active Indicator (clickable to view full image)
+              InkWell(
+                onTap: emp.image.isNotEmpty ? () => _showFullImagePreview(emp.image, emp.empname) : null,
+                borderRadius: BorderRadius.circular(26),
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: GlassTheme.secondaryNeon.withOpacity(0.15),
+                      backgroundImage: emp.image.isNotEmpty ? NetworkImage(emp.image) : null,
+                      child: emp.image.isEmpty
+                          ? Text(
+                              emp.empname.isNotEmpty ? emp.empname[0].toUpperCase() : "E",
+                              style: const TextStyle(fontWeight: FontWeight.w800, color: GlassTheme.secondaryNeon, fontSize: 16),
+                            )
+                          : null,
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: emp.active ? GlassTheme.accentEmerald : const Color(0xFF94A3B8),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1733,26 +2211,9 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                     ),
                   ),
                   DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircleAvatar(
-                          radius: 14,
-                          backgroundColor: GlassTheme.secondaryNeon.withOpacity(0.15),
-                          backgroundImage: emp.image.isNotEmpty ? NetworkImage(emp.image) : null,
-                          child: emp.image.isEmpty
-                              ? Text(
-                                  emp.empname.isNotEmpty ? emp.empname[0].toUpperCase() : "E",
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: GlassTheme.secondaryNeon),
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          emp.empname,
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: GlassTheme.textPrimary),
-                        ),
-                      ],
+                    Text(
+                      emp.empname,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: GlassTheme.textPrimary),
                     ),
                   ),
                   DataCell(Text(branchName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),

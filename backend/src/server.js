@@ -110,6 +110,11 @@ import {
   getRateHistoryController,
   deleteRateRecordController,
 } from "./controllers/rateMasterController.js";
+import {
+  uploadImageController,
+  getUploadAuthController,
+  deleteImageController,
+} from "./controllers/uploadController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -133,7 +138,8 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 
 // Serve compiled Flutter web app
 app.use(express.static(webBuildPath));
@@ -266,6 +272,11 @@ app.get("/api/tenant/rates/by-date", requireAuth, getRatesByDateController);
 app.post("/api/tenant/rates/bulk-update", requireAuth, bulkUpdateRatesController);
 app.get("/api/tenant/rates/history", requireAuth, getRateHistoryController);
 app.delete("/api/tenant/rates/:id", requireAuth, deleteRateRecordController);
+
+// Tenant Media Upload & ImageKit Routes (Employees, Catalogues, Item Tags)
+app.post("/api/tenant/upload/image", requireAuth, uploadImageController);
+app.get("/api/tenant/upload/auth", requireAuth, getUploadAuthController);
+app.delete("/api/tenant/upload/image/:fileId", requireAuth, deleteImageController);
 
 // SPA fallback to index.html
 app.get("*", (req, res, next) => {

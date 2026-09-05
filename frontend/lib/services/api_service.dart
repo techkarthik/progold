@@ -1478,6 +1478,67 @@ class ApiService {
       return {'success': false, 'message': e.toString()};
     }
   }
+
+  // ================= MEDIA / IMAGEKIT UPLOAD METHODS =================
+
+  /// Uploads an image (as raw bytes) to ImageKit via the ProGold backend API.
+  /// Works across Flutter Web, Desktop, and Mobile.
+  /// [fileBytes] - raw binary data of the picked image
+  /// [fileName] - original or generated file name
+  /// [folder] - destination folder category ('employees', 'catalogues', 'itemtags')
+  Future<Map<String, dynamic>> uploadImage({
+    required String token,
+    required List<int> fileBytes,
+    required String fileName,
+    String folder = 'employees',
+  }) async {
+    try {
+      final base64String = base64Encode(fileBytes);
+      final payload = {
+        'image': base64String,
+        'fileName': fileName,
+        'folder': folder,
+      };
+
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/upload/image'),
+        headers: _headers(token),
+        body: jsonEncode(payload),
+      );
+
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+
+      return {
+        'success': res.statusCode == 200,
+        'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}',
+      };
+    } catch (e) {
+      debugPrint("uploadImage error: $e");
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Deletes an uploaded image from ImageKit by fileId
+  Future<Map<String, dynamic>> deleteUploadedImage(String token, String fileId) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/upload/image/$fileId'),
+        headers: _headers(token),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
 }
 
 

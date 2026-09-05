@@ -111,6 +111,11 @@ import {
   getRateHistoryController,
   deleteRateRecordController,
 } from "../backend/src/controllers/rateMasterController.js";
+import {
+  uploadImageController,
+  getUploadAuthController,
+  deleteImageController,
+} from "../backend/src/controllers/uploadController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -128,7 +133,8 @@ app.use(
 );
 
 app.options("*", cors());
-app.use(express.json());
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 
 // Lazy-initialize Master DB Schema
 let schemaInitialized = false;
@@ -322,6 +328,11 @@ router.get("/tenant/rates/by-date", requireAuth, getRatesByDateController);
 router.post("/tenant/rates/bulk-update", requireAuth, bulkUpdateRatesController);
 router.get("/tenant/rates/history", requireAuth, getRateHistoryController);
 router.delete("/tenant/rates/:id", requireAuth, deleteRateRecordController);
+
+// Tenant Media Upload & ImageKit Routes (Employees, Catalogues, Item Tags)
+router.post("/tenant/upload/image", requireAuth, uploadImageController);
+router.get("/tenant/upload/auth", requireAuth, getUploadAuthController);
+router.delete("/tenant/upload/image/:fileId", requireAuth, deleteImageController);
 
 // Mount router on both '/api' and '/' to ensure all rewrite scenarios work
 app.use("/api", router);
