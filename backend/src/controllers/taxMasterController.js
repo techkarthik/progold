@@ -1,24 +1,28 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Helper to ensure the tax_master table exists in the tenant's private Turso database.
  */
-async function ensureTaxMasterTable(client) {
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS tax_master (
-      taxid INTEGER PRIMARY KEY AUTOINCREMENT,
-      taxcode TEXT NOT NULL UNIQUE,
-      taxname TEXT NOT NULL,
-      sgst_per REAL DEFAULT 0.0,
-      sgstacname TEXT DEFAULT '',
-      cgst_per REAL DEFAULT 0.0,
-      cgstacname TEXT DEFAULT '',
-      igst_per REAL DEFAULT 0.0,
-      igstacname TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+async function ensureTaxMasterTable(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`tax_master:${key}`, async () => {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS tax_master (
+        taxid INTEGER PRIMARY KEY AUTOINCREMENT,
+        taxcode TEXT NOT NULL UNIQUE,
+        taxname TEXT NOT NULL,
+        sgst_per REAL DEFAULT 0.0,
+        sgstacname TEXT DEFAULT '',
+        cgst_per REAL DEFAULT 0.0,
+        cgstacname TEXT DEFAULT '',
+        igst_per REAL DEFAULT 0.0,
+        igstacname TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  });
 }
 
 /**

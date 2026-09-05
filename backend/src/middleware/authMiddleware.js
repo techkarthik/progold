@@ -3,6 +3,18 @@ import { masterTurso } from "../config/turso.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "progold_super_secure_jwt_secret_key_2026_turso_multitenant";
 
+const _tenantAuthCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function invalidateTenantAuthCache(tenantId) {
+  if (tenantId) {
+    _tenantAuthCache.delete(Number(tenantId));
+    _tenantAuthCache.delete(String(tenantId));
+  } else {
+    _tenantAuthCache.clear();
+  }
+}
+
 export async function requireAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
@@ -13,18 +25,28 @@ export async function requireAuth(req, res, next) {
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    // Fetch tenant from master database
-    const result = await masterTurso.execute({
-      sql: `SELECT id, email, contact_number, turso_url, turso_token, valid_from, valid_to, status, created_at
-            FROM tenants WHERE id = ? LIMIT 1`,
-      args: [decoded.id],
-    });
+    let tenant = null;
+    const cached = _tenantAuthCache.get(decoded.id);
+    if (cached && Date.now() < cached.expiresAt) {
+      tenant = cached.tenant;
+    } else {
+      // Fetch tenant from master database
+      const result = await masterTurso.execute({
+        sql: `SELECT id, email, contact_number, turso_url, turso_token, valid_from, valid_to, status, created_at, business_name, business_logo
+              FROM tenants WHERE id = ? LIMIT 1`,
+        args: [decoded.id],
+      });
 
-    if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: "Tenant account not found." });
+      if (result.rows.length === 0) {
+        return res.status(401).json({ success: false, message: "Tenant account not found." });
+      }
+
+      tenant = result.rows[0];
+      _tenantAuthCache.set(decoded.id, {
+        tenant,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+      });
     }
-
-    const tenant = result.rows[0];
 
     // Check status
     if (tenant.status !== "ACTIVE") {
@@ -60,3 +82,4 @@ export async function requireAuth(req, res, next) {
     return res.status(401).json({ success: false, message: "Invalid or malformed authorization token." });
   }
 }
+

@@ -1,42 +1,46 @@
 import bcrypt from "bcryptjs";
 import { createTenantClient, masterTurso } from "../config/turso.js";
 import { sendOtp } from "../services/otpService.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Ensures the users table exists in the tenant's private Turso database.
  */
-export async function ensureUserTable(client) {
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS users (
-      userid TEXT PRIMARY KEY NOT NULL,
-      username TEXT NOT NULL,
-      password_hash TEXT NOT NULL,
-      email TEXT DEFAULT '',
-      branchid TEXT DEFAULT '',
-      is_active INTEGER DEFAULT 1,
-      centlogin TEXT DEFAULT 'NO',
-      profile_image TEXT DEFAULT '',
-      allowed_menus TEXT DEFAULT '[]',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+export async function ensureUserTable(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`users:${key}`, async () => {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        userid TEXT PRIMARY KEY NOT NULL,
+        username TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        email TEXT DEFAULT '',
+        branchid TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        centlogin TEXT DEFAULT 'NO',
+        profile_image TEXT DEFAULT '',
+        allowed_menus TEXT DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
 
-  // Safe non-destructive column additions
-  const safeColumns = [
-    `ALTER TABLE users ADD COLUMN email TEXT DEFAULT '';`,
-    `ALTER TABLE users ADD COLUMN branchid TEXT DEFAULT '';`,
-    `ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1;`,
-    `ALTER TABLE users ADD COLUMN centlogin TEXT DEFAULT 'NO';`,
-    `ALTER TABLE users ADD COLUMN profile_image TEXT DEFAULT '';`,
-    `ALTER TABLE users ADD COLUMN allowed_menus TEXT DEFAULT '[]';`,
-  ];
+    // Safe non-destructive column additions
+    const safeColumns = [
+      `ALTER TABLE users ADD COLUMN email TEXT DEFAULT '';`,
+      `ALTER TABLE users ADD COLUMN branchid TEXT DEFAULT '';`,
+      `ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1;`,
+      `ALTER TABLE users ADD COLUMN centlogin TEXT DEFAULT 'NO';`,
+      `ALTER TABLE users ADD COLUMN profile_image TEXT DEFAULT '';`,
+      `ALTER TABLE users ADD COLUMN allowed_menus TEXT DEFAULT '[]';`,
+    ];
 
-  for (const sql of safeColumns) {
-    try {
-      await client.execute(sql);
-    } catch (_) {}
-  }
+    for (const sql of safeColumns) {
+      try {
+        await client.execute(sql);
+      } catch (_) {}
+    }
+  });
 }
 
 /**

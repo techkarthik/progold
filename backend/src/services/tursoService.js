@@ -61,8 +61,10 @@ function formatBytes(bytes, decimals = 2) {
  * @param {string} url
  * @param {string} token
  * @param {object} tenant
+ * @param {object} options - { includeTables: boolean }
  */
-export async function getTenantDatabaseStatus(url, token, tenant = {}) {
+export async function getTenantDatabaseStatus(url, token, tenant = {}, options = {}) {
+  const includeTables = options.includeTables === true;
   const startTime = Date.now();
   const client = createTenantClient(url, token);
 
@@ -72,27 +74,29 @@ export async function getTenantDatabaseStatus(url, token, tenant = {}) {
     const latencyMs = Date.now() - startTime;
     const sqliteVersion = String(versionRes.rows[0]?.version || "SQLite 3.x");
 
-    // 2. Storage & Page PRAGMAs
-    let pageCount = 0;
+    // 2. Storage & Page PRAGMAs (parallel execution)
+    let pageCount = 32;
     let pageSize = 4096;
     let freelistCount = 0;
 
     try {
-      const pageCountRes = await client.execute("PRAGMA page_count;");
-      pageCount = Number(Object.values(pageCountRes.rows[0] || {})[0] || 0);
+      const [pageCountRes, pageSizeRes, freelistRes] = await Promise.all([
+        client.execute("PRAGMA page_count;").catch(() => null),
+        client.execute("PRAGMA page_size;").catch(() => null),
+        client.execute("PRAGMA freelist_count;").catch(() => null),
+      ]);
+
+      if (pageCountRes?.rows?.length) {
+        pageCount = Number(Object.values(pageCountRes.rows[0] || {})[0] || 32);
+      }
+      if (pageSizeRes?.rows?.length) {
+        pageSize = Number(Object.values(pageSizeRes.rows[0] || {})[0] || 4096);
+      }
+      if (freelistRes?.rows?.length) {
+        freelistCount = Number(Object.values(freelistRes.rows[0] || {})[0] || 0);
+      }
     } catch (_) {}
 
-    try {
-      const pageSizeRes = await client.execute("PRAGMA page_size;");
-      pageSize = Number(Object.values(pageSizeRes.rows[0] || {})[0] || 4096);
-    } catch (_) {}
-
-    try {
-      const freelistRes = await client.execute("PRAGMA freelist_count;");
-      freelistCount = Number(Object.values(freelistRes.rows[0] || {})[0] || 0);
-    } catch (_) {}
-
-    // Fallback if page_count is 0 in some remote edge drivers
     if (pageCount === 0) {
       pageCount = 32; // base initial allocation ~128 KB
     }
@@ -106,58 +110,36 @@ export async function getTenantDatabaseStatus(url, token, tenant = {}) {
     const availableBytes = Math.max(0, quotaBytes - totalSizeBytes);
     const usedPercentage = parseFloat(((totalSizeBytes / quotaBytes) * 100).toFixed(4));
 
-    // 3. Tables & Record Counts
-    const tablesResult = await client.execute(`
-      SELECT name, type, sql 
-      FROM sqlite_master 
-      WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream_%'
-      ORDER BY name ASC;
-    `);
-
-    const tables = [];
-    let totalRows = 0;
-
-    for (const row of tablesResult.rows) {
-      let rowCount = 0;
-      let columnCount = 0;
-
-      if (row.type === "table") {
-        try {
-          const countRes = await client.execute(`SELECT COUNT(*) AS total FROM "${row.name}";`);
-          rowCount = Number(countRes.rows[0]?.total || 0);
-          totalRows += rowCount;
-        } catch (_) {
-          rowCount = 0;
-        }
-
-        try {
-          const infoRes = await client.execute(`PRAGMA table_info("${row.name}");`);
-          columnCount = infoRes.rows.length;
-        } catch (_) {
-          columnCount = 0;
-        }
-      }
-
-      // Estimate table size (approximate row payload + index overhead)
-      const estimatedTableBytes = Math.max(pageSize, rowCount * Math.max(1, columnCount) * 128);
-
-      tables.push({
-        name: row.name,
-        type: row.type,
-        sql: row.sql,
-        rowCount,
-        columnCount,
-        estimatedSizeBytes: estimatedTableBytes,
-        estimatedSizeFormatted: formatBytes(estimatedTableBytes),
-      });
-    }
-
     // Mask URL for display security
     let maskedUrl = url;
     try {
       const parsed = new URL(url);
       maskedUrl = `${parsed.protocol}//${parsed.hostname}`;
     } catch (_) {}
+
+    let tables = [];
+    let totalTablesCount = 0;
+    let totalRowsCount = 0;
+
+    if (includeTables) {
+      const breakdown = await getTenantTablesBreakdown(url, token);
+      if (breakdown.success) {
+        tables = breakdown.tables;
+        totalTablesCount = breakdown.totalTables;
+        totalRowsCount = breakdown.totalRows;
+      }
+    } else {
+      // Quick single-query table count for metadata
+      try {
+        const countRes = await client.execute(`
+          SELECT count(*) as cnt FROM sqlite_master 
+          WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream_%';
+        `);
+        totalTablesCount = Number(countRes.rows[0]?.cnt || 0);
+      } catch (_) {
+        totalTablesCount = 0;
+      }
+    }
 
     return {
       success: true,
@@ -182,8 +164,8 @@ export async function getTenantDatabaseStatus(url, token, tenant = {}) {
         page_count: pageCount,
         page_size: pageSize,
         freelist_count: freelistCount,
-        total_tables: tables.length,
-        total_rows: totalRows,
+        total_tables: totalTablesCount,
+        total_rows: totalRowsCount,
         tenant_email: tenant?.email || "",
         business_name: tenant?.business_name || "ProGold Enterprise",
       },
@@ -199,6 +181,72 @@ export async function getTenantDatabaseStatus(url, token, tenant = {}) {
     };
   }
 }
+
+/**
+ * High-performance breakdown of tenant database tables, columns, and records.
+ * Uses parallel queries to load all tables rapidly in a single batch.
+ */
+export async function getTenantTablesBreakdown(url, token) {
+  const client = createTenantClient(url, token);
+  const startTime = Date.now();
+  try {
+    const tablesResult = await client.execute(`
+      SELECT name, type, sql 
+      FROM sqlite_master 
+      WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream_%'
+      ORDER BY name ASC;
+    `);
+
+    // Fetch counts and column info in parallel
+    const tableDetails = await Promise.all(
+      tablesResult.rows.map(async (row) => {
+        let rowCount = 0;
+        let columnCount = 0;
+
+        if (row.type === "table") {
+          const [countRes, infoRes] = await Promise.all([
+            client.execute(`SELECT COUNT(*) AS total FROM "${row.name}";`).catch(() => null),
+            client.execute(`PRAGMA table_info("${row.name}");`).catch(() => null),
+          ]);
+
+          rowCount = Number(countRes?.rows?.[0]?.total || 0);
+          columnCount = infoRes?.rows?.length || 0;
+        }
+
+        const estimatedTableBytes = Math.max(4096, rowCount * Math.max(1, columnCount) * 128);
+
+        return {
+          name: row.name,
+          type: row.type,
+          sql: row.sql,
+          rowCount,
+          columnCount,
+          estimatedSizeBytes: estimatedTableBytes,
+          estimatedSizeFormatted: formatBytes(estimatedTableBytes),
+        };
+      })
+    );
+
+    const totalRows = tableDetails.reduce((acc, t) => acc + (t.rowCount || 0), 0);
+    const executionTimeMs = Date.now() - startTime;
+
+    return {
+      success: true,
+      totalTables: tableDetails.length,
+      totalRows,
+      executionTimeMs,
+      tables: tableDetails,
+    };
+  } catch (error) {
+    console.error("getTenantTablesBreakdown error:", error);
+    return {
+      success: false,
+      message: error.message || "Failed to query tables breakdown.",
+      tables: [],
+    };
+  }
+}
+
 
 /**
  * Optimizes the tenant database using PRAGMA optimize & VACUUM

@@ -18,20 +18,24 @@ class DatabaseStatusScreen extends StatefulWidget {
 class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
   final ApiService _api = ApiService();
 
-  bool _isLoading = false;
+  bool _isLoadingMetrics = false;
+  bool _isLoadingTables = false;
+  bool _tablesLoaded = false;
   bool _isOptimizing = false;
   bool _isSyncingSchema = false;
+
   Map<String, dynamic>? _dbStatus;
   List<Map<String, dynamic>> _tables = [];
   List<Map<String, dynamic>> _filteredTables = [];
   String _tableSearch = '';
+  int _tablesLoadTimeMs = 0;
 
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadDatabaseStatus();
+    _loadDatabaseMetrics();
   }
 
   @override
@@ -40,25 +44,24 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
     super.dispose();
   }
 
-  Future<void> _loadDatabaseStatus() async {
+  /// Fast query for core storage, quota, engine, and latency metrics
+  Future<void> _loadDatabaseMetrics() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final token = auth.authToken;
     if (token == null) return;
 
-    setState(() => _isLoading = true);
+    setState(() => _isLoadingMetrics = true);
 
     try {
-      final res = await _api.getTenantDbStatus(token);
+      final res = await _api.getTenantDbStatus(token, includeTables: false);
       if (mounted) {
         if (res['success'] == true) {
           setState(() {
             _dbStatus = res['database'] as Map<String, dynamic>?;
-            _tables = (res['tables'] as List?)?.map((e) => Map<String, dynamic>.from(e)).toList() ?? [];
-            _applyTableFilter(_tableSearch);
-            _isLoading = false;
+            _isLoadingMetrics = false;
           });
         } else {
-          setState(() => _isLoading = false);
+          setState(() => _isLoadingMetrics = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(res['message']?.toString() ?? "Failed to load database status"),
@@ -69,9 +72,52 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() => _isLoadingMetrics = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error: $e"), backgroundColor: GlassTheme.accentRose),
+        );
+      }
+    }
+  }
+
+  /// On-demand query to fetch full breakdown of tables, columns, and record counts
+  Future<void> _loadDatabaseTables() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) return;
+
+    setState(() => _isLoadingTables = true);
+
+    try {
+      final startTime = DateTime.now();
+      final res = await _api.getTenantDbTables(token);
+      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+
+      if (mounted) {
+        if (res['success'] == true) {
+          final tablesList = (res['tables'] as List?)?.map((e) => Map<String, dynamic>.from(e)).toList() ?? [];
+          setState(() {
+            _tables = tablesList;
+            _tablesLoaded = true;
+            _tablesLoadTimeMs = int.tryParse(res['executionTimeMs']?.toString() ?? '$elapsed') ?? elapsed;
+            _applyTableFilter(_tableSearch);
+            _isLoadingTables = false;
+          });
+        } else {
+          setState(() => _isLoadingTables = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? "Failed to load tables"),
+              backgroundColor: GlassTheme.accentRose,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingTables = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error loading tables: $e"), backgroundColor: GlassTheme.accentRose),
         );
       }
     }
@@ -108,7 +154,10 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
           ),
         );
         if (isOk) {
-          await _loadDatabaseStatus();
+          await _loadDatabaseMetrics();
+          if (_tablesLoaded) {
+            await _loadDatabaseTables();
+          }
         }
       }
     } catch (e) {
@@ -136,7 +185,7 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
           ],
         ),
         content: const Text(
-          "This action will safely apply all latest table schemas, missing columns, and database indexes into your private tenant database without altering or deleting any existing records.\n\nDo you want to proceed with schema reinstallation?",
+          "This action safely verifies and synchronizes all provisioned ERP tables, column schemas, and performance indexes into your private tenant database.\n\nAll existing records will remain completely intact.\n\nDo you want to proceed?",
           style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, height: 1.4),
         ),
         actions: [
@@ -180,7 +229,7 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
           ),
         );
         if (isOk) {
-          await _loadDatabaseStatus();
+          await _loadDatabaseMetrics();
         }
       }
     } catch (e) {
@@ -205,15 +254,24 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
         _buildHeaderBar(isMobile),
         const SizedBox(height: 16),
 
-        if (_isLoading)
+        if (_isLoadingMetrics)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 60),
-            child: Center(child: CircularProgressIndicator(color: GlassTheme.primaryNeon)),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: GlassTheme.primaryNeon),
+                  SizedBox(height: 14),
+                  Text("Querying live database metrics...", style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
           )
         else if (_dbStatus == null)
           _buildErrorState()
         else ...[
-          // 2. Storage & Quota Hero Gauges
+          // 2. Storage & Quota Hero Gauges (Fast loading)
           _buildStorageGauges(isMobile),
           const SizedBox(height: 16),
 
@@ -221,7 +279,7 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
           _buildConnectionMetadataCard(isMobile),
           const SizedBox(height: 16),
 
-          // 4. Tables Storage Breakdown
+          // 4. Tables Storage Breakdown (On-Demand Loading)
           _buildTablesSection(isMobile),
         ],
       ],
@@ -315,7 +373,7 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
                 onPressed: _isSyncingSchema ? null : _showReinstallDialog,
               ),
               GlassSecondaryButton(
-                label: _isOptimizing ? "Optimizing..." : "Optimize",
+                label: _isOptimizing ? "Optimizing..." : "Optimize DB",
                 icon: Icons.auto_fix_high_rounded,
                 onPressed: _isOptimizing ? () {} : _optimizeDatabase,
               ),
@@ -327,8 +385,8 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text("Refresh", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                onPressed: _loadDatabaseStatus,
+                label: const Text("Refresh Metrics", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                onPressed: _loadDatabaseMetrics,
               ),
             ],
           ),
@@ -345,7 +403,6 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
     final usedPercentage = double.tryParse(_dbStatus?['used_percentage']?.toString() ?? '0.0') ?? 0.0;
     final latencyMs = int.tryParse(_dbStatus?['latency_ms']?.toString() ?? '0') ?? 0;
     final totalTables = int.tryParse(_dbStatus?['total_tables']?.toString() ?? '0') ?? 0;
-    final totalRows = int.tryParse(_dbStatus?['total_rows']?.toString() ?? '0') ?? 0;
 
     return Column(
       children: [
@@ -377,15 +434,15 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
                   width: cardWidth,
                   title: "Cloud Connection Latency",
                   value: "$latencyMs ms",
-                  subtext: latencyMs < 100 ? "Superfast Response" : "Normal Response",
+                  subtext: latencyMs < 80 ? "⚡ Ultra Fast" : latencyMs < 150 ? "Normal Latency" : "Fair",
                   icon: Icons.speed_rounded,
                   color: const Color(0xFFF59E0B),
                 ),
                 _buildKpiCard(
                   width: cardWidth,
-                  title: "Active Schema Data",
+                  title: "Provisioned Tables",
                   value: "$totalTables Tables",
-                  subtext: "$totalRows Total Records",
+                  subtext: _tablesLoaded ? "${_tables.fold<int>(0, (sum, t) => sum + (int.tryParse(t['rowCount']?.toString() ?? '0') ?? 0))} Total Records" : "Click below to view breakdown",
                   icon: Icons.table_chart_rounded,
                   color: const Color(0xFF8B5CF6),
                 ),
@@ -442,9 +499,9 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
+                  const Text(
                     "0 MB (Start)",
-                    style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
                   ),
                   Text(
                     "Remaining Balance: $availableFormatted",
@@ -525,7 +582,7 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
     final sqliteVer = _dbStatus?['sqlite_version'] ?? '3.45.1';
     final pageSize = _dbStatus?['page_size'] ?? 4096;
     final pageCount = _dbStatus?['page_count'] ?? 0;
-    final status = _dbStatus?['status'] ?? 'ONLINE';
+    final status = _dbStatus?['status'] ?? 'ONLINE & HEALTHY';
 
     return Container(
       decoration: BoxDecoration(
@@ -628,7 +685,7 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
     );
   }
 
-  // ================= TABLES STORAGE BREAKDOWN =================
+  // ================= TABLES STORAGE BREAKDOWN (ON-DEMAND) =================
   Widget _buildTablesSection(bool isMobile) {
     return Container(
       decoration: BoxDecoration(
@@ -642,118 +699,235 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header & Search Toolbar
+          // Header & Action Bar
           Padding(
             padding: const EdgeInsets.all(18),
-            child: Row(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Database Tables & Row Metrics",
-                        style: TextStyle(color: GlassTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w800),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        "List of all provisioned tables, column structures, row counts, and storage weights",
-                        style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
+                      child: const Icon(Icons.table_rows_rounded, color: Color(0xFF8B5CF6), size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Database Tables & Row Metrics",
+                          style: TextStyle(color: GlassTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _tablesLoaded
+                              ? "${_tables.length} provisioned tables (${_tablesLoadTimeMs}ms) • Optional on-demand view"
+                              : "Optional diagnostics • Load tables breakdown on demand",
+                          style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (!_tablesLoaded) ...[
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF8B5CF6),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 1,
+                        ),
+                        icon: _isLoadingTables
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.visibility_rounded, size: 16),
+                        label: Text(
+                          _isLoadingTables ? "Loading Tables..." : "📊 View Database Tables & Metrics",
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        onPressed: _isLoadingTables ? null : _loadDatabaseTables,
+                      ),
+                    ] else ...[
+                      SizedBox(
+                        width: isMobile ? 160 : 220,
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (val) => setState(() => _applyTableFilter(val)),
+                          style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search_rounded, size: 18, color: GlassTheme.textSecondary),
+                            hintText: "Search tables...",
+                            hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 12),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF8B5CF6))),
+                          ),
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF8B5CF6),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: _isLoadingTables
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text("Refresh Tables", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        onPressed: _isLoadingTables ? null : _loadDatabaseTables,
+                      ),
+                      IconButton(
+                        tooltip: "Hide Tables Breakdown",
+                        icon: const Icon(Icons.keyboard_arrow_up_rounded, color: GlassTheme.textSecondary),
+                        onPressed: () => setState(() => _tablesLoaded = false),
                       ),
                     ],
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? 180 : 280,
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (val) => setState(() => _applyTableFilter(val)),
-                    style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search_rounded, size: 18, color: GlassTheme.textSecondary),
-                      hintText: "Search tables...",
-                      hintStyle: const TextStyle(color: GlassTheme.textMuted, fontSize: 12),
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF06B6D4))),
-                    ),
-                  ),
+                  ],
                 ),
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE2E8F0)),
 
-          // DataTable
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
-                dataRowColor: WidgetStateProperty.all(Colors.white),
-                columns: const [
-                  DataColumn(label: Text("TABLE NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-                  DataColumn(label: Text("TYPE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-                  DataColumn(label: Text("RECORDS / ROWS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-                  DataColumn(label: Text("COLUMNS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-                  DataColumn(label: Text("ESTIMATED SIZE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-                  DataColumn(label: Text("STATUS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
-                ],
-                rows: _filteredTables.map((t) {
-                  final name = t['name']?.toString() ?? '';
-                  final type = t['type']?.toString() ?? 'table';
-                  final rowCount = int.tryParse(t['rowCount']?.toString() ?? '0') ?? 0;
-                  final columnCount = int.tryParse(t['columnCount']?.toString() ?? '0') ?? 0;
-                  final sizeFormatted = t['estimatedSizeFormatted']?.toString() ?? '4.00 KB';
-
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.table_chart_rounded, size: 16, color: Color(0xFF06B6D4)),
-                            const SizedBox(width: 8),
-                            Text(name, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 13)),
-                          ],
-                        ),
+          // Content Area
+          if (!_tablesLoaded) ...[
+            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        shape: BoxShape.circle,
                       ),
-                      DataCell(Text(type.toUpperCase(), style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w700, fontSize: 12))),
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            "$rowCount records",
-                            style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 12),
-                          ),
-                        ),
+                      child: const Icon(Icons.table_view_rounded, size: 36, color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      "Table Diagnostics are Optional",
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      "For maximum screen speed, table schema details and record counts are loaded only when requested.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF8B5CF6),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 1,
                       ),
-                      DataCell(Text("$columnCount cols", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 12))),
-                      DataCell(Text(sizeFormatted, style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w800, fontSize: 12))),
-                      DataCell(
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF10B981), shape: BoxShape.circle)),
-                            const SizedBox(width: 6),
-                            const Text("Active", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 12)),
-                          ],
-                        ),
+                      icon: _isLoadingTables
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.analytics_rounded, size: 18),
+                      label: Text(
+                        _isLoadingTables ? "Querying Cloud Tables..." : "Load Database Tables & Metrics",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                       ),
-                    ],
-                  );
-                }).toList(),
+                      onPressed: _isLoadingTables ? null : _loadDatabaseTables,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ] else ...[
+            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+
+            // DataTable with Provisioned Tables
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+                  dataRowColor: WidgetStateProperty.all(Colors.white),
+                  columns: const [
+                    DataColumn(label: Text("TABLE NAME", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+                    DataColumn(label: Text("TYPE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+                    DataColumn(label: Text("RECORDS / ROWS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+                    DataColumn(label: Text("COLUMNS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+                    DataColumn(label: Text("ESTIMATED SIZE", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+                    DataColumn(label: Text("STATUS", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12))),
+                  ],
+                  rows: _filteredTables.map((t) {
+                    final name = t['name']?.toString() ?? '';
+                    final type = t['type']?.toString() ?? 'table';
+                    final rowCount = int.tryParse(t['rowCount']?.toString() ?? '0') ?? 0;
+                    final columnCount = int.tryParse(t['columnCount']?.toString() ?? '0') ?? 0;
+                    final sizeFormatted = t['estimatedSizeFormatted']?.toString() ?? '4.00 KB';
+
+                    return DataRow(
+                      cells: [
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.table_chart_rounded, size: 16, color: Color(0xFF06B6D4)),
+                              const SizedBox(width: 8),
+                              Text(name, style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                        DataCell(Text(type.toUpperCase(), style: const TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w700, fontSize: 12))),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              "$rowCount records",
+                              style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w800, fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        DataCell(Text("$columnCount cols", style: const TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 12))),
+                        DataCell(Text(sizeFormatted, style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w800, fontSize: 12))),
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF10B981), shape: BoxShape.circle)),
+                              const SizedBox(width: 6),
+                              const Text("Active", style: TextStyle(color: GlassTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -778,7 +952,7 @@ class _DatabaseStatusScreenState extends State<DatabaseStatusScreen> {
             const Text("Check backend server connection and Turso credentials.", style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600)),
             const SizedBox(height: 18),
             ElevatedButton(
-              onPressed: _loadDatabaseStatus,
+              onPressed: _loadDatabaseMetrics,
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF06B6D4)),
               child: const Text("Retry Connection", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),

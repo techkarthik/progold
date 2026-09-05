@@ -67,8 +67,10 @@ export const masterTurso = new Proxy(
   }
 );
 
+const _tenantClients = new Map();
+
 /**
- * Creates a dynamic Turso client for a specific tenant database.
+ * Creates or retrieves a cached dynamic Turso client for a specific tenant database.
  * @param {string} url - The tenant's Turso database URL (e.g. libsql://tenant.turso.io)
  * @param {string} authToken - The tenant's Turso auth token
  * @returns {Client}
@@ -78,8 +80,17 @@ export function createTenantClient(url, authToken) {
   if (!formattedUrl.startsWith("libsql://") && !formattedUrl.startsWith("https://") && !formattedUrl.startsWith("http://")) {
     formattedUrl = `libsql://${formattedUrl}`;
   }
-  return createClient({
-    url: formattedUrl,
-    authToken: (authToken || "").trim(),
-  });
+  const cleanToken = (authToken || "").trim();
+  const cacheKey = `${formattedUrl}:${cleanToken}`;
+
+  let client = _tenantClients.get(cacheKey);
+  if (!client) {
+    client = createClient({
+      url: formattedUrl,
+      authToken: cleanToken,
+    });
+    _tenantClients.set(cacheKey, client);
+  }
+  return client;
 }
+

@@ -1,171 +1,153 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Helper to ensure metals, purities, and categories tables exist in the tenant Turso DB.
  */
-async function ensureInventoryTables(client) {
-  // Metals
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS metals (
-      metalid TEXT PRIMARY KEY NOT NULL,
-      metalname TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
-
-  // Purities
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS purities (
-      purityid INTEGER PRIMARY KEY AUTOINCREMENT,
-      metalid TEXT NOT NULL,
-      purityname TEXT NOT NULL,
-      purityshortname TEXT NOT NULL,
-      purity REAL NOT NULL,
-      type TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (metalid) REFERENCES metals(metalid)
-    );
-  `);
-
-  // Categories (Refactored)
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS categories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      metalid TEXT NOT NULL,
-      purityid INTEGER,
-      catcode TEXT UNIQUE NOT NULL,
-      catname TEXT NOT NULL,
-      categorytype TEXT NOT NULL,
-      sgst_per REAL DEFAULT 0.0,
-      cgst_per REAL DEFAULT 0.0,
-      igst_per REAL DEFAULT 0.0,
-      sales_accode TEXT DEFAULT '',
-      purchase_accode TEXT DEFAULT '',
-      sgst_accode TEXT DEFAULT '',
-      cgst_accode TEXT DEFAULT '',
-      igst_accode TEXT DEFAULT '',
-      salesacname TEXT DEFAULT '',
-      purchaseacname TEXT DEFAULT '',
-      sgstacname TEXT DEFAULT '',
-      cgstacname TEXT DEFAULT '',
-      igstacname TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (metalid) REFERENCES metals(metalid),
-      FOREIGN KEY (purityid) REFERENCES purities(purityid)
-    );
-  `);
-
-  try {
-    await client.execute(`ALTER TABLE categories ADD COLUMN purityid INTEGER;`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE categories ADD COLUMN sales_accode TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE categories ADD COLUMN purchase_accode TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE categories ADD COLUMN sgst_accode TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE categories ADD COLUMN cgst_accode TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE categories ADD COLUMN igst_accode TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE categories ADD COLUMN salesacname TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE categories ADD COLUMN purchaseacname TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
+async function ensureInventoryTables(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`inventory_tables:${key}`, async () => {
+    // Metals
     await client.execute(`
-      UPDATE categories
-      SET sales_accode = (
-        SELECT accode FROM account_heads 
-        WHERE UPPER(TRIM(account_heads.accountname)) = UPPER(TRIM(categories.salesacname)) 
-        LIMIT 1
-      )
-      WHERE (sales_accode IS NULL OR sales_accode = '') AND salesacname != '';
+      CREATE TABLE IF NOT EXISTS metals (
+        metalid TEXT PRIMARY KEY NOT NULL,
+        metalname TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
-  } catch (_) {}
-  try {
+
+    // Purities
     await client.execute(`
-      UPDATE categories
-      SET purchase_accode = (
-        SELECT accode FROM account_heads 
-        WHERE UPPER(TRIM(account_heads.accountname)) = UPPER(TRIM(categories.purchaseacname)) 
-        LIMIT 1
-      )
-      WHERE (purchase_accode IS NULL OR purchase_accode = '') AND purchaseacname != '';
+      CREATE TABLE IF NOT EXISTS purities (
+        purityid INTEGER PRIMARY KEY AUTOINCREMENT,
+        metalid TEXT NOT NULL,
+        purityname TEXT NOT NULL,
+        purityshortname TEXT NOT NULL,
+        purity REAL NOT NULL,
+        type TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (metalid) REFERENCES metals(metalid)
+      );
     `);
-  } catch (_) {}
 
-  // Products (New 4th Master under Inventory)
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS products (
-      productid INTEGER PRIMARY KEY AUTOINCREMENT,
-      categoryid INTEGER NOT NULL,
-      productname TEXT NOT NULL,
-      calctype TEXT NOT NULL DEFAULT 'WEIGHT',
-      stocktype TEXT NOT NULL DEFAULT 'SKU',
-      havestone_diamond TEXT NOT NULL DEFAULT 'NO',
-      havesubproduct TEXT NOT NULL DEFAULT 'NO',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (categoryid) REFERENCES categories(id)
-    );
-  `);
-
-  try {
+    // Categories (Refactored)
     await client.execute(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_products_productname_unique ON products (UPPER(TRIM(productname)));
+      CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        metalid TEXT NOT NULL,
+        purityid INTEGER,
+        catcode TEXT UNIQUE NOT NULL,
+        catname TEXT NOT NULL,
+        categorytype TEXT NOT NULL,
+        sgst_per REAL DEFAULT 0.0,
+        cgst_per REAL DEFAULT 0.0,
+        igst_per REAL DEFAULT 0.0,
+        sales_accode TEXT DEFAULT '',
+        purchase_accode TEXT DEFAULT '',
+        sgst_accode TEXT DEFAULT '',
+        cgst_accode TEXT DEFAULT '',
+        igst_accode TEXT DEFAULT '',
+        salesacname TEXT DEFAULT '',
+        purchaseacname TEXT DEFAULT '',
+        sgstacname TEXT DEFAULT '',
+        cgstacname TEXT DEFAULT '',
+        igstacname TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (metalid) REFERENCES metals(metalid),
+        FOREIGN KEY (purityid) REFERENCES purities(purityid)
+      );
     `);
-  } catch (_) {}
 
-  // Sub-Products (New 5th Master under Inventory)
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS subproducts (
-      subproductid INTEGER PRIMARY KEY AUTOINCREMENT,
-      productid INTEGER NOT NULL,
-      subproductname TEXT NOT NULL,
-      havestone_diamond TEXT NOT NULL DEFAULT 'NO',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (productid) REFERENCES products(productid),
-      UNIQUE (productid, subproductname)
-    );
-  `);
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN purityid INTEGER;`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN sales_accode TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN purchase_accode TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN sgst_accode TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN cgst_accode TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN igst_accode TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN salesacname TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN purchaseacname TEXT DEFAULT '';`);
+    } catch (_) {}
 
-  // Styles (6th Master under Inventory)
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS styles (
-      styleid INTEGER PRIMARY KEY AUTOINCREMENT,
-      productid INTEGER NOT NULL,
-      stylename TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (productid) REFERENCES products(productid),
-      UNIQUE (productid, stylename)
-    );
-  `);
+    // Products (New 4th Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS products (
+        productid INTEGER PRIMARY KEY AUTOINCREMENT,
+        categoryid INTEGER NOT NULL,
+        productname TEXT NOT NULL,
+        calctype TEXT NOT NULL DEFAULT 'WEIGHT',
+        stocktype TEXT NOT NULL DEFAULT 'SKU',
+        havestone_diamond TEXT NOT NULL DEFAULT 'NO',
+        havesubproduct TEXT NOT NULL DEFAULT 'NO',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (categoryid) REFERENCES categories(id)
+      );
+    `);
 
-  // Sizes (7th Master under Inventory)
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS sizes (
-      sizeid INTEGER PRIMARY KEY AUTOINCREMENT,
-      productid INTEGER NOT NULL,
-      sizename TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (productid) REFERENCES products(productid),
-      UNIQUE (productid, sizename)
-    );
-  `);
+    try {
+      await client.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_productname_unique ON products (UPPER(TRIM(productname)));
+      `);
+    } catch (_) {}
+
+    // Sub-Products (New 5th Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS subproducts (
+        subproductid INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        subproductname TEXT NOT NULL,
+        havestone_diamond TEXT NOT NULL DEFAULT 'NO',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        UNIQUE (productid, subproductname)
+      );
+    `);
+
+    // Styles (6th Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS styles (
+        styleid INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        stylename TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        UNIQUE (productid, stylename)
+      );
+    `);
+
+    // Sizes (7th Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS sizes (
+        sizeid INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        sizename TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        UNIQUE (productid, sizename)
+      );
+    `);
+  });
 }
 
 /**

@@ -1,68 +1,72 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Ensures daily_rates and supporting tables exist in the tenant Turso database.
  */
-async function ensureDailyRatesTable(client) {
-  // Ensure metals and purities exist first
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS metals (
-      metalid TEXT PRIMARY KEY NOT NULL,
-      metalname TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
-
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS purities (
-      purityid INTEGER PRIMARY KEY AUTOINCREMENT,
-      metalid TEXT NOT NULL,
-      purityname TEXT NOT NULL,
-      purityshortname TEXT NOT NULL,
-      purity REAL NOT NULL,
-      type TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (metalid) REFERENCES metals(metalid)
-    );
-  `);
-
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS daily_rates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      batch_id INTEGER DEFAULT 1,
-      ratedate TEXT NOT NULL,
-      purityid INTEGER NOT NULL,
-      metalid TEXT NOT NULL,
-      purityname TEXT NOT NULL,
-      purity REAL NOT NULL,
-      rate REAL NOT NULL,
-      buy_rate REAL DEFAULT 0.0,
-      sell_rate REAL DEFAULT 0.0,
-      notes TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (purityid) REFERENCES purities(purityid)
-    );
-  `);
-
-  // Safe non-destructive column additions
-  try {
-    await client.execute(`ALTER TABLE daily_rates ADD COLUMN batch_id INTEGER DEFAULT 1;`);
-  } catch (_) {}
-
-  // Safe index creation
-  try {
+async function ensureDailyRatesTable(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`daily_rates:${key}`, async () => {
+    // Ensure metals and purities exist first
     await client.execute(`
-      CREATE INDEX IF NOT EXISTS idx_daily_rates_purity_id 
-      ON daily_rates (purityid, id DESC);
+      CREATE TABLE IF NOT EXISTS metals (
+        metalid TEXT PRIMARY KEY NOT NULL,
+        metalname TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
+
     await client.execute(`
-      CREATE INDEX IF NOT EXISTS idx_daily_rates_date_id 
-      ON daily_rates (ratedate, id DESC);
+      CREATE TABLE IF NOT EXISTS purities (
+        purityid INTEGER PRIMARY KEY AUTOINCREMENT,
+        metalid TEXT NOT NULL,
+        purityname TEXT NOT NULL,
+        purityshortname TEXT NOT NULL,
+        purity REAL NOT NULL,
+        type TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (metalid) REFERENCES metals(metalid)
+      );
     `);
-  } catch (_) {}
+
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS daily_rates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id INTEGER DEFAULT 1,
+        ratedate TEXT NOT NULL,
+        purityid INTEGER NOT NULL,
+        metalid TEXT NOT NULL,
+        purityname TEXT NOT NULL,
+        purity REAL NOT NULL,
+        rate REAL NOT NULL,
+        buy_rate REAL DEFAULT 0.0,
+        sell_rate REAL DEFAULT 0.0,
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (purityid) REFERENCES purities(purityid)
+      );
+    `);
+
+    // Safe non-destructive column additions
+    try {
+      await client.execute(`ALTER TABLE daily_rates ADD COLUMN batch_id INTEGER DEFAULT 1;`);
+    } catch (_) {}
+
+    // Safe index creation
+    try {
+      await client.execute(`
+        CREATE INDEX IF NOT EXISTS idx_daily_rates_purity_id 
+        ON daily_rates (purityid, id DESC);
+      `);
+      await client.execute(`
+        CREATE INDEX IF NOT EXISTS idx_daily_rates_date_id 
+        ON daily_rates (ratedate, id DESC);
+      `);
+    } catch (_) {}
+  });
 }
 
 /**

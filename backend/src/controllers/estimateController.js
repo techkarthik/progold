@@ -1,32 +1,36 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Helper to ensure estimates table exists in tenant Turso DB.
  */
-async function ensureEstimateTables(client) {
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS estimates (
-      estimate_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      estimate_no TEXT UNIQUE NOT NULL,
-      customer_name TEXT NOT NULL,
-      customer_mobile TEXT NOT NULL DEFAULT '',
-      customer_address TEXT DEFAULT '',
-      gross_weight REAL DEFAULT 0.0,
-      net_weight REAL DEFAULT 0.0,
-      total_metal_value REAL DEFAULT 0.0,
-      total_making_charges REAL DEFAULT 0.0,
-      total_stone_charges REAL DEFAULT 0.0,
-      taxable_amount REAL DEFAULT 0.0,
-      tax_amount REAL DEFAULT 0.0,
-      net_amount REAL DEFAULT 0.0,
-      valid_days INTEGER DEFAULT 7,
-      status TEXT NOT NULL DEFAULT 'OPEN',
-      items_json TEXT NOT NULL DEFAULT '[]',
-      notes TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+async function ensureEstimateTables(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`estimates:${key}`, async () => {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS estimates (
+        estimate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        estimate_no TEXT UNIQUE NOT NULL,
+        customer_name TEXT NOT NULL,
+        customer_mobile TEXT NOT NULL DEFAULT '',
+        customer_address TEXT DEFAULT '',
+        gross_weight REAL DEFAULT 0.0,
+        net_weight REAL DEFAULT 0.0,
+        total_metal_value REAL DEFAULT 0.0,
+        total_making_charges REAL DEFAULT 0.0,
+        total_stone_charges REAL DEFAULT 0.0,
+        taxable_amount REAL DEFAULT 0.0,
+        tax_amount REAL DEFAULT 0.0,
+        net_amount REAL DEFAULT 0.0,
+        valid_days INTEGER DEFAULT 7,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        items_json TEXT NOT NULL DEFAULT '[]',
+        notes TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  });
 }
 
 /**

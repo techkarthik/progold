@@ -222,16 +222,32 @@ class ApiService {
     }
   }
 
-  /// Fetches comprehensive Database Status including size, available storage balance, quota & table diagnostics
-  Future<Map<String, dynamic>> getTenantDbStatus(String token) async {
+  /// Fetches comprehensive Database Status (fast metrics by default, optional tables breakdown)
+  Future<Map<String, dynamic>> getTenantDbStatus(String token, {bool includeTables = false}) async {
     try {
+      final uri = Uri.parse('$baseUrl/tenant/db/status').replace(
+        queryParameters: includeTables ? {'include_tables': 'true'} : null,
+      );
       final res = await http.get(
-        Uri.parse('$baseUrl/tenant/db/status'),
+        uri,
         headers: _headers(token),
       );
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': 'Failed to fetch database status: $e'};
+    }
+  }
+
+  /// Fetches detailed table breakdown, column structures, and row counts
+  Future<Map<String, dynamic>> getTenantDbTables(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/db/tables'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to fetch database tables: $e', 'tables': []};
     }
   }
 

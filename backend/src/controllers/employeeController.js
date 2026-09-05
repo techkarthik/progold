@@ -1,48 +1,52 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Ensures the employees table exists in the tenant's private Turso database.
  */
-async function ensureEmployeesTable(client) {
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS employees (
-      empid INTEGER PRIMARY KEY AUTOINCREMENT,
-      empname TEXT NOT NULL,
-      branchid TEXT NOT NULL,
-      dateofjoin TEXT DEFAULT '',
-      active INTEGER DEFAULT 1,
-      bloodgroup TEXT DEFAULT '',
-      mobile TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      address TEXT DEFAULT '',
-      image TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+async function ensureEmployeesTable(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`employees:${key}`, async () => {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS employees (
+        empid INTEGER PRIMARY KEY AUTOINCREMENT,
+        empname TEXT NOT NULL,
+        branchid TEXT NOT NULL,
+        dateofjoin TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        bloodgroup TEXT DEFAULT '',
+        mobile TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        image TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
 
-  // Safe non-destructive column additions in case table was created with an older schema
-  try {
-    await client.execute(`ALTER TABLE employees ADD COLUMN dateofjoin TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE employees ADD COLUMN active INTEGER DEFAULT 1;`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE employees ADD COLUMN bloodgroup TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE employees ADD COLUMN mobile TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE employees ADD COLUMN email TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE employees ADD COLUMN address TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE employees ADD COLUMN image TEXT DEFAULT '';`);
-  } catch (_) {}
+    // Safe non-destructive column additions in case table was created with an older schema
+    try {
+      await client.execute(`ALTER TABLE employees ADD COLUMN dateofjoin TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE employees ADD COLUMN active INTEGER DEFAULT 1;`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE employees ADD COLUMN bloodgroup TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE employees ADD COLUMN mobile TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE employees ADD COLUMN email TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE employees ADD COLUMN address TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE employees ADD COLUMN image TEXT DEFAULT '';`);
+    } catch (_) {}
+  });
 }
 
 /**

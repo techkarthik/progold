@@ -1,36 +1,40 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Ensures the company table exists in the tenant's private Turso database.
  * companyid is VARCHAR(5) / TEXT PRIMARY KEY (Manually assigned, no autoincrement).
  */
-async function ensureCompanyTable(client) {
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS company (
-      companyid TEXT PRIMARY KEY NOT NULL,
-      companyname TEXT NOT NULL,
-      gstno TEXT DEFAULT '',
-      mobilenumber TEXT DEFAULT '',
-      address TEXT DEFAULT '',
-      city TEXT DEFAULT '',
-      state TEXT DEFAULT '',
-      state_id INTEGER DEFAULT 0,
-      country TEXT DEFAULT 'India',
-      country_id INTEGER DEFAULT 1,
-      accountname TEXT DEFAULT '',
-      branchid TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+async function ensureCompanyTable(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`company:${key}`, async () => {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS company (
+        companyid TEXT PRIMARY KEY NOT NULL,
+        companyname TEXT NOT NULL,
+        gstno TEXT DEFAULT '',
+        mobilenumber TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        state_id INTEGER DEFAULT 0,
+        country TEXT DEFAULT 'India',
+        country_id INTEGER DEFAULT 1,
+        accountname TEXT DEFAULT '',
+        branchid TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
 
-  // Safe non-destructive column additions
-  try {
-    await client.execute(`ALTER TABLE company ADD COLUMN state_id INTEGER DEFAULT 0;`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE company ADD COLUMN country_id INTEGER DEFAULT 1;`);
-  } catch (_) {}
+    // Safe non-destructive column additions
+    try {
+      await client.execute(`ALTER TABLE company ADD COLUMN state_id INTEGER DEFAULT 0;`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE company ADD COLUMN country_id INTEGER DEFAULT 1;`);
+    } catch (_) {}
+  });
 }
 
 /**

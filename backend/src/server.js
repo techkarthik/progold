@@ -14,6 +14,7 @@ import {
   getProfileController,
   updateProfileController,
   getTenantDbStatusController,
+  getTenantDbTablesController,
   optimizeTenantDbController,
   getTenantDbOverviewController,
   executeTenantQueryController,
@@ -158,6 +159,7 @@ app.post("/api/auth/login", loginController);
 app.get("/api/tenant/profile", requireAuth, getProfileController);
 app.put("/api/tenant/profile", requireAuth, updateProfileController);
 app.get("/api/tenant/db/status", requireAuth, getTenantDbStatusController);
+app.get("/api/tenant/db/tables", requireAuth, getTenantDbTablesController);
 app.post("/api/tenant/db/optimize", requireAuth, optimizeTenantDbController);
 app.get("/api/tenant/db/overview", requireAuth, getTenantDbOverviewController);
 app.get("/api/tenant/db/health", requireAuth, testTenantDbHealthController);

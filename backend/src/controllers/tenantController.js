@@ -2,11 +2,14 @@ import { masterTurso } from "../config/turso.js";
 import {
   getTenantDatabaseOverview,
   getTenantDatabaseStatus,
+  getTenantTablesBreakdown,
   optimizeTenantDatabase,
   executeTenantQuery,
   testTursoConnection,
   syncTenantDatabaseSchema,
 } from "../services/tursoService.js";
+import { invalidateTenantAuthCache } from "../middleware/authMiddleware.js";
+import { clearEnsuredTableCache } from "../utils/schemaCache.js";
 
 /**
  * Get tenant profile and validity metadata
@@ -16,7 +19,6 @@ export async function getProfileController(req, res) {
     const tenant = req.tenant;
     const today = new Date();
     const validToDate = new Date(tenant.valid_to);
-    const validFromDate = new Date(tenant.valid_from);
 
     const diffTime = validToDate.getTime() - today.getTime();
     const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -28,42 +30,43 @@ export async function getProfileController(req, res) {
       tenant: {
         id: tenant.id,
         email: tenant.email,
+        contact_number: tenant.contact_number,
         business_name: tenant.business_name || "ProGold Business",
         business_logo: tenant.business_logo || "",
-        contact_number: tenant.contact_number,
-        turso_url: tenant.turso_url,
         valid_from: tenant.valid_from,
         valid_to: tenant.valid_to,
         status: tenant.status,
         days_remaining: daysRemaining,
-        is_active: daysRemaining >= 0 && today >= validFromDate,
-        created_at: tenant.created_at,
+        is_active: tenant.status === "ACTIVE",
+        has_turso_db: Boolean(tenant.turso_url && tenant.turso_token),
       },
     });
   } catch (error) {
     console.error("getProfileController error:", error);
-    return res.status(500).json({ success: false, message: "Failed to fetch tenant profile." });
+    return res.status(500).json({ success: false, message: "Failed to fetch profile." });
   }
 }
 
 /**
- * Update business name and logo
+ * Update business profile details
  */
 export async function updateProfileController(req, res) {
   try {
-    const tenantId = req.tenant.id;
     const { business_name, business_logo, contact_number } = req.body;
-
+    const tenantId = req.tenant.id;
     const now = new Date().toISOString();
+
     await masterTurso.execute({
-      sql: `UPDATE tenants 
-            SET business_name = COALESCE(?, business_name),
-                business_logo = COALESCE(?, business_logo),
-                contact_number = COALESCE(?, contact_number),
-                updated_at = ?
+      sql: `UPDATE tenants SET business_name = COALESCE(?, business_name),
+                               business_logo = COALESCE(?, business_logo),
+                               contact_number = COALESCE(?, contact_number),
+                               updated_at = ?
             WHERE id = ?`,
       args: [business_name || null, business_logo || null, contact_number || null, now, tenantId],
     });
+
+    // Invalidate auth cache so changes reflect immediately
+    invalidateTenantAuthCache(tenantId);
 
     return res.json({
       success: true,
@@ -78,16 +81,31 @@ export async function updateProfileController(req, res) {
 }
 
 /**
- * Get comprehensive Database Status (size, quota, storage balance, latency, tables breakdown)
+ * Get Database Status (size, quota, storage balance, latency, optional tables breakdown)
  */
 export async function getTenantDbStatusController(req, res) {
   try {
     const { turso_url, turso_token } = req.tenant;
-    const status = await getTenantDatabaseStatus(turso_url, turso_token, req.tenant);
+    const includeTables = req.query.include_tables === "true";
+    const status = await getTenantDatabaseStatus(turso_url, turso_token, req.tenant, { includeTables });
     return res.json(status);
   } catch (error) {
     console.error("getTenantDbStatusController error:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch database status." });
+  }
+}
+
+/**
+ * Get dedicated Breakdown of all tables in tenant's Turso database
+ */
+export async function getTenantDbTablesController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const tablesData = await getTenantTablesBreakdown(turso_url, turso_token);
+    return res.json(tablesData);
+  } catch (error) {
+    console.error("getTenantDbTablesController error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch database tables." });
   }
 }
 

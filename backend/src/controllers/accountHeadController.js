@@ -1,64 +1,67 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Helper to ensure the account_heads and account_head_options tables exist in the tenant's private Turso database.
  */
-async function ensureAccountHeadsTable(client) {
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS account_heads (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      accode TEXT UNIQUE NOT NULL,
-      groupname TEXT NOT NULL,
-      accountname TEXT NOT NULL,
-      accounttype TEXT DEFAULT 'OTHER',
-      bank_details TEXT DEFAULT '[]',
-      address_line1 TEXT DEFAULT '',
-      address_line2 TEXT DEFAULT '',
-      city TEXT DEFAULT '',
-      state TEXT DEFAULT '',
-      country TEXT DEFAULT 'India',
-      pincode TEXT DEFAULT '',
-      phone_no TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      active INTEGER DEFAULT 1,
-      gstno TEXT DEFAULT '',
-      panno TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+async function ensureAccountHeadsTable(client, tenantUrl = "") {
+  await ensureTableOnce(`account_heads:${tenantUrl}`, async () => {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS account_heads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        accode TEXT UNIQUE NOT NULL,
+        groupname TEXT NOT NULL,
+        accountname TEXT NOT NULL,
+        accounttype TEXT DEFAULT 'OTHER',
+        bank_details TEXT DEFAULT '[]',
+        address_line1 TEXT DEFAULT '',
+        address_line2 TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        country TEXT DEFAULT 'India',
+        pincode TEXT DEFAULT '',
+        phone_no TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        gstno TEXT DEFAULT '',
+        panno TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
 
-  try {
-    await client.execute(`ALTER TABLE account_heads ADD COLUMN accounttype TEXT DEFAULT 'OTHER';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE account_heads ADD COLUMN bank_details TEXT DEFAULT '[]';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE account_heads ADD COLUMN address_line1 TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE account_heads ADD COLUMN address_line2 TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE account_heads ADD COLUMN city TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE account_heads ADD COLUMN phone_no TEXT DEFAULT '';`);
-  } catch (_) {}
-  try {
-    await client.execute(`ALTER TABLE account_heads ADD COLUMN email TEXT DEFAULT '';`);
-  } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE account_heads ADD COLUMN accounttype TEXT DEFAULT 'OTHER';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE account_heads ADD COLUMN bank_details TEXT DEFAULT '[]';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE account_heads ADD COLUMN address_line1 TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE account_heads ADD COLUMN address_line2 TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE account_heads ADD COLUMN city TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE account_heads ADD COLUMN phone_no TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE account_heads ADD COLUMN email TEXT DEFAULT '';`);
+    } catch (_) {}
 
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS account_head_options (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      option_type TEXT NOT NULL,
-      option_value TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      UNIQUE(option_type, option_value)
-    );
-  `);
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS account_head_options (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        option_type TEXT NOT NULL,
+        option_value TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(option_type, option_value)
+      );
+    `);
+  });
 }
 
 /**

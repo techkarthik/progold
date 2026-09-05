@@ -1,38 +1,42 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Ensures the branches table exists in the tenant's private Turso database.
  */
-async function ensureBranchesTable(client) {
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS branches (
-      branchid TEXT PRIMARY KEY NOT NULL,
-      branchname TEXT NOT NULL,
-      companyid TEXT NOT NULL,
-      accountname TEXT DEFAULT '',
-      state TEXT DEFAULT '',
-      state_id INTEGER DEFAULT 0,
-      country TEXT DEFAULT 'India',
-      country_id INTEGER DEFAULT 1,
-      address TEXT DEFAULT '',
-      mobile TEXT DEFAULT '',
-      email TEXT DEFAULT '',
-      is_active INTEGER DEFAULT 1,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+async function ensureBranchesTable(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`branches:${key}`, async () => {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS branches (
+        branchid TEXT PRIMARY KEY NOT NULL,
+        branchname TEXT NOT NULL,
+        companyid TEXT NOT NULL,
+        accountname TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        state_id INTEGER DEFAULT 0,
+        country TEXT DEFAULT 'India',
+        country_id INTEGER DEFAULT 1,
+        address TEXT DEFAULT '',
+        mobile TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
 
-  // Safe non-destructive column additions
-  try {
-    await client.execute(`ALTER TABLE branches ADD COLUMN state_id INTEGER DEFAULT 0;`);
-  } catch (_) { }
-  try {
-    await client.execute(`ALTER TABLE branches ADD COLUMN country_id INTEGER DEFAULT 1;`);
-  } catch (_) { }
-  try {
-    await client.execute(`ALTER TABLE branches ADD COLUMN is_active INTEGER DEFAULT 1;`);
-  } catch (_) { }
+    // Safe non-destructive column additions
+    try {
+      await client.execute(`ALTER TABLE branches ADD COLUMN state_id INTEGER DEFAULT 0;`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE branches ADD COLUMN country_id INTEGER DEFAULT 1;`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE branches ADD COLUMN is_active INTEGER DEFAULT 1;`);
+    } catch (_) { }
+  });
 }
 
 /**

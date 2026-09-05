@@ -1,21 +1,25 @@
 import { createTenantClient } from "../config/turso.js";
+import { ensureTableOnce } from "../utils/schemaCache.js";
 
 /**
  * Helper to ensure system_controls table exists in the tenant Turso DB.
  */
-async function ensureSystemControlsTable(client) {
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS system_controls (
-      sno INTEGER PRIMARY KEY AUTOINCREMENT,
-      ctlid TEXT NOT NULL,
-      ctlname TEXT NOT NULL,
-      ctlvalue TEXT NOT NULL,
-      module TEXT NOT NULL,
-      branch_id TEXT NOT NULL DEFAULT 'ALL',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+async function ensureSystemControlsTable(client, tenantUrl = "") {
+  const key = tenantUrl || client?.config?.url || "default";
+  await ensureTableOnce(`system_controls:${key}`, async () => {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS system_controls (
+        sno INTEGER PRIMARY KEY AUTOINCREMENT,
+        ctlid TEXT NOT NULL,
+        ctlname TEXT NOT NULL,
+        ctlvalue TEXT NOT NULL,
+        module TEXT NOT NULL,
+        branch_id TEXT NOT NULL DEFAULT 'ALL',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  });
 }
 
 /**

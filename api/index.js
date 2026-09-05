@@ -19,6 +19,7 @@ import {
   testTenantDbHealthController,
   reinstallTenantDbController,
   getTenantDbStatusController,
+  getTenantDbTablesController,
   optimizeTenantDbController,
 } from "../backend/src/controllers/tenantController.js";
 import {
@@ -218,6 +219,7 @@ router.get("/tenant/db/health", requireAuth, testTenantDbHealthController);
 router.post("/tenant/db/query", requireAuth, executeTenantQueryController);
 router.post("/tenant/db/reinstall", requireAuth, reinstallTenantDbController);
 router.get("/tenant/db/status", requireAuth, getTenantDbStatusController);
+router.get("/tenant/db/tables", requireAuth, getTenantDbTablesController);
 router.post("/tenant/db/optimize", requireAuth, optimizeTenantDbController);
 
 // Tenant Company Master CRUD Routes
