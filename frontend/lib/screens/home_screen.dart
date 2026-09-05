@@ -883,7 +883,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
           _buildRateItem("GOLD 22K (916)", "₹${_gold22k.round()}/g", Icons.trending_up_rounded, GlassTheme.accentEmerald),
           Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
-          _buildRateItem("SILVER", "₹${_silver.round()}/g", Icons.trending_flat_rounded, GlassTheme.accentCyan),
+          _buildRateItem("SILVER (92.5)", "₹${_silver % 1 == 0 ? _silver.toInt().toString() : _silver.toStringAsFixed(2)}/g", Icons.trending_flat_rounded, GlassTheme.accentCyan),
           if (_lastRateUpdated.isNotEmpty) ...[
             Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
             Row(

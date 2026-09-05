@@ -70,6 +70,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
   final _imageController = TextEditingController();
   bool _isSaving = false;
   bool _isUploadingImage = false;
+  Uint8List? _localPreviewBytes;
 
   @override
   void initState() {
@@ -175,6 +176,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
     setState(() {
       _editingEmployee = existing;
       _showForm = true;
+      _localPreviewBytes = null;
       if (existing != null) {
         _empIdController.text = existing.empid?.toString() ?? '';
         _nameController.text = existing.empname;
@@ -206,12 +208,14 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
     _emailController.clear();
     _addressController.clear();
     _imageController.clear();
+    _localPreviewBytes = null;
   }
 
   void _closeForm() {
     setState(() {
       _showForm = false;
       _editingEmployee = null;
+      _localPreviewBytes = null;
     });
   }
 
@@ -284,7 +288,10 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
           return;
         }
 
-        setState(() => _isUploadingImage = true);
+        setState(() {
+          _localPreviewBytes = bytes;
+          _isUploadingImage = true;
+        });
 
         final ext = pickedFile.extension ?? 'png';
         final empIdStr = _empIdController.text.trim().isNotEmpty ? _empIdController.text.trim() : 'emp';
@@ -1027,10 +1034,12 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                 CircleAvatar(
                   radius: 20,
                   backgroundColor: GlassTheme.secondaryNeon.withOpacity(0.15),
-                  backgroundImage: _imageController.text.trim().isNotEmpty
-                      ? NetworkImage(_imageController.text.trim())
-                      : null,
-                  child: _imageController.text.trim().isEmpty
+                  backgroundImage: _localPreviewBytes != null
+                      ? MemoryImage(_localPreviewBytes!)
+                      : (_imageController.text.trim().isNotEmpty
+                          ? NetworkImage(_imageController.text.trim())
+                          : null),
+                  child: (_localPreviewBytes == null && _imageController.text.trim().isEmpty)
                       ? Text(
                           _nameController.text.trim().isNotEmpty
                               ? _nameController.text.trim()[0].toUpperCase()
@@ -1331,7 +1340,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
   // ================= IMAGEKIT PHOTO UPLOAD WIDGET =================
   Widget _buildPhotoUploadField() {
     final imageText = _imageController.text.trim();
-    final hasImage = imageText.isNotEmpty;
+    final hasImage = _localPreviewBytes != null || imageText.isNotEmpty;
     final isImageKit = imageText.contains("imagekit.io");
 
     return Column(
@@ -1382,7 +1391,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
               // Large, Prominent Picture Box Preview
               InkWell(
                 onTap: hasImage
-                    ? () => _showFullImagePreview(imageText, _nameController.text.trim())
+                    ? () => _showFullImagePreview(imageText, _nameController.text.trim(), localBytes: _localPreviewBytes)
                     : _pickAndUploadImage,
                 borderRadius: BorderRadius.circular(10),
                 child: Stack(
@@ -1401,44 +1410,51 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(9),
-                        child: hasImage
-                            ? Image.network(
-                                imageText,
+                        child: _localPreviewBytes != null
+                            ? Image.memory(
+                                _localPreviewBytes!,
                                 width: 76,
                                 height: 76,
                                 fit: BoxFit.cover,
-                                loadingBuilder: (context, child, progress) {
-                                  if (progress == null) return child;
-                                  return const Center(
-                                    child: SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: GlassTheme.secondaryNeon),
-                                    ),
-                                  );
-                                },
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
-                                    color: const Color(0xFFF1F5F9),
-                                    child: const Center(
-                                      child: Icon(Icons.broken_image_rounded, size: 28, color: GlassTheme.accentRose),
-                                    ),
-                                  );
-                                },
                               )
-                            : Container(
-                                color: GlassTheme.secondaryNeon.withOpacity(0.06),
-                                child: Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.add_a_photo_outlined, size: 24, color: GlassTheme.secondaryNeon.withOpacity(0.7)),
-                                      const SizedBox(height: 4),
-                                      const Text("Add Photo", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: GlassTheme.secondaryNeon)),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                            : (imageText.isNotEmpty
+                                ? Image.network(
+                                    imageText,
+                                    width: 76,
+                                    height: 76,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (context, child, progress) {
+                                      if (progress == null) return child;
+                                      return const Center(
+                                        child: SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: GlassTheme.secondaryNeon),
+                                        ),
+                                      );
+                                    },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: const Color(0xFFF1F5F9),
+                                        child: const Center(
+                                          child: Icon(Icons.broken_image_rounded, size: 28, color: GlassTheme.accentRose),
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : Container(
+                                    color: GlassTheme.secondaryNeon.withOpacity(0.06),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.add_a_photo_outlined, size: 24, color: GlassTheme.secondaryNeon.withOpacity(0.7)),
+                                          const SizedBox(height: 4),
+                                          const Text("Add Photo", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: GlassTheme.secondaryNeon)),
+                                        ],
+                                      ),
+                                    ),
+                                  )),
                       ),
                     ),
                     if (hasImage)
@@ -1536,7 +1552,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                             ),
                             icon: const Icon(Icons.fullscreen_rounded, size: 14),
                             label: const Text("View", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-                            onPressed: () => _showFullImagePreview(imageText, _nameController.text.trim()),
+                            onPressed: () => _showFullImagePreview(imageText, _nameController.text.trim(), localBytes: _localPreviewBytes),
                           ),
                           IconButton(
                             tooltip: "Clear Photo",
@@ -1544,6 +1560,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                             onPressed: () {
                               setState(() {
                                 _imageController.clear();
+                                _localPreviewBytes = null;
                               });
                             },
                             visualDensity: VisualDensity.compact,
@@ -1571,8 +1588,8 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
     );
   }
 
-  void _showFullImagePreview(String imageUrl, String empName) {
-    if (imageUrl.isEmpty) return;
+  void _showFullImagePreview(String imageUrl, String empName, {Uint8List? localBytes}) {
+    if (imageUrl.isEmpty && localBytes == null) return;
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -1624,26 +1641,31 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                   child: Center(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        imageUrl,
-                        fit: BoxFit.contain,
-                        loadingBuilder: (context, child, progress) {
-                          if (progress == null) return child;
-                          return const Center(child: CircularProgressIndicator(color: Colors.white));
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.broken_image_rounded, color: Colors.white70, size: 40),
-                                SizedBox(height: 8),
-                                Text("Failed to load image", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                              ],
+                      child: localBytes != null
+                          ? Image.memory(
+                              localBytes,
+                              fit: BoxFit.contain,
+                            )
+                          : Image.network(
+                              imageUrl,
+                              fit: BoxFit.contain,
+                              loadingBuilder: (context, child, progress) {
+                                if (progress == null) return child;
+                                return const Center(child: CircularProgressIndicator(color: Colors.white));
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.broken_image_rounded, color: Colors.white70, size: 40),
+                                      SizedBox(height: 8),
+                                      Text("Failed to load image", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
                     ),
                   ),
                 ),
@@ -1658,7 +1680,9 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      imageUrl.contains('imagekit.io') ? "Hosted on ImageKit CDN" : "External URL",
+                      localBytes != null
+                          ? "Preview from device"
+                          : (imageUrl.contains('imagekit.io') ? "Hosted on ImageKit CDN" : "External URL"),
                       style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary),
                     ),
                     TextButton(

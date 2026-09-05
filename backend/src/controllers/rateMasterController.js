@@ -111,10 +111,12 @@ export async function getLatestRatesController(req, res) {
 
     const purityRates = result.rows || [];
 
-    // Derive ticker headlines (24K, 22K 916, Silver, etc.)
+    // Derive ticker headlines (24K, 22K 916, Silver 92.5, etc.)
     let gold24k = 0.0;
     let gold22k = 0.0;
     let silver = 0.0;
+    let silverPurity = 0.0;
+    let silverIs925 = false;
     let platinum = 0.0;
     let latestTimestamp = '';
 
@@ -136,8 +138,14 @@ export async function getLatestRatesController(req, res) {
           if (gold22k === 0) gold22k = rateVal;
         }
       } else if (metalId === 'S' || name.includes('SILVER')) {
-        if (silver === 0 || purityVal >= 99.0) {
+        // Specifically select 92.5% (Sterling Silver) for Silver ticker display
+        const is925 = Math.abs(purityVal - 92.5) < 0.6 || name.includes('92.5') || shortName.includes('92.5') || name.includes('925') || shortName.includes('925');
+        if (is925) {
           silver = rateVal;
+          silverIs925 = true;
+        } else if (!silverIs925 && (silver === 0 || Math.abs(purityVal - 92.5) < Math.abs(silverPurity - 92.5))) {
+          silver = rateVal;
+          silverPurity = purityVal;
         }
       } else if (metalId === 'P' || name.includes('PLATINUM')) {
         if (platinum === 0) platinum = rateVal;
