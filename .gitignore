@@ -40,5 +40,6 @@ Thumbs.db
 *.tmp
 *.docx
 *.zip
+*.db
 frontend/macos/Pods/
 frontend/macos/Flutter/ephemeral/

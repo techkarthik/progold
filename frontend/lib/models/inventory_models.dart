@@ -252,6 +252,10 @@ class ProductRecord {
   final String stocktype; // 'SKU', 'OPEN'
   final String havestoneDiamond; // 'YES', 'NO'
   final String havesubproduct; // 'YES', 'NO'
+  final String studded; // 'Y' or 'N'
+  final String diastone; // 'D' (Diamond), 'S' (Stone), 'P' (Precious), or ''
+  final String hsncode; // HSN / SAC Code
+  final String stoneunit; // 'CARAT' or 'GRAM' or ''
   final String? catname;
   final String? catcode;
   final String? categorytype;
@@ -268,6 +272,10 @@ class ProductRecord {
     this.stocktype = 'SKU',
     this.havestoneDiamond = 'NO',
     this.havesubproduct = 'NO',
+    this.studded = 'N',
+    this.diastone = '',
+    this.hsncode = '',
+    this.stoneunit = '',
     this.catname,
     this.catcode,
     this.categorytype,
@@ -286,6 +294,10 @@ class ProductRecord {
       stocktype: json['stocktype']?.toString() ?? 'SKU',
       havestoneDiamond: json['havestone_diamond']?.toString() ?? 'NO',
       havesubproduct: json['havesubproduct']?.toString() ?? 'NO',
+      studded: json['studded']?.toString().toUpperCase() == 'Y' ? 'Y' : (json['havestone_diamond']?.toString().toUpperCase() == 'YES' ? 'Y' : 'N'),
+      diastone: json['diastone']?.toString().toUpperCase() ?? '',
+      hsncode: json['hsncode']?.toString() ?? '',
+      stoneunit: json['stoneunit']?.toString().toUpperCase() ?? '',
       catname: json['catname']?.toString(),
       catcode: json['catcode']?.toString(),
       categorytype: json['categorytype']?.toString(),
@@ -305,6 +317,10 @@ class ProductRecord {
       'stocktype': stocktype,
       'havestone_diamond': havestoneDiamond,
       'havesubproduct': havesubproduct,
+      'studded': studded,
+      'diastone': diastone,
+      'hsncode': hsncode,
+      'stoneunit': stoneunit,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     };
@@ -318,6 +334,10 @@ class ProductRecord {
     String? stocktype,
     String? havestoneDiamond,
     String? havesubproduct,
+    String? studded,
+    String? diastone,
+    String? hsncode,
+    String? stoneunit,
     String? catname,
     String? catcode,
     String? categorytype,
@@ -334,6 +354,10 @@ class ProductRecord {
       stocktype: stocktype ?? this.stocktype,
       havestoneDiamond: havestoneDiamond ?? this.havestoneDiamond,
       havesubproduct: havesubproduct ?? this.havesubproduct,
+      studded: studded ?? this.studded,
+      diastone: diastone ?? this.diastone,
+      hsncode: hsncode ?? this.hsncode,
+      stoneunit: stoneunit ?? this.stoneunit,
       catname: catname ?? this.catname,
       catcode: catcode ?? this.catcode,
       categorytype: categorytype ?? this.categorytype,

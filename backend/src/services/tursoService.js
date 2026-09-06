@@ -524,6 +524,10 @@ export async function syncTenantDatabaseSchema(url, token) {
         stocktype TEXT NOT NULL DEFAULT 'SKU',
         havestone_diamond TEXT NOT NULL DEFAULT 'NO',
         havesubproduct TEXT NOT NULL DEFAULT 'NO',
+        studded TEXT NOT NULL DEFAULT 'N',
+        diastone TEXT NOT NULL DEFAULT '',
+        hsncode TEXT NOT NULL DEFAULT '',
+        stoneunit TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (categoryid) REFERENCES categories(id)
@@ -783,6 +787,10 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE products ADD COLUMN stocktype TEXT DEFAULT 'SKU';`,
       `ALTER TABLE products ADD COLUMN havestone_diamond TEXT DEFAULT 'NO';`,
       `ALTER TABLE products ADD COLUMN havesubproduct TEXT DEFAULT 'NO';`,
+      `ALTER TABLE products ADD COLUMN studded TEXT DEFAULT 'N';`,
+      `ALTER TABLE products ADD COLUMN diastone TEXT DEFAULT '';`,
+      `ALTER TABLE products ADD COLUMN hsncode TEXT DEFAULT '';`,
+      `ALTER TABLE products ADD COLUMN stoneunit TEXT DEFAULT '';`,
       // Subproducts migrations
       `ALTER TABLE subproducts ADD COLUMN havestone_diamond TEXT DEFAULT 'NO';`,
       // Customers migrations
@@ -884,10 +892,12 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE estimates ADD COLUMN updated_at TEXT;`,
     ];
 
-    // Execute safe column additions concurrently
-    await Promise.allSettled(
-      safeAddColumns.map((alterSql) => client.execute(alterSql).catch(() => {}))
-    );
+    // Execute safe column additions in sequential batches to avoid SQLITE_BUSY table locks
+    for (const alterSql of safeAddColumns) {
+      try {
+        await client.execute(alterSql);
+      } catch (_) {}
+    }
 
     // --- PERFORMANCE INDEXES (Concurrent batch execution) ---
     const indexes = [

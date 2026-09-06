@@ -96,11 +96,28 @@ async function ensureInventoryTables(client, tenantUrl = "") {
         stocktype TEXT NOT NULL DEFAULT 'SKU',
         havestone_diamond TEXT NOT NULL DEFAULT 'NO',
         havesubproduct TEXT NOT NULL DEFAULT 'NO',
+        studded TEXT NOT NULL DEFAULT 'N',
+        diastone TEXT NOT NULL DEFAULT '',
+        hsncode TEXT NOT NULL DEFAULT '',
+        stoneunit TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (categoryid) REFERENCES categories(id)
       );
     `);
+
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN studded TEXT DEFAULT 'N';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN diastone TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN hsncode TEXT DEFAULT '';`);
+    } catch (_) {}
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN stoneunit TEXT DEFAULT '';`);
+    } catch (_) {}
 
     try {
       await client.execute(`
@@ -881,6 +898,10 @@ export async function createProductController(req, res) {
       stocktype = "SKU",
       havestone_diamond = "NO",
       havesubproduct = "NO",
+      studded = "N",
+      diastone = "",
+      hsncode = "",
+      stoneunit = "",
     } = req.body;
 
     if (!categoryid) {
@@ -909,6 +930,9 @@ export async function createProductController(req, res) {
     const validCalcTypes = ["WEIGHT", "RATE", "METAL", "FIXED"];
     const validStockTypes = ["SKU", "OPEN"];
     const validYesNo = ["YES", "NO"];
+    const validYN = ["Y", "N"];
+    const validDiaStone = ["D", "S", "P", ""];
+    const validStoneUnits = ["CARAT", "GRAM", "CTS", "GMS", ""];
 
     const cleanCalc = validCalcTypes.includes(String(calctype).toUpperCase())
       ? String(calctype).toUpperCase()
@@ -926,13 +950,30 @@ export async function createProductController(req, res) {
       ? String(havesubproduct).toUpperCase()
       : "NO";
 
+    const cleanStudded = validYN.includes(String(studded).toUpperCase())
+      ? String(studded).toUpperCase()
+      : (cleanStone === "YES" ? "Y" : "N");
+
+    const cleanDiaStone = validDiaStone.includes(String(diastone).toUpperCase())
+      ? String(diastone).toUpperCase()
+      : "";
+
+    const cleanHsn = String(hsncode || "").trim();
+
+    let cleanStoneUnit = validStoneUnits.includes(String(stoneunit).toUpperCase())
+      ? String(stoneunit).toUpperCase()
+      : "";
+    if (cleanStoneUnit === "CTS") cleanStoneUnit = "CARAT";
+    if (cleanStoneUnit === "GMS") cleanStoneUnit = "GRAM";
+
     const now = new Date().toISOString();
 
     const insertResult = await client.execute({
       sql: `
         INSERT INTO products (
-          categoryid, productname, calctype, stocktype, havestone_diamond, havesubproduct, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+          categoryid, productname, calctype, stocktype, havestone_diamond, havesubproduct,
+          studded, diastone, hsncode, stoneunit, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       args: [
         Number(categoryid),
@@ -941,6 +982,10 @@ export async function createProductController(req, res) {
         cleanStock,
         cleanStone,
         cleanSub,
+        cleanStudded,
+        cleanDiaStone,
+        cleanHsn,
+        cleanStoneUnit,
         now,
         now,
       ],
@@ -979,6 +1024,10 @@ export async function updateProductController(req, res) {
       stocktype = "SKU",
       havestone_diamond = "NO",
       havesubproduct = "NO",
+      studded = "N",
+      diastone = "",
+      hsncode = "",
+      stoneunit = "",
     } = req.body;
 
     if (!categoryid) {
@@ -1007,6 +1056,9 @@ export async function updateProductController(req, res) {
     const validCalcTypes = ["WEIGHT", "RATE", "METAL", "FIXED"];
     const validStockTypes = ["SKU", "OPEN"];
     const validYesNo = ["YES", "NO"];
+    const validYN = ["Y", "N"];
+    const validDiaStone = ["D", "S", "P", ""];
+    const validStoneUnits = ["CARAT", "GRAM", "CTS", "GMS", ""];
 
     const cleanCalc = validCalcTypes.includes(String(calctype).toUpperCase())
       ? String(calctype).toUpperCase()
@@ -1024,6 +1076,22 @@ export async function updateProductController(req, res) {
       ? String(havesubproduct).toUpperCase()
       : "NO";
 
+    const cleanStudded = validYN.includes(String(studded).toUpperCase())
+      ? String(studded).toUpperCase()
+      : (cleanStone === "YES" ? "Y" : "N");
+
+    const cleanDiaStone = validDiaStone.includes(String(diastone).toUpperCase())
+      ? String(diastone).toUpperCase()
+      : "";
+
+    const cleanHsn = String(hsncode || "").trim();
+
+    let cleanStoneUnit = validStoneUnits.includes(String(stoneunit).toUpperCase())
+      ? String(stoneunit).toUpperCase()
+      : "";
+    if (cleanStoneUnit === "CTS") cleanStoneUnit = "CARAT";
+    if (cleanStoneUnit === "GMS") cleanStoneUnit = "GRAM";
+
     const now = new Date().toISOString();
 
     await client.execute({
@@ -1035,6 +1103,10 @@ export async function updateProductController(req, res) {
             stocktype = ?,
             havestone_diamond = ?,
             havesubproduct = ?,
+            studded = ?,
+            diastone = ?,
+            hsncode = ?,
+            stoneunit = ?,
             updated_at = ?
         WHERE productid = ?;
       `,
@@ -1045,6 +1117,10 @@ export async function updateProductController(req, res) {
         cleanStock,
         cleanStone,
         cleanSub,
+        cleanStudded,
+        cleanDiaStone,
+        cleanHsn,
+        cleanStoneUnit,
         now,
         Number(id),
       ],
