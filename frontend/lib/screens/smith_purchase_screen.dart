@@ -67,7 +67,7 @@ class _SmithPurchaseScreenState extends State<SmithPurchaseScreen> {
                 const Spacer(),
                 const StatusBadge(
                   label: "Module Ready",
-                  color: Color(0xFF0284C7),
+                  color: Color(0xFFD97706),
                 ),
               ],
             ),
@@ -93,7 +93,7 @@ class _SmithPurchaseScreenState extends State<SmithPurchaseScreen> {
           borderRadius: 16,
           padding: const EdgeInsets.all(20),
           gradient: const LinearGradient(
-            colors: [Color(0xFFF0F9FF), Color(0xFFE0F2FE)],
+            colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -102,10 +102,10 @@ class _SmithPurchaseScreenState extends State<SmithPurchaseScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                  color: const Color(0xFFD97706).withValues(alpha: 0.18),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.handyman_rounded, color: Color(0xFF0284C7), size: 28),
+                child: const Icon(Icons.diamond_rounded, color: Color(0xFFB45309), size: 28),
               ),
               const SizedBox(width: 16),
               const Expanded(
@@ -117,15 +117,15 @@ class _SmithPurchaseScreenState extends State<SmithPurchaseScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0369A1),
+                        color: Color(0xFF92400E),
                       ),
                     ),
                     SizedBox(height: 4),
                     Text(
-                      "Menu entry ready. You can configure custom Smith purchase orders, job-work inward, and smith metal accounts here.",
+                      "Gold bar and ornament purchases, karigar receipts, and metal account ledger.",
                       style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF0C4A6E),
+                        color: Color(0xFF78350F),
                         height: 1.3,
                       ),
                     ),
@@ -277,10 +277,10 @@ class _SmithPurchaseScreenState extends State<SmithPurchaseScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                color: const Color(0xFFD97706).withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.handyman_rounded, color: Color(0xFF0284C7), size: 36),
+              child: const Icon(Icons.diamond_rounded, color: Color(0xFFB45309), size: 36),
             ),
             const SizedBox(height: 16),
             Text(
@@ -305,8 +305,8 @@ class _SmithPurchaseScreenState extends State<SmithPurchaseScreen> {
               icon: const Icon(Icons.arrow_back_rounded, size: 16),
               label: const Text("Return to Smith Purchase Hub"),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF0284C7),
-                side: const BorderSide(color: Color(0xFF0284C7)),
+                foregroundColor: const Color(0xFFD97706),
+                side: const BorderSide(color: Color(0xFFD97706)),
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),

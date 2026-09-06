@@ -424,9 +424,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_hasAccess(auth, MenuRegistry.MENU_SMITH_PURCHASE)) ...[
                   const SizedBox(height: 4),
                   _buildDrawerItem(
-                    icon: Icons.handyman_rounded,
+                    icon: Icons.diamond_rounded,
                     title: "Smith Purchase",
-                    subtitle: "Smith purchase orders & receipts",
+                    subtitle: "Gold bar & ornament purchases",
                     isSelected: _selectedModule == "SMITH_PURCHASE",
                     onTap: () {
                       Navigator.pop(context);
@@ -674,10 +674,10 @@ class _HomeScreenState extends State<HomeScreen> {
       {
         "id": "SMITH_PURCHASE",
         "name": "SMITH PURCHASE",
-        "desc": "Smith Purchases",
-        "icon": Icons.handyman_rounded,
-        "gradient": const LinearGradient(colors: [Color(0xFF0284C7), Color(0xFF0369A1)]),
-        "glow": const Color(0xFF0284C7),
+        "desc": "Gold Bar & Ornaments",
+        "icon": Icons.diamond_rounded,
+        "gradient": const LinearGradient(colors: [Color(0xFFD97706), Color(0xFFB45309)]),
+        "glow": const Color(0xFFF59E0B),
         "badge": null,
       },
       {
