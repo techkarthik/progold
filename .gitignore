@@ -39,3 +39,6 @@ frontend/.flutter-plugins-dependencies
 Thumbs.db
 *.tmp
 *.docx
+*.zip
+frontend/macos/Pods/
+frontend/macos/Flutter/ephemeral/
