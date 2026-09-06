@@ -283,24 +283,25 @@ export async function getTenantDatabaseOverview(url, token) {
       ORDER BY name ASC;
     `);
 
-    const tables = [];
-    for (const row of tablesResult.rows) {
-      let rowCount = 0;
-      if (row.type === "table") {
-        try {
-          const countRes = await client.execute(`SELECT COUNT(*) AS total FROM "${row.name}";`);
-          rowCount = Number(countRes.rows[0]?.total || 0);
-        } catch (_) {
-          rowCount = 0;
+    const tables = await Promise.all(
+      tablesResult.rows.map(async (row) => {
+        let rowCount = 0;
+        if (row.type === "table") {
+          try {
+            const countRes = await client.execute(`SELECT COUNT(*) AS total FROM "${row.name}";`);
+            rowCount = Number(countRes.rows[0]?.total || 0);
+          } catch (_) {
+            rowCount = 0;
+          }
         }
-      }
-      tables.push({
-        name: row.name,
-        type: row.type,
-        sql: row.sql,
-        rowCount,
-      });
-    }
+        return {
+          name: row.name,
+          type: row.type,
+          sql: row.sql,
+          rowCount,
+        };
+      })
+    );
 
     return { success: true, tables };
   } catch (error) {
@@ -354,18 +355,15 @@ export async function syncTenantDatabaseSchema(url, token) {
   const client = createTenantClient(url, token);
 
   try {
-    // 1. Schema Migrations Log Table
-    await client.execute(`
+    // 1. Batch create all core ERP database tables in a single operation
+    const createTablesSql = `
       CREATE TABLE IF NOT EXISTS schema_migrations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         version TEXT NOT NULL,
         migration_name TEXT NOT NULL,
         applied_at TEXT NOT NULL
       );
-    `);
 
-    // 2. Organization / Business Settings Profile
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS organization_profile (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         business_name TEXT DEFAULT 'ProGold Enterprise',
@@ -382,10 +380,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 2b. Company Master Table (VARCHAR(5) Manual Company ID)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS company (
         companyid TEXT PRIMARY KEY NOT NULL,
         companyname TEXT NOT NULL,
@@ -402,10 +397,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 2c. Branch Master Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS branches (
         branchid TEXT PRIMARY KEY NOT NULL,
         branchname TEXT NOT NULL,
@@ -422,10 +414,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 2d. Tenant User Master Table (with menu permissions & central login)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS users (
         userid TEXT PRIMARY KEY NOT NULL,
         username TEXT NOT NULL,
@@ -439,10 +428,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 2e. Tenant Employee Master Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS employees (
         empid INTEGER PRIMARY KEY AUTOINCREMENT,
         empname TEXT NOT NULL,
@@ -457,10 +443,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 3. Live Gold & Silver Rates Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS gold_rates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         purity_name TEXT NOT NULL,
@@ -471,20 +454,14 @@ export async function syncTenantDatabaseSchema(url, token) {
         silver_rate REAL DEFAULT 0,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 3b. Metal Master Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS metals (
         metalid TEXT PRIMARY KEY NOT NULL,
         metalname TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 3c. Purity Master Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS purities (
         purityid INTEGER PRIMARY KEY AUTOINCREMENT,
         metalid TEXT NOT NULL,
@@ -496,10 +473,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (metalid) REFERENCES metals(metalid)
       );
-    `);
 
-    // 3d. Daily Purity Metal Rates & History Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS daily_rates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ratedate TEXT NOT NULL,
@@ -515,10 +489,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (purityid) REFERENCES purities(purityid)
       );
-    `);
 
-    // 4. Jewellery Categories Table (Refactored)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         metalid TEXT NOT NULL,
@@ -544,10 +515,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         FOREIGN KEY (metalid) REFERENCES metals(metalid),
         FOREIGN KEY (purityid) REFERENCES purities(purityid)
       );
-    `);
 
-    // 5. Products Master Table (4th Master under Inventory)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS products (
         productid INTEGER PRIMARY KEY AUTOINCREMENT,
         categoryid INTEGER NOT NULL,
@@ -560,10 +528,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (categoryid) REFERENCES categories(id)
       );
-    `);
 
-    // 5b. Sub-Products Master Table (5th Master under Inventory)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS subproducts (
         subproductid INTEGER PRIMARY KEY AUTOINCREMENT,
         productid INTEGER NOT NULL,
@@ -574,10 +539,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         FOREIGN KEY (productid) REFERENCES products(productid),
         UNIQUE (productid, subproductname)
       );
-    `);
 
-    // 5c. Styles Master Table (6th Master under Inventory)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS styles (
         styleid INTEGER PRIMARY KEY AUTOINCREMENT,
         productid INTEGER NOT NULL,
@@ -587,10 +549,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         FOREIGN KEY (productid) REFERENCES products(productid),
         UNIQUE (productid, stylename)
       );
-    `);
 
-    // 5d. Sizes Master Table (7th Master under Inventory)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS sizes (
         sizeid INTEGER PRIMARY KEY AUTOINCREMENT,
         productid INTEGER NOT NULL,
@@ -600,10 +559,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         FOREIGN KEY (productid) REFERENCES products(productid),
         UNIQUE (productid, sizename)
       );
-    `);
 
-    // 5e. System Controls Table (4th Menu under Settings)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS system_controls (
         sno INTEGER PRIMARY KEY AUTOINCREMENT,
         ctlid TEXT NOT NULL,
@@ -614,10 +570,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 6. Inventory Stock Ledger / Audit
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS inventory_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id INTEGER,
@@ -627,10 +580,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         reference_id TEXT DEFAULT '',
         created_at TEXT NOT NULL
       );
-    `);
 
-    // 7. Customers / Clients Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -647,10 +597,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 8. Suppliers / Karigars / Smiths
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS suppliers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -666,10 +613,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 9. Invoices / Sales Bills
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS invoices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         invoice_number TEXT UNIQUE NOT NULL,
@@ -690,10 +634,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 10. Invoice Items Details
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS invoice_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         invoice_id INTEGER NOT NULL,
@@ -708,10 +649,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         total_price REAL NOT NULL,
         created_at TEXT NOT NULL
       );
-    `);
 
-    // 11. Customer Payments / Receipts Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         customer_id INTEGER NOT NULL,
@@ -723,10 +661,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         payment_date TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
-    `);
 
-    // 12. Quotations / Estimates (3rd Main Menu)
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS estimates (
         estimate_id INTEGER PRIMARY KEY AUTOINCREMENT,
         estimate_no TEXT UNIQUE NOT NULL,
@@ -748,10 +683,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 13. Karigar Orders
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS orders_karigar (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         order_number TEXT UNIQUE NOT NULL,
@@ -765,10 +697,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         notes TEXT DEFAULT '',
         created_at TEXT NOT NULL
       );
-    `);
 
-    // 13b. Account Heads Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS account_heads (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         accode TEXT UNIQUE NOT NULL,
@@ -790,10 +719,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 13b-2. Account Head Options Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS account_head_options (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         option_type TEXT NOT NULL,
@@ -801,10 +727,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         UNIQUE(option_type, option_value)
       );
-    `);
 
-    // 13c. Tax Master Table
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS tax_master (
         taxid INTEGER PRIMARY KEY AUTOINCREMENT,
         taxcode TEXT NOT NULL UNIQUE,
@@ -818,10 +741,7 @@ export async function syncTenantDatabaseSchema(url, token) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
-    `);
 
-    // 14. Audit Activity Logs
-    await client.execute(`
       CREATE TABLE IF NOT EXISTS audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_action TEXT NOT NULL,
@@ -830,9 +750,21 @@ export async function syncTenantDatabaseSchema(url, token) {
         details TEXT DEFAULT '',
         created_at TEXT NOT NULL
       );
-    `);
+    `;
 
-    // --- SAFE NON-DESTRUCTIVE COLUMN MIGRATIONS (Preserves all existing data) ---
+    try {
+      await client.executeMultiple(createTablesSql);
+    } catch (tblErr) {
+      // Fallback: execute individual table creates concurrently if executeMultiple fails
+      console.warn("executeMultiple warning, falling back to individual table creates:", tblErr.message);
+      const statements = createTablesSql
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      await Promise.allSettled(statements.map((stmt) => client.execute(stmt)));
+    }
+
+    // --- SAFE NON-DESTRUCTIVE COLUMN MIGRATIONS (Concurrent parallel execution) ---
     const safeAddColumns = [
       // Categories migrations
       `ALTER TABLE categories ADD COLUMN purityid INTEGER;`,
@@ -952,15 +884,12 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE estimates ADD COLUMN updated_at TEXT;`,
     ];
 
-    for (const alterSql of safeAddColumns) {
-      try {
-        await client.execute(alterSql);
-      } catch (_) {
-        // Ignored if column already exists in SQLite
-      }
-    }
+    // Execute safe column additions concurrently
+    await Promise.allSettled(
+      safeAddColumns.map((alterSql) => client.execute(alterSql).catch(() => {}))
+    );
 
-    // --- PERFORMANCE INDEXES ---
+    // --- PERFORMANCE INDEXES (Concurrent batch execution) ---
     const indexes = [
       `CREATE INDEX IF NOT EXISTS idx_products_categoryid ON products (categoryid);`,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_products_productname_unique ON products (UPPER(TRIM(productname)));`,
@@ -976,10 +905,10 @@ export async function syncTenantDatabaseSchema(url, token) {
       `CREATE INDEX IF NOT EXISTS idx_branches_companyid ON branches (companyid);`,
     ];
 
-    for (const indexSql of indexes) {
-      try {
-        await client.execute(indexSql);
-      } catch (_) { }
+    try {
+      await client.executeMultiple(indexes.join("\n"));
+    } catch (_) {
+      await Promise.allSettled(indexes.map((indexSql) => client.execute(indexSql).catch(() => {})));
     }
 
     // --- INITIAL SEED DATA (If empty) ---

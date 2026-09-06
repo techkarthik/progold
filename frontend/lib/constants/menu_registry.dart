@@ -8,6 +8,7 @@ class MenuRegistry {
   // 1. MAJOR MENUS (MODULES)
   // ==========================================
   static const String MENU_MASTER = "M_MASTER";
+  static const String MENU_SMITH_PURCHASE = "M_SMITH_PURCHASE";
   static const String MENU_STOCK = "M_STOCK";
   static const String MENU_ESTIMATE = "M_ESTIMATE";
   static const String MENU_POS = "M_POS";
@@ -37,6 +38,14 @@ class MenuRegistry {
   static const String MASTER_EMPLOYEES = "M_MASTER.EMPLOYEES";
   static const String MASTER_ACCOUNT_HEAD = "M_MASTER.ACCOUNT_HEAD";
   static const String MASTER_TAX_MASTER = "M_MASTER.TAX_MASTER";
+
+  // ==========================================
+  // 2b. SUB-MENUS UNDER SMITH PURCHASE (M_SMITH_PURCHASE)
+  // ==========================================
+  static const String SMITH_PURCHASE_ENTRY = "M_SMITH_PURCHASE.ENTRY";
+  static const String SMITH_PURCHASE_REGISTER = "M_SMITH_PURCHASE.REGISTER";
+  static const String SMITH_PURCHASE_RECEIPT = "M_SMITH_PURCHASE.RECEIPT";
+  static const String SMITH_PURCHASE_SMITH_LEDGER = "M_SMITH_PURCHASE.SMITH_LEDGER";
 
   // ==========================================
   // 3. SUB-MENUS UNDER STOCK (M_STOCK) - Extensible

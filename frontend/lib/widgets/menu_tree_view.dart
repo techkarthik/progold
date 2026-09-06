@@ -161,6 +161,45 @@ class MenuTreeRegistry {
       ],
     ),
 
+    // 1b. SMITH PURCHASE MODULE (Between Master and Stock)
+    const MenuTreeNode(
+      code: MenuRegistry.MENU_SMITH_PURCHASE,
+      title: "Smith Purchase",
+      subtitle: "Smith purchase orders, receipts & smith metal ledger",
+      icon: Icons.handyman_rounded,
+      color: Color(0xFF0284C7),
+      children: [
+        MenuTreeNode(
+          code: MenuRegistry.SMITH_PURCHASE_ENTRY,
+          title: "Smith Purchase Entry",
+          subtitle: "Smith purchase transaction entry",
+          icon: Icons.add_circle_outline_rounded,
+          color: Color(0xFF0284C7),
+        ),
+        MenuTreeNode(
+          code: MenuRegistry.SMITH_PURCHASE_REGISTER,
+          title: "Smith Purchase Register",
+          subtitle: "View and filter previous smith purchase bills",
+          icon: Icons.receipt_long_rounded,
+          color: Color(0xFF0284C7),
+        ),
+        MenuTreeNode(
+          code: MenuRegistry.SMITH_PURCHASE_RECEIPT,
+          title: "Smith Receipt / Inward",
+          subtitle: "Receive manufactured goods from smiths",
+          icon: Icons.move_to_inbox_rounded,
+          color: Color(0xFF0284C7),
+        ),
+        MenuTreeNode(
+          code: MenuRegistry.SMITH_PURCHASE_SMITH_LEDGER,
+          title: "Smith Metal & Cash Ledger",
+          subtitle: "Smith-wise outstanding pure gold, fine silver & cash balance",
+          icon: Icons.account_balance_wallet_rounded,
+          color: Color(0xFF0284C7),
+        ),
+      ],
+    ),
+
     // 2. STOCK MODULE
     const MenuTreeNode(
       code: MenuRegistry.MENU_STOCK,

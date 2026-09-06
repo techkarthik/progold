@@ -286,8 +286,22 @@ class ApiService {
         headers: _headers(token),
         body: jsonEncode({'sql': sql}),
       );
-      final data = jsonDecode(res.body);
-      return QueryResult.fromJson(data);
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body);
+        if (data is Map<String, dynamic>) {
+          return QueryResult.fromJson(data);
+        }
+      }
+      try {
+        final data = jsonDecode(res.body);
+        if (data is Map<String, dynamic>) {
+          return QueryResult.fromJson(data);
+        }
+      } catch (_) {}
+      return QueryResult(
+        success: false,
+        message: 'Server error (${res.statusCode}): ${res.body.isNotEmpty ? (res.body.length > 120 ? "${res.body.substring(0, 120)}..." : res.body) : "Query execution failed."}',
+      );
     } catch (e) {
       return QueryResult(success: false, message: 'Query execution error: $e');
     }
@@ -300,8 +314,27 @@ class ApiService {
         Uri.parse('$baseUrl/tenant/db/reinstall'),
         headers: _headers(token),
       );
-      final data = jsonDecode(res.body);
-      return data;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        try {
+          final data = jsonDecode(res.body);
+          if (data is Map<String, dynamic>) {
+            return data;
+          }
+        } catch (_) {}
+        return {'success': true, 'message': 'Database schema synchronized successfully.'};
+      } else {
+        try {
+          final data = jsonDecode(res.body);
+          if (data is Map<String, dynamic>) {
+            return data;
+          }
+        } catch (_) {}
+        final errText = res.body.trim();
+        return {
+          'success': false,
+          'message': 'Server error (${res.statusCode}): ${errText.isNotEmpty ? (errText.length > 150 ? "${errText.substring(0, 150)}..." : errText) : "Failed to reinstall schema."}',
+        };
+      }
     } catch (e) {
       return {
         'success': false,

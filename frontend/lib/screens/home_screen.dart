@@ -23,6 +23,7 @@ import 'system_controls_screen.dart';
 import 'estimate_screen.dart';
 import 'employee_master_screen.dart';
 import 'sales_and_price_screen.dart';
+import 'smith_purchase_screen.dart';
 import '../services/api_service.dart';
 import '../constants/menu_registry.dart';
 
@@ -48,8 +49,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (user.allowedMenus.contains(parentCode)) return true;
     }
 
-    // Auto-grant access to new core Estimate module if user has POS, Stock, or Master access
-    if (menuCode.startsWith('M_ESTIMATE') && user.allowedMenus.any((c) => c.startsWith('M_POS') || c.startsWith('M_STOCK') || c.startsWith('M_MASTER'))) {
+    // Auto-grant access to new core Estimate or Smith Purchase module if user has POS, Stock, or Master access
+    if ((menuCode.startsWith('M_ESTIMATE') || menuCode.startsWith('M_SMITH_PURCHASE')) &&
+        user.allowedMenus.any((c) => c.startsWith('M_POS') || c.startsWith('M_STOCK') || c.startsWith('M_MASTER'))) {
       return true;
     }
 
@@ -419,6 +421,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                 ],
+                if (_hasAccess(auth, MenuRegistry.MENU_SMITH_PURCHASE)) ...[
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
+                    icon: Icons.handyman_rounded,
+                    title: "Smith Purchase",
+                    subtitle: "Smith purchase orders & receipts",
+                    isSelected: _selectedModule == "SMITH_PURCHASE",
+                    onTap: () {
+                      Navigator.pop(context);
+                      setState(() => _selectedModule = "SMITH_PURCHASE");
+                    },
+                  ),
+                ],
                 if (_hasAccess(auth, MenuRegistry.MENU_STOCK)) ...[
                   const SizedBox(height: 4),
                   _buildDrawerItem(
@@ -657,6 +672,15 @@ class _HomeScreenState extends State<HomeScreen> {
         "badge": "5 Hubs",
       },
       {
+        "id": "SMITH_PURCHASE",
+        "name": "SMITH PURCHASE",
+        "desc": "Smith Purchases",
+        "icon": Icons.handyman_rounded,
+        "gradient": const LinearGradient(colors: [Color(0xFF0284C7), Color(0xFF0369A1)]),
+        "glow": const Color(0xFF0284C7),
+        "badge": null,
+      },
+      {
         "id": "STOCK",
         "name": "STOCK",
         "desc": "Inventory & Barcode",
@@ -736,6 +760,9 @@ class _HomeScreenState extends State<HomeScreen> {
       switch (item["id"]) {
         case "MASTER":
           menuCode = MenuRegistry.MENU_MASTER;
+          break;
+        case "SMITH_PURCHASE":
+          menuCode = MenuRegistry.MENU_SMITH_PURCHASE;
           break;
         case "STOCK":
           menuCode = MenuRegistry.MENU_STOCK;
@@ -1040,6 +1067,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "MASTER":
         menuCode = MenuRegistry.MENU_MASTER;
         break;
+      case "SMITH_PURCHASE":
+        menuCode = MenuRegistry.MENU_SMITH_PURCHASE;
+        break;
       case "STOCK":
         menuCode = MenuRegistry.MENU_STOCK;
         break;
@@ -1132,6 +1162,11 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (module) {
       case "MASTER":
         return _buildMasterHubWithSubmenus(auth, tenant);
+      case "SMITH_PURCHASE":
+        return SmithPurchaseScreen(
+          onBack: () => setState(() => _selectedModule = "HOME"),
+          onNavigateModule: (m) => setState(() => _selectedModule = m),
+        );
       case "STOCK":
         return _buildStockWorkspace(auth);
       case "ESTIMATE":
