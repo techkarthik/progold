@@ -106,6 +106,9 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
           }
 
           _applyFilter();
+          if (_showForm && _editingRecord == null) {
+            _autoCalculateNextWeightRange();
+          }
           _isLoading = false;
         });
       }
@@ -147,6 +150,73 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
     return _allSubProducts.where((sp) => sp.productid == prodId).toList();
   }
 
+  void _autoCalculateNextWeightRange({bool force = false}) {
+    if (_editingRecord != null && !force) return;
+    if (_selectedProductId == null || _selectedDealerAccode == null) {
+      _weightFromController.text = '0.000';
+      _weightToController.text = '10.000';
+      return;
+    }
+
+    final matching = _priceSettings.where((ps) {
+      if (ps.productid != _selectedProductId) return false;
+      if (ps.accode != _selectedDealerAccode) return false;
+
+      final psSub = (ps.subproductid == null || ps.subproductid == 0) ? null : ps.subproductid;
+      final selSub = (_selectedSubProductId == null || _selectedSubProductId == 0) ? null : _selectedSubProductId;
+      if (psSub != selSub) return false;
+
+      if (_editingRecord != null && ps.id == _editingRecord!.id) return false;
+
+      return true;
+    }).toList();
+
+    if (matching.isNotEmpty) {
+      double maxTo = matching.first.weightTo;
+      for (final ps in matching) {
+        if (ps.weightTo > maxTo) {
+          maxTo = ps.weightTo;
+        }
+      }
+
+      final nextFrom = maxTo + 0.001;
+      final nextTo = maxTo + 10.000;
+
+      setState(() {
+        _weightFromController.text = nextFrom.toStringAsFixed(3);
+        _weightToController.text = nextTo.toStringAsFixed(3);
+      });
+    } else {
+      setState(() {
+        _weightFromController.text = '0.000';
+        _weightToController.text = '10.000';
+      });
+    }
+  }
+
+  String _getWeightRangeHelperText() {
+    if (_selectedProductId == null || _selectedDealerAccode == null) return '';
+    final matching = _priceSettings.where((ps) {
+      if (ps.productid != _selectedProductId) return false;
+      if (ps.accode != _selectedDealerAccode) return false;
+      final psSub = (ps.subproductid == null || ps.subproductid == 0) ? null : ps.subproductid;
+      final selSub = (_selectedSubProductId == null || _selectedSubProductId == 0) ? null : _selectedSubProductId;
+      return psSub == selSub;
+    }).toList();
+
+    if (matching.isNotEmpty) {
+      matching.sort((a, b) => a.weightFrom.compareTo(b.weightFrom));
+      final ranges = matching.map((m) => "${m.weightFrom.toStringAsFixed(2)}g - ${m.weightTo.toStringAsFixed(2)}g").join(", ");
+      double maxTo = matching.first.weightTo;
+      for (final m in matching) {
+        if (m.weightTo > maxTo) maxTo = m.weightTo;
+      }
+      return "Existing range(s): $ranges. Next weight starts automatically at ${(maxTo + 0.001).toStringAsFixed(3)}g.";
+    } else {
+      return "No prior ranges found for this combination. New weight range starts from 0.000g.";
+    }
+  }
+
   void _openForm([PriceSettingRecord? existing]) {
     setState(() {
       _editingRecord = existing;
@@ -171,12 +241,11 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
     _selectedProductId = _allProducts.isNotEmpty ? _allProducts.first.productid : null;
     _selectedSubProductId = null; // None / General by default
     _selectedDealerAccode = _allDealers.isNotEmpty ? _allDealers.first['accode']?.toString() : null;
-    _weightFromController.text = '0.000';
-    _weightToController.text = '10.000';
     _vaPercentController.text = '0.00';
     _wastageController.text = '0.000';
     _mcPerGramController.text = '0.00';
     _mChargeController.text = '0.00';
+    _autoCalculateNextWeightRange(force: true);
   }
 
   void _closeForm() {
@@ -660,6 +729,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                             if (_selectedSubProductId != null && !subs.any((s) => s.subproductid == _selectedSubProductId)) {
                               _selectedSubProductId = null;
                             }
+                            _autoCalculateNextWeightRange();
                           });
                         },
                         validator: (val) => val == null ? "Product is required" : null,
@@ -697,7 +767,12 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                             );
                           }),
                         ],
-                        onChanged: (val) => setState(() => _selectedSubProductId = val),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedSubProductId = val;
+                            _autoCalculateNextWeightRange();
+                          });
+                        },
                       ),
                     ],
                   ),
@@ -728,7 +803,12 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                             ),
                           );
                         }).toList(),
-                        onChanged: (val) => setState(() => _selectedDealerAccode = val),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedDealerAccode = val;
+                            _autoCalculateNextWeightRange();
+                          });
+                        },
                         validator: (val) => (val == null || val.isEmpty) ? "Dealer is required" : null,
                       ),
                     ],
@@ -736,7 +816,31 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
+            // Helper info banner for weight range auto-continuation
+            if (_editingRecord == null && _selectedProductId != null && _selectedDealerAccode != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.auto_awesome_rounded, size: 18, color: Color(0xFF6366F1)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _getWeightRangeHelperText(),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF4338CA)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             // Row 2: Weight Range (From, To)
             Row(
               children: [

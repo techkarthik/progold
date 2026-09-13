@@ -141,7 +141,7 @@ async function runTest() {
       throw new Error("Overlap detection FAILED to catch overlapping range 5.0 - 15.0!");
     }
 
-    // 8. Insert contiguous non-overlapping range 10.000 - 20.000 for same Prod1 + Sub1 + Dealer1
+    // 8. Insert next continuous range 10.001 - 20.000 for same Prod1 + Sub1 + Dealer1
     const nonOverlapCheck = await client.execute({
       sql: `
         SELECT id, weight_from, weight_to 
@@ -150,7 +150,7 @@ async function runTest() {
           AND subproductid = ? 
           AND accode = 'TEST_DLR_1' 
           AND weight_from < 20.0 
-          AND weight_to > 10.0 
+          AND weight_to > 10.001 
         LIMIT 1;
       `,
       args: [prod1Id, sub1Id],
@@ -160,13 +160,13 @@ async function runTest() {
         sql: `
           INSERT INTO pricesetting (
             productid, subproductid, accode, weight_from, weight_to, va_percent, wastage, mc_per_gram, m_charge, created_at, updated_at
-          ) VALUES (?, ?, 'TEST_DLR_1', 10.0, 20.0, 10.0, 0.20, 400.0, 40.0, ?, ?);
+          ) VALUES (?, ?, 'TEST_DLR_1', 10.001, 20.0, 10.0, 0.20, 400.0, 40.0, ?, ?);
         `,
         args: [prod1Id, sub1Id, now, now],
       });
-      console.log(` 6. Successfully inserted non-overlapping range 10.0 - 20.0 for Prod1 + Sub1 + Dealer1 (ID: ${ps2Res.lastInsertRowid}).`);
+      console.log(` 6. Successfully inserted continuous range 10.001 - 20.0 for Prod1 + Sub1 + Dealer1 (ID: ${ps2Res.lastInsertRowid}).`);
     } else {
-      throw new Error("False positive on contiguous non-overlapping range 10.0 - 20.0!");
+      throw new Error("False positive on continuous non-overlapping range 10.001 - 20.0!");
     }
 
     // 9. Insert range 0.000 - 10.000 for DIFFERENT product (Prod 2)
