@@ -176,14 +176,52 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     if (selectedProduct == null) return _allOrnamentPurities;
 
     final productMetal = (selectedProduct.metalid ?? '').trim().toUpperCase();
-    if (productMetal.isEmpty) return _allOrnamentPurities;
+    final productMetalName = (selectedProduct.metalname ?? '').trim().toUpperCase();
+    final productCatName = (selectedProduct.catname ?? '').trim().toUpperCase();
+    final prodName = selectedProduct.productname.trim().toUpperCase();
 
-    final matching = _allOrnamentPurities.where((p) {
-      final purityMetal = p.metalid.trim().toUpperCase();
-      return purityMetal == productMetal;
-    }).toList();
+    final isGold = productMetal == 'G' || productMetalName.contains('GOLD') || productCatName.contains('GOLD') || prodName.contains('GOLD');
+    final isSilver = productMetal == 'SR' || productMetal == 'S' || productMetalName.contains('SILVER') || productCatName.contains('SILVER') || prodName.contains('SILVER');
+    final isPlatinum = productMetal == 'PT' || productMetalName.contains('PLATINUM') || productCatName.contains('PLATINUM');
 
-    return matching.isNotEmpty ? matching : _allOrnamentPurities;
+    if (isGold) {
+      final matching = _allOrnamentPurities.where((p) {
+        final pMetal = p.metalid.trim().toUpperCase();
+        final pName = p.purityname.toUpperCase();
+        return pMetal == 'G' ||
+            pName.contains('KT') ||
+            pName.contains('GOLD') ||
+            pName.contains('916') ||
+            pName.contains('750') ||
+            pName.contains('22') ||
+            pName.contains('18') ||
+            pName.contains('24') ||
+            pName.contains('14') ||
+            pName.contains('999');
+      }).toList();
+      if (matching.isNotEmpty) return matching;
+    } else if (isSilver) {
+      final matching = _allOrnamentPurities.where((p) {
+        final pMetal = p.metalid.trim().toUpperCase();
+        final pName = p.purityname.toUpperCase();
+        return pMetal == 'SR' || pMetal == 'S' || pName.contains('SILVER') || pName.contains('925') || pName.contains('92.5');
+      }).toList();
+      if (matching.isNotEmpty) return matching;
+    } else if (isPlatinum) {
+      final matching = _allOrnamentPurities.where((p) {
+        final pMetal = p.metalid.trim().toUpperCase();
+        final pName = p.purityname.toUpperCase();
+        return pMetal == 'PT' || pName.contains('PLAT');
+      }).toList();
+      if (matching.isNotEmpty) return matching;
+    } else if (productMetal.isNotEmpty) {
+      final matching = _allOrnamentPurities.where((p) {
+        return p.metalid.trim().toUpperCase() == productMetal;
+      }).toList();
+      if (matching.isNotEmpty) return matching;
+    }
+
+    return _allOrnamentPurities;
   }
 
   /// Syncs the selected purity and purity rate with the selected product's metal
@@ -212,19 +250,44 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
       }
     }
 
-    // 2. Fallback to summary ticker rates if not in list
+    // 2. Derive rate based on metal benchmark rates and purity percentage
     if (foundRate == 0.0) {
-      for (final p in _allOrnamentPurities) {
-        if (p.purityid == purityId) {
-          final pName = p.purityname.toUpperCase();
-          if (pName.contains('24') || pName.contains('999')) {
-            foundRate = _latestRates.gold24k;
-          } else if (pName.contains('22') || pName.contains('916')) {
-            foundRate = _latestRates.gold22k;
-          } else if (p.metalid.toUpperCase() == 'S' || pName.contains('SILVER')) {
-            foundRate = _latestRates.silver;
+      final p = _allOrnamentPurities.where((pur) => pur.purityid == purityId).firstOrNull;
+      if (p != null) {
+        final pName = p.purityname.toUpperCase();
+        final pMetal = p.metalid.toUpperCase();
+        final purityPer = p.purity > 0 ? p.purity : 91.6;
+
+        final isGoldPurity = pMetal == 'G' ||
+            pName.contains('KT') ||
+            pName.contains('GOLD') ||
+            pName.contains('916') ||
+            pName.contains('750') ||
+            pName.contains('22') ||
+            pName.contains('18') ||
+            pName.contains('24');
+        final isSilverPurity = pMetal == 'SR' || pMetal == 'S' || pName.contains('SILVER') || pName.contains('925') || pName.contains('92.5');
+        final isPlatinumPurity = pMetal == 'PT' || pName.contains('PLAT');
+
+        if (isGoldPurity) {
+          if (pName.contains('24') || pName.contains('999') || purityPer >= 99.0) {
+            foundRate = _latestRates.gold24k > 0 ? _latestRates.gold24k : 7450.0;
+          } else if (pName.contains('22') || pName.contains('916') || (purityPer >= 91.0 && purityPer <= 92.0)) {
+            foundRate = _latestRates.gold22k > 0 ? _latestRates.gold22k : 6850.0;
+          } else {
+            // Proportional calculation from 24K or 22K rate
+            final base24k = _latestRates.gold24k > 0 ? _latestRates.gold24k : (_latestRates.gold22k > 0 ? (_latestRates.gold22k / 0.916) : 7450.0);
+            foundRate = base24k * (purityPer / 100.0);
           }
-          break;
+        } else if (isSilverPurity) {
+          final baseSilver = _latestRates.silver > 0 ? _latestRates.silver : 92.50;
+          foundRate = baseSilver * (purityPer / 92.5);
+        } else if (isPlatinumPurity) {
+          final basePlat = _latestRates.platinum > 0 ? _latestRates.platinum : 3800.0;
+          foundRate = basePlat * (purityPer / 100.0);
+        } else {
+          final base24k = _latestRates.gold24k > 0 ? _latestRates.gold24k : 7450.0;
+          foundRate = base24k * (purityPer / 100.0);
         }
       }
     }
@@ -1032,6 +1095,9 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
 
     // Filter purities by selected product's metal
     final matchingOrnamentPurities = _getMatchingPuritiesForSelectedProduct();
+    final matchingPurityId = (_selectedPurityId != null && matchingOrnamentPurities.any((p) => p.purityid == _selectedPurityId))
+        ? _selectedPurityId
+        : (matchingOrnamentPurities.isNotEmpty ? matchingOrnamentPurities.first.purityid : null);
 
     // Filter stone products where diastone = 'S'
     final stoneProducts = _allProducts.where((p) => p.diastone.toUpperCase().trim() == 'S').toList();
@@ -1209,7 +1275,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<int>(
-                    value: _selectedPurityId,
+                    value: matchingPurityId,
                     decoration: _inputDecoration(
                       "Ornament Purity *",
                       prefixIcon: const Icon(Icons.verified_rounded, size: 20),
@@ -2202,7 +2268,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
           crossAxisCount: crossAxisCount,
           crossAxisSpacing: 16,
           mainAxisSpacing: 16,
-          mainAxisExtent: 290,
+          mainAxisExtent: 340,
         ),
         itemCount: _filteredLots.length,
         itemBuilder: (context, index) {
