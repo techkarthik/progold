@@ -1500,7 +1500,7 @@ class ApiService {
     }
   }
 
-  // ================= DAILY PURITY RATES & HISTORY CRUD (Sales & Price Master) =================
+  // ================= DAILY PURITY RATES & HISTORY CRUD (Rate Master) =================
 
   /// Fetches latest purity rates and ticker summary (Gold 24K, 22K 916, Silver)
   Future<LatestRatesSummary> getLatestRates(String token) async {

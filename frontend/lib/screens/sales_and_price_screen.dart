@@ -408,14 +408,14 @@ class _SalesAndPriceScreenState extends State<SalesAndPriceScreen> with SingleTi
                     ),
                     const Icon(Icons.chevron_right_rounded, size: 14, color: GlassTheme.textSecondary),
                     const Text(
-                      "Sales & Price Master",
+                      "Rate Master",
                       style: TextStyle(color: GlassTheme.accentAmber, fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
                 const SizedBox(height: 2),
                 const Text(
-                  "Daily Purity Rate Master",
+                  "Rate Master (Daily Purity Rates)",
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary, letterSpacing: -0.3),
                 ),
                 const SizedBox(height: 2),

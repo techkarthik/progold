@@ -322,7 +322,7 @@ router.post("/tenant/estimates", requireAuth, createEstimateController);
 router.put("/tenant/estimates/:id", requireAuth, updateEstimateController);
 router.delete("/tenant/estimates/:id", requireAuth, deleteEstimateController);
 
-// Tenant Daily Purity Rates & History Routes (Sales & Price Master)
+// Tenant Daily Purity Rates & History Routes (Rate Master)
 router.get("/tenant/rates/latest", requireAuth, getLatestRatesController);
 router.get("/tenant/rates/by-date", requireAuth, getRatesByDateController);
 router.post("/tenant/rates/bulk-update", requireAuth, bulkUpdateRatesController);

@@ -1382,9 +1382,9 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       {
         "id": "SALESANDPRICE",
-        "name": "SALES & PRICE",
-        "title": "Daily Metal Rates",
-        "desc": "Purity-based daily board rates, price rules & history",
+        "name": "RATE MASTER",
+        "title": "Rate Master",
+        "desc": "Purity-based daily board rates, metal rates & history",
         "icon": Icons.price_change_rounded,
         "color": GlassTheme.accentAmber,
       },

@@ -132,8 +132,8 @@ class MenuTreeRegistry {
         ),
         MenuTreeNode(
           code: MenuRegistry.MASTER_SALES_AND_PRICE,
-          title: "Daily Metal Rates & Pricing",
-          subtitle: "Purity-based daily board rates, price rules & rate history",
+          title: "Rate Master",
+          subtitle: "Purity-based daily board rates, metal rates & rate history",
           icon: Icons.price_change_rounded,
           color: Color(0xFFF59E0B),
         ),

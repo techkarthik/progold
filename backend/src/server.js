@@ -278,7 +278,7 @@ app.post("/api/tenant/estimates", requireAuth, createEstimateController);
 app.put("/api/tenant/estimates/:id", requireAuth, updateEstimateController);
 app.delete("/api/tenant/estimates/:id", requireAuth, deleteEstimateController);
 
-// Tenant Daily Purity Rates & History Routes (Sales & Price Master)
+// Tenant Daily Purity Rates & History Routes (Rate Master)
 app.get("/api/tenant/rates/latest", requireAuth, getLatestRatesController);
 app.get("/api/tenant/rates/by-date", requireAuth, getRatesByDateController);
 app.post("/api/tenant/rates/bulk-update", requireAuth, bulkUpdateRatesController);
