@@ -1186,6 +1186,102 @@ class ApiService {
     }
   }
 
+  // ================= PRICE SETTING CRUD (8th Master under Inventory) =================
+
+  /// Fetches price settings
+  Future<Map<String, dynamic>> getPriceSettingsData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/price-settings'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['price_settings'] is List) {
+          final items = (data['price_settings'] as List).map((i) => PriceSettingRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'price_settings': items,
+            'total_count': data['total_count'] ?? items.length,
+          };
+        }
+      }
+      return {'success': false, 'price_settings': <PriceSettingRecord>[], 'total_count': 0};
+    } catch (e) {
+      debugPrint("Error getPriceSettingsData: $e");
+      return {'success': false, 'price_settings': <PriceSettingRecord>[], 'total_count': 0};
+    }
+  }
+
+  Future<List<PriceSettingRecord>> getPriceSettings(String token) async {
+    final data = await getPriceSettingsData(token);
+    return data['price_settings'] as List<PriceSettingRecord>? ?? [];
+  }
+
+  /// Fetches active dealers & smiths for Price Setting dropdown
+  Future<List<Map<String, dynamic>>> getPriceSettingDealers(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/price-settings/dealers'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['dealers'] is List) {
+          return List<Map<String, dynamic>>.from(data['dealers']);
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error getPriceSettingDealers: $e");
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> createPriceSetting(String token, PriceSettingRecord record) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/price-settings'),
+        headers: _headers(token),
+        body: jsonEncode(record.toJson()),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200 || res.statusCode == 201, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updatePriceSetting(String token, int id, PriceSettingRecord record) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/price-settings/$id'),
+        headers: _headers(token),
+        body: jsonEncode(record.toJson()),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deletePriceSetting(String token, int id) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/price-settings/$id'), headers: _headers(token));
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
   // ================= SYSTEM CONTROLS CRUD (4th Menu under Settings) =================
 
   /// Fetches system controls along with last_sno and next_sno metadata

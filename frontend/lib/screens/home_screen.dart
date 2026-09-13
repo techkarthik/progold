@@ -18,6 +18,7 @@ import 'product_master_screen.dart';
 import 'subproduct_master_screen.dart';
 import 'style_master_screen.dart';
 import 'size_master_screen.dart';
+import 'price_setting_screen.dart';
 import 'database_status_screen.dart';
 import 'system_controls_screen.dart';
 import 'estimate_screen.dart';
@@ -1258,6 +1259,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "SIZES":
         submenuCode = MenuRegistry.MASTER_INVENTORY_SIZES;
         break;
+      case "PRICESETTING":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_PRICE_SETTING;
+        break;
     }
 
     if (submenuCode.isNotEmpty && !_hasAccess(auth, submenuCode)) {
@@ -1345,6 +1349,10 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       case "SIZES":
         return SizeMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
+      case "PRICESETTING":
+        return PriceSettingScreen(
           onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
         );
       case "HUB":
@@ -1898,6 +1906,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.straighten_rounded,
                   color: const Color(0xFFF59E0B),
                   onTap: () => setState(() => _masterSubmenu = "SIZES"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_PRICE_SETTING))
+                _buildSubmenuGridCard(
+                  title: "Price Setting",
+                  desc: "Configure weight-wise VA%, wastage & making charges per dealer",
+                  icon: Icons.price_change_rounded,
+                  color: const Color(0xFF6366F1),
+                  onTap: () => setState(() => _masterSubmenu = "PRICESETTING"),
                 ),
             ],
           ),

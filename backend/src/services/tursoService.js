@@ -564,6 +564,23 @@ export async function syncTenantDatabaseSchema(url, token) {
         UNIQUE (productid, sizename)
       );
 
+      CREATE TABLE IF NOT EXISTS pricesetting (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        subproductid INTEGER DEFAULT NULL,
+        accode TEXT NOT NULL,
+        weight_from REAL NOT NULL DEFAULT 0.0,
+        weight_to REAL NOT NULL DEFAULT 0.0,
+        va_percent REAL NOT NULL DEFAULT 0.0,
+        wastage REAL NOT NULL DEFAULT 0.0,
+        mc_per_gram REAL NOT NULL DEFAULT 0.0,
+        m_charge REAL NOT NULL DEFAULT 0.0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        FOREIGN KEY (subproductid) REFERENCES subproducts(subproductid)
+      );
+
       CREATE TABLE IF NOT EXISTS system_controls (
         sno INTEGER PRIMARY KEY AUTOINCREMENT,
         ctlid TEXT NOT NULL,

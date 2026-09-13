@@ -605,3 +605,119 @@ class SizeRecord {
     );
   }
 }
+
+class PriceSettingRecord {
+  final int? id;
+  final int productid;
+  final String? productname;
+  final int? subproductid;
+  final String? subproductname;
+  final String accode;
+  final String? dealername;
+  final String? accounttype;
+  final double weightFrom;
+  final double weightTo;
+  final double vaPercent;
+  final double wastage;
+  final double mcPerGram;
+  final double mCharge;
+  final String? createdAt;
+  final String? updatedAt;
+
+  PriceSettingRecord({
+    this.id,
+    required this.productid,
+    this.productname,
+    this.subproductid,
+    this.subproductname,
+    required this.accode,
+    this.dealername,
+    this.accounttype,
+    required this.weightFrom,
+    required this.weightTo,
+    this.vaPercent = 0.0,
+    this.wastage = 0.0,
+    this.mcPerGram = 0.0,
+    this.mCharge = 0.0,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory PriceSettingRecord.fromJson(Map<String, dynamic> json) {
+    return PriceSettingRecord(
+      id: json['id'] != null ? int.tryParse(json['id'].toString()) : null,
+      productid: int.tryParse(json['productid']?.toString() ?? '0') ?? 0,
+      productname: json['productname']?.toString(),
+      subproductid: json['subproductid'] != null && json['subproductid'].toString().isNotEmpty && json['subproductid'].toString() != '0'
+          ? int.tryParse(json['subproductid'].toString())
+          : null,
+      subproductname: json['subproductname']?.toString(),
+      accode: json['accode']?.toString() ?? '',
+      dealername: json['dealername']?.toString(),
+      accounttype: json['accounttype']?.toString(),
+      weightFrom: json['weight_from'] != null ? double.tryParse(json['weight_from'].toString()) ?? 0.0 : 0.0,
+      weightTo: json['weight_to'] != null ? double.tryParse(json['weight_to'].toString()) ?? 0.0 : 0.0,
+      vaPercent: json['va_percent'] != null ? double.tryParse(json['va_percent'].toString()) ?? 0.0 : 0.0,
+      wastage: json['wastage'] != null ? double.tryParse(json['wastage'].toString()) ?? 0.0 : 0.0,
+      mcPerGram: json['mc_per_gram'] != null ? double.tryParse(json['mc_per_gram'].toString()) ?? 0.0 : 0.0,
+      mCharge: json['m_charge'] != null ? double.tryParse(json['m_charge'].toString()) ?? 0.0 : 0.0,
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'productid': productid,
+      'subproductid': subproductid,
+      'accode': accode,
+      'weight_from': weightFrom,
+      'weight_to': weightTo,
+      'va_percent': vaPercent,
+      'wastage': wastage,
+      'mc_per_gram': mcPerGram,
+      'm_charge': mCharge,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
+
+  PriceSettingRecord copyWith({
+    int? id,
+    int? productid,
+    String? productname,
+    int? subproductid,
+    String? subproductname,
+    String? accode,
+    String? dealername,
+    String? accounttype,
+    double? weightFrom,
+    double? weightTo,
+    double? vaPercent,
+    double? wastage,
+    double? mcPerGram,
+    double? mCharge,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return PriceSettingRecord(
+      id: id ?? this.id,
+      productid: productid ?? this.productid,
+      productname: productname ?? this.productname,
+      subproductid: subproductid ?? this.subproductid,
+      subproductname: subproductname ?? this.subproductname,
+      accode: accode ?? this.accode,
+      dealername: dealername ?? this.dealername,
+      accounttype: accounttype ?? this.accounttype,
+      weightFrom: weightFrom ?? this.weightFrom,
+      weightTo: weightTo ?? this.weightTo,
+      vaPercent: vaPercent ?? this.vaPercent,
+      wastage: wastage ?? this.wastage,
+      mcPerGram: mcPerGram ?? this.mcPerGram,
+      mCharge: mCharge ?? this.mCharge,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}

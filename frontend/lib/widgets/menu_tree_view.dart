@@ -121,6 +121,13 @@ class MenuTreeRegistry {
               icon: Icons.straighten_rounded,
               color: Color(0xFFF59E0B),
             ),
+            MenuTreeNode(
+              code: MenuRegistry.MASTER_INVENTORY_PRICE_SETTING,
+              title: "Price Setting",
+              subtitle: "Configure weight ranges, VA%, wastage & making charges per dealer",
+              icon: Icons.price_change_rounded,
+              color: Color(0xFF6366F1),
+            ),
           ],
         ),
         MenuTreeNode(

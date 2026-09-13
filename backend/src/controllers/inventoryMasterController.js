@@ -63,28 +63,28 @@ async function ensureInventoryTables(client, tenantUrl = "") {
 
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN purityid INTEGER;`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN sales_accode TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN purchase_accode TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN sgst_accode TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN cgst_accode TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN igst_accode TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN salesacname TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN purchaseacname TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
 
     // Products (New 4th Master under Inventory)
     await client.execute(`
@@ -108,22 +108,22 @@ async function ensureInventoryTables(client, tenantUrl = "") {
 
     try {
       await client.execute(`ALTER TABLE products ADD COLUMN studded TEXT DEFAULT 'N';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE products ADD COLUMN diastone TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE products ADD COLUMN hsncode TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE products ADD COLUMN stoneunit TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
 
     try {
       await client.execute(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_products_productname_unique ON products (UPPER(TRIM(productname)));
       `);
-    } catch (_) {}
+    } catch (_) { }
 
     // Sub-Products (New 5th Master under Inventory)
     await client.execute(`
@@ -162,6 +162,26 @@ async function ensureInventoryTables(client, tenantUrl = "") {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (productid) REFERENCES products(productid),
         UNIQUE (productid, sizename)
+      );
+    `);
+
+    // Price Setting (8th Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS pricesetting (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        subproductid INTEGER DEFAULT NULL,
+        accode TEXT NOT NULL,
+        weight_from REAL NOT NULL DEFAULT 0.0,
+        weight_to REAL NOT NULL DEFAULT 0.0,
+        va_percent REAL NOT NULL DEFAULT 0.0,
+        wastage REAL NOT NULL DEFAULT 0.0,
+        mc_per_gram REAL NOT NULL DEFAULT 0.0,
+        m_charge REAL NOT NULL DEFAULT 0.0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        FOREIGN KEY (subproductid) REFERENCES subproducts(subproductid)
       );
     `);
   });
@@ -1816,6 +1836,429 @@ export async function deleteSizeController(req, res) {
     return res.json({ success: true, message: "Size deleted successfully!" });
   } catch (error) {
     console.error("deleteSize error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// ==========================================
+// 8. PRICE SETTING CRUD CONTROLLERS (8th Inventory Master)
+// ==========================================
+
+export async function getPriceSettingsController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const result = await client.execute(`
+      SELECT 
+        ps.id,
+        ps.productid,
+        COALESCE(p.productname, '') AS productname,
+        ps.subproductid,
+        COALESCE(sp.subproductname, '') AS subproductname,
+        ps.accode,
+        COALESCE(ah.accountname, '') AS dealername,
+        COALESCE(ah.accounttype, '') AS accounttype,
+        ps.weight_from,
+        ps.weight_to,
+        ps.va_percent,
+        ps.wastage,
+        ps.mc_per_gram,
+        ps.m_charge,
+        ps.created_at,
+        ps.updated_at
+      FROM pricesetting ps
+      LEFT JOIN products p ON ps.productid = p.productid
+      LEFT JOIN subproducts sp ON ps.subproductid = sp.subproductid
+      LEFT JOIN account_heads ah ON ps.accode = ah.accode
+      ORDER BY p.productname ASC, sp.subproductname ASC, ah.accountname ASC, ps.weight_from ASC;
+    `);
+
+    return res.json({
+      success: true,
+      price_settings: result.rows || [],
+      total_count: (result.rows || []).length,
+    });
+  } catch (error) {
+    console.error("getPriceSettings error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function getPriceSettingDealersController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const result = await client.execute(`
+      SELECT id, accode, groupname, accountname, accounttype
+      FROM account_heads
+      WHERE UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') AND active = 1
+      ORDER BY accountname ASC;
+    `);
+
+    return res.json({
+      success: true,
+      dealers: result.rows || [],
+    });
+  } catch (error) {
+    console.error("getPriceSettingDealers error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function createPriceSettingController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      productid,
+      subproductid,
+      accode,
+      weight_from,
+      weight_to,
+      va_percent,
+      wastage,
+      mc_per_gram,
+      m_charge,
+    } = req.body;
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Product selection is required." });
+    }
+
+    if (!accode || !accode.trim()) {
+      return res.status(400).json({ success: false, message: "Dealer selection is required." });
+    }
+
+    const wFrom = parseFloat(weight_from);
+    const wTo = parseFloat(weight_to);
+
+    if (isNaN(wFrom) || isNaN(wTo)) {
+      return res.status(400).json({ success: false, message: "Valid numeric weight range (from and to) is required." });
+    }
+
+    if (wFrom < 0) {
+      return res.status(400).json({ success: false, message: "Weight From cannot be negative." });
+    }
+
+    if (wTo <= wFrom) {
+      return res.status(400).json({ success: false, message: "Weight To must be greater than Weight From." });
+    }
+
+    // 1. Verify Product exists
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Product does not exist." });
+    }
+    const prodName = prodCheck.rows[0].productname;
+
+    // 2. If subproductid provided, verify it belongs to productid
+    let subProdId = null;
+    let subProdName = "None / General";
+    if (subproductid !== undefined && subproductid !== null && subproductid !== "" && Number(subproductid) > 0) {
+      subProdId = Number(subproductid);
+      const subCheck = await client.execute({
+        sql: `SELECT subproductid, subproductname FROM subproducts WHERE subproductid = ? AND productid = ? LIMIT 1;`,
+        args: [subProdId, Number(productid)],
+      });
+      if (subCheck.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Selected Sub-Product does not belong to this Product." });
+      }
+      subProdName = subCheck.rows[0].subproductname;
+    }
+
+    // 3. Verify Dealer exists with accounttype in ('SMITH', 'DEALER')
+    const dealerCheck = await client.execute({
+      sql: `SELECT accode, accountname, accounttype FROM account_heads WHERE accode = ? AND UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') LIMIT 1;`,
+      args: [accode.trim()],
+    });
+    if (dealerCheck.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Selected Dealer is not a valid Smith or Dealer account." });
+    }
+    const dealerName = dealerCheck.rows[0].accountname;
+
+    // 4. Overlap & Duplicate check for the same (productid, subproductid, accode)
+    // Overlap condition: existing.weight_from < new_weight_to AND existing.weight_to > new_weight_from
+    let overlapQuery;
+    let overlapArgs;
+    if (subProdId !== null) {
+      overlapQuery = `
+        SELECT id, weight_from, weight_to 
+        FROM pricesetting 
+        WHERE productid = ? 
+          AND subproductid = ? 
+          AND accode = ? 
+          AND weight_from < ? 
+          AND weight_to > ? 
+        LIMIT 1;
+      `;
+      overlapArgs = [Number(productid), subProdId, accode.trim(), wTo, wFrom];
+    } else {
+      overlapQuery = `
+        SELECT id, weight_from, weight_to 
+        FROM pricesetting 
+        WHERE productid = ? 
+          AND (subproductid IS NULL OR subproductid = 0) 
+          AND accode = ? 
+          AND weight_from < ? 
+          AND weight_to > ? 
+        LIMIT 1;
+      `;
+      overlapArgs = [Number(productid), accode.trim(), wTo, wFrom];
+    }
+
+    const overlapResult = await client.execute({
+      sql: overlapQuery,
+      args: overlapArgs,
+    });
+
+    if (overlapResult.rows.length > 0) {
+      const existing = overlapResult.rows[0];
+      return res.status(400).json({
+        success: false,
+        message: `Weight range ${wFrom}g - ${wTo}g overlaps with existing range (${existing.weight_from}g - ${existing.weight_to}g) for Product '${prodName}', Sub-Product '${subProdName}', and Dealer '${dealerName}'.`,
+      });
+    }
+
+    const vaPer = parseFloat(va_percent) || 0.0;
+    const wst = parseFloat(wastage) || 0.0;
+    const mcPg = parseFloat(mc_per_gram) || 0.0;
+    const mChg = parseFloat(m_charge) || 0.0;
+
+    const now = new Date().toISOString();
+
+    const insertResult = await client.execute({
+      sql: `
+        INSERT INTO pricesetting (
+          productid,
+          subproductid,
+          accode,
+          weight_from,
+          weight_to,
+          va_percent,
+          wastage,
+          mc_per_gram,
+          m_charge,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `,
+      args: [
+        Number(productid),
+        subProdId,
+        accode.trim(),
+        wFrom,
+        wTo,
+        vaPer,
+        wst,
+        mcPg,
+        mChg,
+        now,
+        now,
+      ],
+    });
+
+    const newId = insertResult.lastInsertRowid ? Number(insertResult.lastInsertRowid) : null;
+
+    return res.status(201).json({
+      success: true,
+      message: "Price Setting created successfully!",
+      id: newId,
+    });
+  } catch (error) {
+    console.error("createPriceSetting error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function updatePriceSettingController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      productid,
+      subproductid,
+      accode,
+      weight_from,
+      weight_to,
+      va_percent,
+      wastage,
+      mc_per_gram,
+      m_charge,
+    } = req.body;
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Product selection is required." });
+    }
+
+    if (!accode || !accode.trim()) {
+      return res.status(400).json({ success: false, message: "Dealer selection is required." });
+    }
+
+    const wFrom = parseFloat(weight_from);
+    const wTo = parseFloat(weight_to);
+
+    if (isNaN(wFrom) || isNaN(wTo)) {
+      return res.status(400).json({ success: false, message: "Valid numeric weight range (from and to) is required." });
+    }
+
+    if (wFrom < 0) {
+      return res.status(400).json({ success: false, message: "Weight From cannot be negative." });
+    }
+
+    if (wTo <= wFrom) {
+      return res.status(400).json({ success: false, message: "Weight To must be greater than Weight From." });
+    }
+
+    // 1. Verify Product exists
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Product does not exist." });
+    }
+    const prodName = prodCheck.rows[0].productname;
+
+    // 2. If subproductid provided, verify it belongs to productid
+    let subProdId = null;
+    let subProdName = "None / General";
+    if (subproductid !== undefined && subproductid !== null && subproductid !== "" && Number(subproductid) > 0) {
+      subProdId = Number(subproductid);
+      const subCheck = await client.execute({
+        sql: `SELECT subproductid, subproductname FROM subproducts WHERE subproductid = ? AND productid = ? LIMIT 1;`,
+        args: [subProdId, Number(productid)],
+      });
+      if (subCheck.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Selected Sub-Product does not belong to this Product." });
+      }
+      subProdName = subCheck.rows[0].subproductname;
+    }
+
+    // 3. Verify Dealer exists
+    const dealerCheck = await client.execute({
+      sql: `SELECT accode, accountname, accounttype FROM account_heads WHERE accode = ? AND UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') LIMIT 1;`,
+      args: [accode.trim()],
+    });
+    if (dealerCheck.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Selected Dealer is not a valid Smith or Dealer account." });
+    }
+    const dealerName = dealerCheck.rows[0].accountname;
+
+    // 4. Overlap check excluding current ID
+    let overlapQuery;
+    let overlapArgs;
+    if (subProdId !== null) {
+      overlapQuery = `
+        SELECT id, weight_from, weight_to 
+        FROM pricesetting 
+        WHERE productid = ? 
+          AND subproductid = ? 
+          AND accode = ? 
+          AND weight_from < ? 
+          AND weight_to > ? 
+          AND id != ?
+        LIMIT 1;
+      `;
+      overlapArgs = [Number(productid), subProdId, accode.trim(), wTo, wFrom, Number(id)];
+    } else {
+      overlapQuery = `
+        SELECT id, weight_from, weight_to 
+        FROM pricesetting 
+        WHERE productid = ? 
+          AND (subproductid IS NULL OR subproductid = 0) 
+          AND accode = ? 
+          AND weight_from < ? 
+          AND weight_to > ? 
+          AND id != ?
+        LIMIT 1;
+      `;
+      overlapArgs = [Number(productid), accode.trim(), wTo, wFrom, Number(id)];
+    }
+
+    const overlapResult = await client.execute({
+      sql: overlapQuery,
+      args: overlapArgs,
+    });
+
+    if (overlapResult.rows.length > 0) {
+      const existing = overlapResult.rows[0];
+      return res.status(400).json({
+        success: false,
+        message: `Weight range ${wFrom}g - ${wTo}g overlaps with existing range (${existing.weight_from}g - ${existing.weight_to}g) for Product '${prodName}', Sub-Product '${subProdName}', and Dealer '${dealerName}'.`,
+      });
+    }
+
+    const vaPer = parseFloat(va_percent) || 0.0;
+    const wst = parseFloat(wastage) || 0.0;
+    const mcPg = parseFloat(mc_per_gram) || 0.0;
+    const mChg = parseFloat(m_charge) || 0.0;
+
+    const now = new Date().toISOString();
+
+    await client.execute({
+      sql: `
+        UPDATE pricesetting
+        SET productid = ?,
+            subproductid = ?,
+            accode = ?,
+            weight_from = ?,
+            weight_to = ?,
+            va_percent = ?,
+            wastage = ?,
+            mc_per_gram = ?,
+            m_charge = ?,
+            updated_at = ?
+        WHERE id = ?;
+      `,
+      args: [
+        Number(productid),
+        subProdId,
+        accode.trim(),
+        wFrom,
+        wTo,
+        vaPer,
+        wst,
+        mcPg,
+        mChg,
+        now,
+        Number(id),
+      ],
+    });
+
+    return res.json({ success: true, message: "Price Setting updated successfully!" });
+  } catch (error) {
+    console.error("updatePriceSetting error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deletePriceSettingController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    await client.execute({
+      sql: `DELETE FROM pricesetting WHERE id = ?;`,
+      args: [Number(id)],
+    });
+
+    return res.json({ success: true, message: "Price Setting deleted successfully!" });
+  } catch (error) {
+    console.error("deletePriceSetting error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 }
