@@ -93,34 +93,48 @@ async function ensureStockTables(client, tenantUrl = "") {
 }
 
 /**
- * Generates a unique sequential Lot Number e.g. 'LOT-20260913-0001'
+ * Returns current financial year code e.g. '2627' for FY 2026-2027 (April-March).
+ */
+function getFinancialYearPrefix(now = new Date()) {
+  const month = now.getMonth() + 1;
+  const fullYear = now.getFullYear();
+  let startYear = fullYear;
+  if (month < 4) {
+    startYear = fullYear - 1;
+  }
+  const endYear = startYear + 1;
+  const startYY = String(startYear).slice(-2);
+  const endYY = String(endYear).slice(-2);
+  return `${startYY}${endYY}`;
+}
+
+/**
+ * Generates a concise unique sequential Lot Number e.g. '2627-1', '2627-2', '2627-3'
  */
 async function generateNextLotNumber(client) {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const datePrefix = `${yyyy}${mm}${dd}`;
+  const fyPrefix = getFinancialYearPrefix();
 
   const res = await client.execute({
-    sql: `SELECT lot_number FROM prepare_sku_lots WHERE lot_number LIKE ? ORDER BY lot_id DESC LIMIT 1;`,
-    args: [`LOT-${datePrefix}-%`],
+    sql: `SELECT lot_number FROM prepare_sku_lots WHERE lot_number LIKE ? OR lot_number LIKE ? ORDER BY lot_id DESC;`,
+    args: [`${fyPrefix}-%`, `${fyPrefix}%`],
   });
 
-  let nextSeq = 1;
+  let maxSeq = 0;
   if (res.rows && res.rows.length > 0) {
-    const lastLot = res.rows[0].lot_number;
-    const parts = String(lastLot).split('-');
-    if (parts.length >= 3) {
-      const lastSeq = parseInt(parts[2], 10);
-      if (!isNaN(lastSeq)) {
-        nextSeq = lastSeq + 1;
+    for (const row of res.rows) {
+      const lotStr = String(row.lot_number || '').trim();
+      const match = lotStr.match(new RegExp(`^${fyPrefix}-?(\\d+)$`));
+      if (match && match[1]) {
+        const n = parseInt(match[1], 10);
+        if (!isNaN(n) && n > maxSeq) {
+          maxSeq = n;
+        }
       }
     }
   }
 
-  const seqStr = String(nextSeq).padStart(4, '0');
-  return `LOT-${datePrefix}-${seqStr}`;
+  const nextSeq = maxSeq + 1;
+  return `${fyPrefix}-${nextSeq}`;
 }
 
 /**

@@ -880,10 +880,11 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     );
   }
 
-  InputDecoration _inputDecoration(String label, {String? hint, Widget? prefixIcon, Widget? suffixIcon, Widget? suffix}) {
+  InputDecoration _inputDecoration(String label, {String? hint, Widget? prefixIcon, Widget? suffixIcon, Widget? suffix, EdgeInsetsGeometry? contentPadding}) {
     return InputDecoration(
       labelText: label,
       hintText: hint,
+      isDense: true,
       prefixIcon: prefixIcon,
       suffixIcon: suffixIcon,
       suffix: suffix,
@@ -891,7 +892,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
       hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      contentPadding: contentPadding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
       focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)), borderSide: BorderSide(color: GlassTheme.primaryNeon, width: 1.5)),
@@ -1183,10 +1184,11 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: _selectedBranchId,
                     decoration: _inputDecoration("Branch *", prefixIcon: const Icon(Icons.storefront_rounded, size: 20)),
                     items: _allBranches.map((b) {
-                      return DropdownMenuItem(value: b.branchId, child: Text(b.branchName, style: const TextStyle(fontSize: 13)));
+                      return DropdownMenuItem(value: b.branchId, child: Text(b.branchName, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis));
                     }).toList(),
                     onChanged: (val) => setState(() => _selectedBranchId = val),
                     validator: (v) => (v == null || v.isEmpty) ? "Branch is required" : null,
@@ -1197,6 +1199,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<int>(
+                    isExpanded: true,
                     value: _selectedDesignerId,
                     decoration: _inputDecoration("Designer *", prefixIcon: const Icon(Icons.design_services_rounded, size: 20)),
                     items: _allDesigners.map((d) {
@@ -1214,6 +1217,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<int>(
+                    isExpanded: true,
                     value: _selectedProductId,
                     decoration: _inputDecoration("Product *", prefixIcon: const Icon(Icons.category_rounded, size: 20)),
                     items: _allProducts.map((p) {
@@ -1242,6 +1246,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<int?>(
+                    isExpanded: true,
                     value: _selectedSubProductId,
                     decoration: _inputDecoration("Sub-Product (Optional)", prefixIcon: const Icon(Icons.subdirectory_arrow_right_rounded, size: 20)),
                     items: [
@@ -1275,6 +1280,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<int>(
+                    isExpanded: true,
                     value: matchingPurityId,
                     decoration: _inputDecoration(
                       "Ornament Purity *",
@@ -1283,7 +1289,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                     items: matchingOrnamentPurities.map((p) {
                       return DropdownMenuItem(
                         value: p.purityid,
-                        child: Text("${p.purityname} (${p.purity.toStringAsFixed(1)}%)", style: const TextStyle(fontSize: 13)),
+                        child: Text("${p.purityname} (${p.purity.toStringAsFixed(1)}%)", style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                       );
                     }).toList(),
                     onChanged: (val) {
@@ -1322,11 +1328,12 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: _isAssorted,
                     decoration: _inputDecoration("Is Assorted? *", prefixIcon: const Icon(Icons.call_split_rounded, size: 20)),
                     items: const [
-                      DropdownMenuItem(value: 'NO', child: Text("NO (Single SKU)", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-                      DropdownMenuItem(value: 'YES', child: Text("YES (Assorted Lot)", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFD97706)))),
+                      DropdownMenuItem(value: 'NO', child: Text("NO (Single SKU)", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                      DropdownMenuItem(value: 'YES', child: Text("YES (Assorted Lot)", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFD97706)), overflow: TextOverflow.ellipsis)),
                     ],
                     onChanged: (val) => setState(() => _isAssorted = val ?? 'NO'),
                   ),
@@ -1569,6 +1576,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                           SizedBox(
                             width: 200,
                             child: DropdownButtonFormField<int?>(
+                              isExpanded: true,
                               value: item.stoneProductId,
                               decoration: _inputDecoration("Stone Product *"),
                               items: stoneProducts.map((p) {
@@ -1590,10 +1598,11 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                           SizedBox(
                             width: 180,
                             child: DropdownButtonFormField<int?>(
+                              isExpanded: true,
                               value: item.stoneSubProductId,
                               decoration: _inputDecoration("Sub-Product"),
                               items: [
-                                const DropdownMenuItem<int?>(value: null, child: Text("-- All / None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))),
+                                const DropdownMenuItem<int?>(value: null, child: Text("-- All / None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis)),
                                 ...matchingStoneSubProducts.map((sp) {
                                   return DropdownMenuItem<int?>(value: sp.subproductid, child: Text(sp.subproductname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
                                 }),
@@ -1606,11 +1615,12 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                           SizedBox(
                             width: 120,
                             child: DropdownButtonFormField<String>(
+                              isExpanded: true,
                               value: item.stoneUnit.toUpperCase() == 'C' ? 'C' : 'G',
                               decoration: _inputDecoration("Unit *"),
                               items: const [
-                                DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-                                DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669)))),
+                                DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                                DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669)), overflow: TextOverflow.ellipsis)),
                               ],
                               onChanged: (val) {
                                 setState(() {
@@ -1797,6 +1807,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                           SizedBox(
                             width: 200,
                             child: DropdownButtonFormField<int?>(
+                              isExpanded: true,
                               value: item.diamondProductId,
                               decoration: _inputDecoration("Diamond Product *"),
                               items: diamondProducts.map((p) {
@@ -1818,10 +1829,11 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                           SizedBox(
                             width: 180,
                             child: DropdownButtonFormField<int?>(
+                              isExpanded: true,
                               value: item.diamondSubProductId,
                               decoration: _inputDecoration("Sub-Product"),
                               items: [
-                                const DropdownMenuItem<int?>(value: null, child: Text("-- All / None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))),
+                                const DropdownMenuItem<int?>(value: null, child: Text("-- All / None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis)),
                                 ...matchingDiamondSubProducts.map((sp) {
                                   return DropdownMenuItem<int?>(value: sp.subproductid, child: Text(sp.subproductname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
                                 }),
@@ -1834,11 +1846,12 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                           SizedBox(
                             width: 120,
                             child: DropdownButtonFormField<String>(
+                              isExpanded: true,
                               value: item.diamondUnit.toUpperCase() == 'G' ? 'G' : 'C',
                               decoration: _inputDecoration("Unit *"),
                               items: const [
-                                DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)))),
-                                DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                                DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)), overflow: TextOverflow.ellipsis)),
+                                DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
                               ],
                               onChanged: (val) {
                                 setState(() {
@@ -1939,11 +1952,12 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
         children: [
           // Search Input
           SizedBox(
-            width: 260,
+            width: 240,
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: "Search Lot #, Designer, Product...",
+                isDense: true,
                 prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF94A3B8)),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -1962,13 +1976,14 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
 
           // Branch Filter
           SizedBox(
-            width: 170,
+            width: 200,
             child: DropdownButtonFormField<String>(
+              isExpanded: true,
               value: _filterBranchId,
-              decoration: _inputDecoration("Branch Filter"),
+              decoration: _inputDecoration("Branch Filter", contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
               items: [
-                const DropdownMenuItem(value: 'ALL', child: Text("All Branches", style: TextStyle(fontSize: 12))),
-                ..._allBranches.map((b) => DropdownMenuItem(value: b.branchId, child: Text(b.branchName, style: const TextStyle(fontSize: 12)))),
+                const DropdownMenuItem(value: 'ALL', child: Text("All Branches", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                ..._allBranches.map((b) => DropdownMenuItem(value: b.branchId, child: Text(b.branchName, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis))),
               ],
               onChanged: (val) {
                 setState(() {
@@ -1981,12 +1996,13 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
 
           // Designer Filter
           SizedBox(
-            width: 170,
+            width: 200,
             child: DropdownButtonFormField<int?>(
+              isExpanded: true,
               value: _filterDesignerId,
-              decoration: _inputDecoration("Designer Filter"),
+              decoration: _inputDecoration("Designer Filter", contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
               items: [
-                const DropdownMenuItem<int?>(value: null, child: Text("All Designers", style: TextStyle(fontSize: 12))),
+                const DropdownMenuItem<int?>(value: null, child: Text("All Designers", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
                 ..._allDesigners.map((d) => DropdownMenuItem<int?>(value: d.designerid, child: Text(d.designername, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis))),
               ],
               onChanged: (val) {
@@ -2000,14 +2016,15 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
 
           // Is Assorted Filter
           SizedBox(
-            width: 150,
+            width: 190,
             child: DropdownButtonFormField<String>(
+              isExpanded: true,
               value: _filterIsAssorted,
-              decoration: _inputDecoration("Assorted Filter"),
+              decoration: _inputDecoration("Assorted Filter", contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
               items: const [
-                DropdownMenuItem(value: 'ALL', child: Text("All Lots", style: TextStyle(fontSize: 12))),
-                DropdownMenuItem(value: 'NO', child: Text("Single SKU (NO)", style: TextStyle(fontSize: 12))),
-                DropdownMenuItem(value: 'YES', child: Text("Assorted (YES)", style: TextStyle(fontSize: 12))),
+                DropdownMenuItem(value: 'ALL', child: Text("All Lots", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'NO', child: Text("Single SKU (NO)", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'YES', child: Text("Assorted (YES)", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
               ],
               onChanged: (val) {
                 setState(() {

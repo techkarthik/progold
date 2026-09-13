@@ -4,11 +4,11 @@ class AppVersion {
   static const String appName = "ProGold";
   static const String version = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '2.7.1',
+    defaultValue: '2.7.2',
   );
   static const String buildDate = String.fromEnvironment(
     'BUILD_DATE',
-    defaultValue: '13-Sep-2026 23:58 IST',
+    defaultValue: '14-Sep-2026 00:15 IST',
   );
   static const String channel = "Cloud Active";
 
