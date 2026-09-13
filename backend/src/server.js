@@ -129,6 +129,12 @@ import {
   getUploadAuthController,
   deleteImageController,
 } from "./controllers/uploadController.js";
+import {
+  getPrepareSkuLotsController,
+  createPrepareSkuLotController,
+  updatePrepareSkuLotController,
+  deletePrepareSkuLotController,
+} from "./controllers/stockController.js";
 import { requireAuth } from "./middleware/authMiddleware.js";
 
 import path from "path";
@@ -287,6 +293,12 @@ app.get("/api/tenant/designers", requireAuth, getDesignersController);
 app.post("/api/tenant/designers", requireAuth, createDesignerController);
 app.put("/api/tenant/designers/:id", requireAuth, updateDesignerController);
 app.delete("/api/tenant/designers/:id", requireAuth, deleteDesignerController);
+
+// Tenant Stock Prepare for SKU CRUD Routes (Stock Menu)
+app.get("/api/tenant/stock/prepare-sku", requireAuth, getPrepareSkuLotsController);
+app.post("/api/tenant/stock/prepare-sku", requireAuth, createPrepareSkuLotController);
+app.put("/api/tenant/stock/prepare-sku/:id", requireAuth, updatePrepareSkuLotController);
+app.delete("/api/tenant/stock/prepare-sku/:id", requireAuth, deletePrepareSkuLotController);
 
 // Tenant System Controls CRUD Routes (4th Menu under Settings)
 app.get("/api/tenant/system-controls", requireAuth, getSystemControlsController);

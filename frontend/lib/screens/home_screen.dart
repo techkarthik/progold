@@ -27,6 +27,7 @@ import 'estimate_screen.dart';
 import 'employee_master_screen.dart';
 import 'sales_and_price_screen.dart';
 import 'smith_purchase_screen.dart';
+import 'prepare_sku_screen.dart';
 import '../services/api_service.dart';
 import '../constants/menu_registry.dart';
 import '../constants/app_version.dart';
@@ -53,8 +54,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (user.allowedMenus.contains(parentCode)) return true;
     }
 
-    // Auto-grant access to new core Estimate or Smith Purchase module if user has POS, Stock, or Master access
-    if ((menuCode.startsWith('M_ESTIMATE') || menuCode.startsWith('M_SMITH_PURCHASE')) &&
+    // Auto-grant access to new core Estimate, Smith Purchase, or Stock modules/submenus
+    if ((menuCode.startsWith('M_ESTIMATE') || menuCode.startsWith('M_SMITH_PURCHASE') || menuCode.startsWith('M_STOCK')) &&
         user.allowedMenus.any((c) => c.startsWith('M_POS') || c.startsWith('M_STOCK') || c.startsWith('M_MASTER'))) {
       return true;
     }
@@ -64,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _selectedModule = "HOME"; // e.g. MenuRegistry.MENU_MASTER, etc.
   String _masterSubmenu = "HUB"; // e.g. MenuRegistry.MASTER_ORGANIZATION, etc.
+  String _stockSubmenu = "HUB"; // e.g. "PREPARE_SKU" or "HUB"
   String _settingsSubmenu = "HUB"; // e.g. "DB_STATUS" or "HUB"
 
   final ApiService _api = ApiService();
@@ -545,13 +547,32 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildDrawerItem(
                     icon: Icons.inventory_2_rounded,
                     title: "Stock Management",
-                    subtitle: "Ornament tags & weights",
-                    isSelected: _selectedModule == "STOCK",
+                    subtitle: "Ornament tags, SKU lots & weights",
+                    isSelected: _selectedModule == "STOCK" && _stockSubmenu == "HUB",
                     onTap: () {
                       Navigator.pop(context);
-                      setState(() => _selectedModule = "STOCK");
+                      setState(() {
+                        _selectedModule = "STOCK";
+                        _stockSubmenu = "HUB";
+                      });
                     },
                   ),
+                  if (_hasAccess(auth, MenuRegistry.STOCK_PREPARE_FOR_SKU)) ...[
+                    const SizedBox(height: 4),
+                    _buildDrawerItem(
+                      icon: Icons.post_add_rounded,
+                      title: "Prepare for SKU",
+                      subtitle: "SKU lot creation & numbering",
+                      isSelected: _selectedModule == "STOCK" && _stockSubmenu == "PREPARE_SKU",
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _selectedModule = "STOCK";
+                          _stockSubmenu = "PREPARE_SKU";
+                        });
+                      },
+                    ),
+                  ],
                 ],
                 if (_hasAccess(auth, MenuRegistry.MENU_ESTIMATE)) ...[
                   const SizedBox(height: 4),
@@ -1234,6 +1255,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         setState(() => _masterSubmenu = "HUB");
                       } else if (module == "SETTINGS" && _settingsSubmenu != "HUB") {
                         setState(() => _settingsSubmenu = "HUB");
+                      } else if (module == "STOCK" && _stockSubmenu != "HUB") {
+                        setState(() => _stockSubmenu = "HUB");
                       } else {
                         setState(() => _selectedModule = "HOME");
                       }
@@ -1245,7 +1268,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ? "MASTER > $_masterSubmenu"
                         : (module == "SETTINGS" && _settingsSubmenu != "HUB"
                             ? "SETTINGS > ${_settingsSubmenu == 'DB_STATUS' ? 'Database Status' : (_settingsSubmenu == 'SYSTEM_CONTROLS' ? 'System Controls' : _settingsSubmenu)}"
-                            : (module == "ESTIMATE" ? "ESTIMATE & QUOTATION DESK" : "$module Workspace")),
+                            : (module == "STOCK" && _stockSubmenu != "HUB"
+                                ? "STOCK > ${_stockSubmenu == 'PREPARE_SKU' ? 'Prepare for SKU' : _stockSubmenu}"
+                                : (module == "ESTIMATE" ? "ESTIMATE & QUOTATION DESK" : "$module Workspace"))),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
                   ),
                   const Spacer(),
@@ -1274,6 +1299,11 @@ class _HomeScreenState extends State<HomeScreen> {
           onNavigateModule: (m) => setState(() => _selectedModule = m),
         );
       case "STOCK":
+        if (_stockSubmenu == "PREPARE_SKU") {
+          return PrepareSkuScreen(
+            onBack: () => setState(() => _stockSubmenu = "HUB"),
+          );
+        }
         return _buildStockWorkspace(auth);
       case "ESTIMATE":
         return EstimateScreen(
@@ -2117,24 +2147,93 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.inventory_2_rounded, color: GlassTheme.accentEmerald, size: 24),
-              SizedBox(width: 10),
-              Text("Stock Inventory & Barcode Tracking", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: GlassTheme.accentEmerald.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.inventory_2_rounded, color: GlassTheme.accentEmerald, size: 24),
+              ),
+              const SizedBox(width: 12),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Stock Inventory & Barcode Tracking", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
+                  SizedBox(height: 2),
+                  Text("Manage item gross weights, net gold weights, stone charges, and RFID/Barcode tag assignments.", style: TextStyle(fontSize: 12, color: GlassTheme.textSecondary)),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Text(
-            "Manage item gross weights, net gold weights, stone charges, and RFID/Barcode tag assignments.",
-            style: TextStyle(fontSize: 13, color: GlassTheme.textSecondary, fontWeight: FontWeight.w600),
-          ),
+          const SizedBox(height: 24),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
           const SizedBox(height: 20),
-          GlassButton(
-            label: "Open Stock Entry & Tagging Console",
-            icon: Icons.qr_code_scanner_rounded,
-            gradient: GlassTheme.emeraldGradient,
-            onPressed: () {},
+
+          // Stock Submodules Grid
+          Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: [
+              if (_hasAccess(auth, MenuRegistry.STOCK_PREPARE_FOR_SKU))
+                _buildSubmenuGridCard(
+                  title: "Prepare for SKU",
+                  desc: "Prepare and group ornament lots, purity rates, stones & diamonds for SKU generation with auto lot numbers",
+                  icon: Icons.post_add_rounded,
+                  color: const Color(0xFF4F46E5),
+                  onTap: () => setState(() => _stockSubmenu = "PREPARE_SKU"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.STOCK_LIVE_INVENTORY))
+                _buildSubmenuGridCard(
+                  title: "Live Stock & Tray Balance",
+                  desc: "Real-time gross/net gold & stone inventory balance across counters",
+                  icon: Icons.grid_view_rounded,
+                  color: const Color(0xFF10B981),
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Live Stock Inventory module active")),
+                    );
+                  },
+                ),
+              if (_hasAccess(auth, MenuRegistry.STOCK_ENTRY))
+                _buildSubmenuGridCard(
+                  title: "Stock Inward & Invoicing",
+                  desc: "Receive manufactured ornaments and gold bars from bullion dealers / karigars",
+                  icon: Icons.add_box_rounded,
+                  color: const Color(0xFFD97706),
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Stock Inward module active")),
+                    );
+                  },
+                ),
+              if (_hasAccess(auth, MenuRegistry.STOCK_BARCODE_TAGS))
+                _buildSubmenuGridCard(
+                  title: "Barcode & RFID Tagging",
+                  desc: "Generate jewelry tags with QR codes & gross weight",
+                  icon: Icons.qr_code_2_rounded,
+                  color: const Color(0xFF06B6D4),
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Barcode & RFID Tagging module active")),
+                    );
+                  },
+                ),
+              if (_hasAccess(auth, MenuRegistry.STOCK_AUDIT))
+                _buildSubmenuGridCard(
+                  title: "Physical Stock Audit",
+                  desc: "Tray-wise physical barcode scanning & variance check",
+                  icon: Icons.fact_check_rounded,
+                  color: const Color(0xFFF59E0B),
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Physical Stock Audit module active")),
+                    );
+                  },
+                ),
+            ],
           ),
         ],
       ),

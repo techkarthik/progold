@@ -53,6 +53,7 @@ class MenuRegistry {
   // ==========================================
   // 3. SUB-MENUS UNDER STOCK (M_STOCK) - Extensible
   // ==========================================
+  static const String STOCK_PREPARE_FOR_SKU = "M_STOCK.PREPARE_FOR_SKU";
   static const String STOCK_LIVE_INVENTORY = "M_STOCK.LIVE_INVENTORY";
   static const String STOCK_ENTRY = "M_STOCK.ENTRY";
   static const String STOCK_BARCODE_TAGS = "M_STOCK.BARCODE_TAGS";

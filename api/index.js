@@ -130,6 +130,12 @@ import {
   getUploadAuthController,
   deleteImageController,
 } from "../backend/src/controllers/uploadController.js";
+import {
+  getPrepareSkuLotsController,
+  createPrepareSkuLotController,
+  updatePrepareSkuLotController,
+  deletePrepareSkuLotController,
+} from "../backend/src/controllers/stockController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -343,6 +349,12 @@ router.get("/tenant/designers", requireAuth, getDesignersController);
 router.post("/tenant/designers", requireAuth, createDesignerController);
 router.put("/tenant/designers/:id", requireAuth, updateDesignerController);
 router.delete("/tenant/designers/:id", requireAuth, deleteDesignerController);
+
+// Tenant Stock Prepare for SKU CRUD Routes (Stock Menu)
+router.get("/tenant/stock/prepare-sku", requireAuth, getPrepareSkuLotsController);
+router.post("/tenant/stock/prepare-sku", requireAuth, createPrepareSkuLotController);
+router.put("/tenant/stock/prepare-sku/:id", requireAuth, updatePrepareSkuLotController);
+router.delete("/tenant/stock/prepare-sku/:id", requireAuth, deletePrepareSkuLotController);
 
 // Tenant System Controls CRUD Routes (4th Menu under Settings)
 router.get("/tenant/system-controls", requireAuth, getSystemControlsController);

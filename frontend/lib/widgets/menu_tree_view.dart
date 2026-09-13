@@ -230,6 +230,13 @@ class MenuTreeRegistry {
       color: Color(0xFF10B981),
       children: [
         MenuTreeNode(
+          code: MenuRegistry.STOCK_PREPARE_FOR_SKU,
+          title: "Prepare for SKU",
+          subtitle: "Prepare and group ornament lots, purity rates & stones for SKU generation",
+          icon: Icons.post_add_rounded,
+          color: Color(0xFF4F46E5),
+        ),
+        MenuTreeNode(
           code: MenuRegistry.STOCK_LIVE_INVENTORY,
           title: "Live Stock & Tray Balance",
           subtitle: "Real-time gross/net gold & stone inventory balance",

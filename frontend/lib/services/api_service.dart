@@ -1471,6 +1471,114 @@ class ApiService {
     }
   }
 
+  // ================= PREPARE FOR SKU (Stock Management) =================
+
+  /// Fetches Prepare SKU Lots with metadata and filtering
+  Future<Map<String, dynamic>> getPrepareSkuLotsData(
+    String token, {
+    String? companyId,
+    String? branchId,
+    int? designerId,
+    int? productId,
+    int? purityId,
+  }) async {
+    try {
+      final queryParams = <String, String>{};
+      if (companyId != null && companyId.trim().isNotEmpty) queryParams['companyid'] = companyId.trim();
+      if (branchId != null && branchId.trim().isNotEmpty && branchId != 'ALL') queryParams['branchid'] = branchId.trim();
+      if (designerId != null && designerId > 0) queryParams['designerid'] = designerId.toString();
+      if (productId != null && productId > 0) queryParams['productid'] = productId.toString();
+      if (purityId != null && purityId > 0) queryParams['purityid'] = purityId.toString();
+
+      final uri = Uri.parse('$baseUrl/tenant/stock/prepare-sku').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+      final res = await http.get(uri, headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['lots'] is List) {
+          final items = (data['lots'] as List).map((i) => PrepareSkuLotRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'lots': items,
+            'total_count': data['total_count'] ?? items.length,
+          };
+        }
+      }
+      return {'success': false, 'lots': <PrepareSkuLotRecord>[], 'total_count': 0};
+    } catch (e) {
+      debugPrint("Error getPrepareSkuLotsData: $e");
+      return {'success': false, 'lots': <PrepareSkuLotRecord>[], 'total_count': 0};
+    }
+  }
+
+  Future<List<PrepareSkuLotRecord>> getPrepareSkuLots(
+    String token, {
+    String? companyId,
+    String? branchId,
+    int? designerId,
+    int? productId,
+    int? purityId,
+  }) async {
+    final data = await getPrepareSkuLotsData(
+      token,
+      companyId: companyId,
+      branchId: branchId,
+      designerId: designerId,
+      productId: productId,
+      purityId: purityId,
+    );
+    return data['lots'] as List<PrepareSkuLotRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createPrepareSkuLot(String token, PrepareSkuLotRecord record) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/stock/prepare-sku'),
+        headers: _headers(token),
+        body: jsonEncode(record.toJson()),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200 || res.statusCode == 201, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updatePrepareSkuLot(String token, int id, PrepareSkuLotRecord record) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/stock/prepare-sku/$id'),
+        headers: _headers(token),
+        body: jsonEncode(record.toJson()),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deletePrepareSkuLot(String token, int id) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/stock/prepare-sku/$id'), headers: _headers(token));
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
   // ================= SYSTEM CONTROLS CRUD (4th Menu under Settings) =================
 
   /// Fetches system controls along with last_sno and next_sno metadata

@@ -922,4 +922,385 @@ class DesignerRecord {
   }
 }
 
+class SkuLotStoneItem {
+  int? stoneProductId;
+  String? stoneProductName;
+  int? stoneSubProductId;
+  String? stoneSubProductName;
+  String stoneUnit; // 'G' for Gram, 'C' for Carat
+  int pcs;
+  double weight;
+
+  SkuLotStoneItem({
+    this.stoneProductId,
+    this.stoneProductName,
+    this.stoneSubProductId,
+    this.stoneSubProductName,
+    this.stoneUnit = 'G',
+    this.pcs = 0,
+    this.weight = 0.0,
+  });
+
+  double get weightInGrams {
+    if (stoneUnit.toUpperCase() == 'C') {
+      return weight * 0.20;
+    }
+    return weight;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'stone_productid': stoneProductId,
+      if (stoneProductName != null) 'stone_productname': stoneProductName,
+      if (stoneSubProductId != null) 'stone_subproductid': stoneSubProductId,
+      if (stoneSubProductName != null) 'stone_subproductname': stoneSubProductName,
+      'stone_unit': stoneUnit,
+      'pcs': pcs,
+      'weight': weight,
+    };
+  }
+
+  factory SkuLotStoneItem.fromJson(Map<String, dynamic> json) {
+    return SkuLotStoneItem(
+      stoneProductId: json['stone_productid'] != null ? int.tryParse(json['stone_productid'].toString()) : null,
+      stoneProductName: json['stone_productname']?.toString(),
+      stoneSubProductId: json['stone_subproductid'] != null ? int.tryParse(json['stone_subproductid'].toString()) : null,
+      stoneSubProductName: json['stone_subproductname']?.toString(),
+      stoneUnit: (json['stone_unit']?.toString().toUpperCase() == 'C') ? 'C' : 'G',
+      pcs: int.tryParse(json['pcs']?.toString() ?? json['total_stone_pcs']?.toString() ?? '0') ?? 0,
+      weight: double.tryParse(json['weight']?.toString() ?? json['total_stone_weight']?.toString() ?? '0') ?? 0.0,
+    );
+  }
+}
+
+class SkuLotDiamondItem {
+  int? diamondProductId;
+  String? diamondProductName;
+  int? diamondSubProductId;
+  String? diamondSubProductName;
+  String diamondUnit; // 'C' for Carat, 'G' for Gram
+  int pcs;
+  double weight;
+
+  SkuLotDiamondItem({
+    this.diamondProductId,
+    this.diamondProductName,
+    this.diamondSubProductId,
+    this.diamondSubProductName,
+    this.diamondUnit = 'C',
+    this.pcs = 0,
+    this.weight = 0.0,
+  });
+
+  double get weightInGrams {
+    if (diamondUnit.toUpperCase() == 'C') {
+      return weight * 0.20;
+    }
+    return weight;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'diamond_productid': diamondProductId,
+      if (diamondProductName != null) 'diamond_productname': diamondProductName,
+      if (diamondSubProductId != null) 'diamond_subproductid': diamondSubProductId,
+      if (diamondSubProductName != null) 'diamond_subproductname': diamondSubProductName,
+      'diamond_unit': diamondUnit,
+      'pcs': pcs,
+      'weight': weight,
+    };
+  }
+
+  factory SkuLotDiamondItem.fromJson(Map<String, dynamic> json) {
+    return SkuLotDiamondItem(
+      diamondProductId: json['diamond_productid'] != null ? int.tryParse(json['diamond_productid'].toString()) : null,
+      diamondProductName: json['diamond_productname']?.toString(),
+      diamondSubProductId: json['diamond_subproductid'] != null ? int.tryParse(json['diamond_subproductid'].toString()) : null,
+      diamondSubProductName: json['diamond_subproductname']?.toString(),
+      diamondUnit: (json['diamond_unit']?.toString().toUpperCase() == 'G') ? 'G' : 'C',
+      pcs: int.tryParse(json['pcs']?.toString() ?? json['total_diamond_pcs']?.toString() ?? '0') ?? 0,
+      weight: double.tryParse(json['weight']?.toString() ?? json['total_diamond_weight']?.toString() ?? '0') ?? 0.0,
+    );
+  }
+}
+
+class PrepareSkuLotRecord {
+  final int? lotId;
+  final String lotNumber;
+  final String companyid;
+  final String branchid;
+  final int designerid;
+  final int productid;
+  final int? subproductid;
+  final int purityid;
+  final double rate;
+  final String isAssorted;
+  final int totalPcs;
+  final double totalGrossWeight;
+  final double totalNetWeight;
+  final int? stoneProductid;
+  final int? stoneSubproductid;
+  final String stoneUnit;
+  final int totalStonePcs;
+  final double totalStoneWeight;
+  final List<SkuLotStoneItem> stoneItems;
+  final int? diamondProductid;
+  final int? diamondSubproductid;
+  final String diamondUnit;
+  final int totalDiamondPcs;
+  final double totalDiamondWeight;
+  final List<SkuLotDiamondItem> diamondItems;
+  final String status;
+  final String remarks;
+  final String? createdAt;
+  final String? updatedAt;
+
+  // Joined presentation labels
+  final String? designername;
+  final String? designershortname;
+  final String? designerAccode;
+  final String? productname;
+  final String? calctype;
+  final String? stocktype;
+  final String? diastone;
+  final String? subproductname;
+  final String? purityname;
+  final String? purityshortname;
+  final double? purity;
+  final String? purityType;
+  final String? branchname;
+  final String? companyname;
+  final String? stoneProductname;
+  final String? stoneSubproductname;
+  final String? diamondProductname;
+  final String? diamondSubproductname;
+
+  PrepareSkuLotRecord({
+    this.lotId,
+    this.lotNumber = '',
+    required this.companyid,
+    required this.branchid,
+    required this.designerid,
+    required this.productid,
+    this.subproductid,
+    required this.purityid,
+    this.rate = 0.0,
+    this.isAssorted = 'NO',
+    this.totalPcs = 1,
+    this.totalGrossWeight = 0.0,
+    this.totalNetWeight = 0.0,
+    this.stoneProductid,
+    this.stoneSubproductid,
+    this.stoneUnit = 'G',
+    this.totalStonePcs = 0,
+    this.totalStoneWeight = 0.0,
+    this.stoneItems = const [],
+    this.diamondProductid,
+    this.diamondSubproductid,
+    this.diamondUnit = 'C',
+    this.totalDiamondPcs = 0,
+    this.totalDiamondWeight = 0.0,
+    this.diamondItems = const [],
+    this.status = 'PENDING_SKU',
+    this.remarks = '',
+    this.createdAt,
+    this.updatedAt,
+    this.designername,
+    this.designershortname,
+    this.designerAccode,
+    this.productname,
+    this.calctype,
+    this.stocktype,
+    this.diastone,
+    this.subproductname,
+    this.purityname,
+    this.purityshortname,
+    this.purity,
+    this.purityType,
+    this.branchname,
+    this.companyname,
+    this.stoneProductname,
+    this.stoneSubproductname,
+    this.diamondProductname,
+    this.diamondSubproductname,
+  });
+
+  factory PrepareSkuLotRecord.fromJson(Map<String, dynamic> json) {
+    List<SkuLotStoneItem> parsedStones = [];
+    if (json['stone_items'] is List) {
+      parsedStones = (json['stone_items'] as List).map((i) => SkuLotStoneItem.fromJson(i)).toList();
+    }
+
+    List<SkuLotDiamondItem> parsedDiamonds = [];
+    if (json['diamond_items'] is List) {
+      parsedDiamonds = (json['diamond_items'] as List).map((i) => SkuLotDiamondItem.fromJson(i)).toList();
+    }
+
+    return PrepareSkuLotRecord(
+      lotId: json['lot_id'] != null ? int.tryParse(json['lot_id'].toString()) : null,
+      lotNumber: json['lot_number']?.toString() ?? '',
+      companyid: json['companyid']?.toString() ?? '',
+      branchid: json['branchid']?.toString() ?? '',
+      designerid: json['designerid'] != null ? int.tryParse(json['designerid'].toString()) ?? 0 : 0,
+      productid: json['productid'] != null ? int.tryParse(json['productid'].toString()) ?? 0 : 0,
+      subproductid: json['subproductid'] != null ? int.tryParse(json['subproductid'].toString()) : null,
+      purityid: json['purityid'] != null ? int.tryParse(json['purityid'].toString()) ?? 0 : 0,
+      rate: json['rate'] != null ? (double.tryParse(json['rate'].toString()) ?? 0.0) : 0.0,
+      isAssorted: json['is_assorted']?.toString().toUpperCase() == 'YES' ? 'YES' : 'NO',
+      totalPcs: json['total_pcs'] != null ? (int.tryParse(json['total_pcs'].toString()) ?? 1) : 1,
+      totalGrossWeight: json['total_gross_weight'] != null ? (double.tryParse(json['total_gross_weight'].toString()) ?? 0.0) : 0.0,
+      totalNetWeight: json['total_net_weight'] != null ? (double.tryParse(json['total_net_weight'].toString()) ?? 0.0) : 0.0,
+      stoneProductid: json['stone_productid'] != null ? int.tryParse(json['stone_productid'].toString()) : null,
+      stoneSubproductid: json['stone_subproductid'] != null ? int.tryParse(json['stone_subproductid'].toString()) : null,
+      stoneUnit: (json['stone_unit']?.toString().toUpperCase() == 'C') ? 'C' : 'G',
+      totalStonePcs: json['total_stone_pcs'] != null ? (int.tryParse(json['total_stone_pcs'].toString()) ?? 0) : 0,
+      totalStoneWeight: json['total_stone_weight'] != null ? (double.tryParse(json['total_stone_weight'].toString()) ?? 0.0) : 0.0,
+      stoneItems: parsedStones,
+      diamondProductid: json['diamond_productid'] != null ? int.tryParse(json['diamond_productid'].toString()) : null,
+      diamondSubproductid: json['diamond_subproductid'] != null ? int.tryParse(json['diamond_subproductid'].toString()) : null,
+      diamondUnit: (json['diamond_unit']?.toString().toUpperCase() == 'G') ? 'G' : 'C',
+      totalDiamondPcs: json['total_diamond_pcs'] != null ? (int.tryParse(json['total_diamond_pcs'].toString()) ?? 0) : 0,
+      totalDiamondWeight: json['total_diamond_weight'] != null ? (double.tryParse(json['total_diamond_weight'].toString()) ?? 0.0) : 0.0,
+      diamondItems: parsedDiamonds,
+      status: json['status']?.toString() ?? 'PENDING_SKU',
+      remarks: json['remarks']?.toString() ?? '',
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
+      designername: json['designername']?.toString(),
+      designershortname: json['designershortname']?.toString(),
+      designerAccode: json['designer_accode']?.toString(),
+      productname: json['productname']?.toString(),
+      calctype: json['calctype']?.toString(),
+      stocktype: json['stocktype']?.toString(),
+      diastone: json['diastone']?.toString(),
+      subproductname: json['subproductname']?.toString(),
+      purityname: json['purityname']?.toString(),
+      purityshortname: json['purityshortname']?.toString(),
+      purity: json['purity'] != null ? double.tryParse(json['purity'].toString()) : null,
+      purityType: json['purity_type']?.toString(),
+      branchname: json['branchname']?.toString(),
+      companyname: json['companyname']?.toString(),
+      stoneProductname: json['stone_productname']?.toString(),
+      stoneSubproductname: json['stone_subproductname']?.toString(),
+      diamondProductname: json['diamond_productname']?.toString(),
+      diamondSubproductname: json['diamond_subproductname']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (lotId != null) 'lot_id': lotId,
+      if (lotNumber.isNotEmpty) 'lot_number': lotNumber,
+      'companyid': companyid,
+      'branchid': branchid,
+      'designerid': designerid,
+      'productid': productid,
+      if (subproductid != null) 'subproductid': subproductid,
+      'purityid': purityid,
+      'rate': rate,
+      'is_assorted': isAssorted,
+      'total_pcs': totalPcs,
+      'total_gross_weight': totalGrossWeight,
+      'total_net_weight': totalNetWeight,
+      if (stoneProductid != null) 'stone_productid': stoneProductid,
+      if (stoneSubproductid != null) 'stone_subproductid': stoneSubproductid,
+      'stone_unit': stoneUnit,
+      'total_stone_pcs': totalStonePcs,
+      'total_stone_weight': totalStoneWeight,
+      'stone_items': stoneItems.map((s) => s.toJson()).toList(),
+      if (diamondProductid != null) 'diamond_productid': diamondProductid,
+      if (diamondSubproductid != null) 'diamond_subproductid': diamondSubproductid,
+      'diamond_unit': diamondUnit,
+      'total_diamond_pcs': totalDiamondPcs,
+      'total_diamond_weight': totalDiamondWeight,
+      'diamond_items': diamondItems.map((d) => d.toJson()).toList(),
+      'status': status,
+      'remarks': remarks,
+    };
+  }
+
+  PrepareSkuLotRecord copyWith({
+    int? lotId,
+    String? lotNumber,
+    String? companyid,
+    String? branchid,
+    int? designerid,
+    int? productid,
+    int? subproductid,
+    int? purityid,
+    double? rate,
+    String? isAssorted,
+    int? totalPcs,
+    double? totalGrossWeight,
+    double? totalNetWeight,
+    int? stoneProductid,
+    int? stoneSubproductid,
+    String? stoneUnit,
+    int? totalStonePcs,
+    double? totalStoneWeight,
+    List<SkuLotStoneItem>? stoneItems,
+    int? diamondProductid,
+    int? diamondSubproductid,
+    String? diamondUnit,
+    int? totalDiamondPcs,
+    double? totalDiamondWeight,
+    List<SkuLotDiamondItem>? diamondItems,
+    String? status,
+    String? remarks,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return PrepareSkuLotRecord(
+      lotId: lotId ?? this.lotId,
+      lotNumber: lotNumber ?? this.lotNumber,
+      companyid: companyid ?? this.companyid,
+      branchid: branchid ?? this.branchid,
+      designerid: designerid ?? this.designerid,
+      productid: productid ?? this.productid,
+      subproductid: subproductid ?? this.subproductid,
+      purityid: purityid ?? this.purityid,
+      rate: rate ?? this.rate,
+      isAssorted: isAssorted ?? this.isAssorted,
+      totalPcs: totalPcs ?? this.totalPcs,
+      totalGrossWeight: totalGrossWeight ?? this.totalGrossWeight,
+      totalNetWeight: totalNetWeight ?? this.totalNetWeight,
+      stoneProductid: stoneProductid ?? this.stoneProductid,
+      stoneSubproductid: stoneSubproductid ?? this.stoneSubproductid,
+      stoneUnit: stoneUnit ?? this.stoneUnit,
+      totalStonePcs: totalStonePcs ?? this.totalStonePcs,
+      totalStoneWeight: totalStoneWeight ?? this.totalStoneWeight,
+      stoneItems: stoneItems ?? this.stoneItems,
+      diamondProductid: diamondProductid ?? this.diamondProductid,
+      diamondSubproductid: diamondSubproductid ?? this.diamondSubproductid,
+      diamondUnit: diamondUnit ?? this.diamondUnit,
+      totalDiamondPcs: totalDiamondPcs ?? this.totalDiamondPcs,
+      totalDiamondWeight: totalDiamondWeight ?? this.totalDiamondWeight,
+      diamondItems: diamondItems ?? this.diamondItems,
+      status: status ?? this.status,
+      remarks: remarks ?? this.remarks,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      designername: designername,
+      designershortname: designershortname,
+      designerAccode: designerAccode,
+      productname: productname,
+      calctype: calctype,
+      stocktype: stocktype,
+      diastone: diastone,
+      subproductname: subproductname,
+      purityname: purityname,
+      purityshortname: purityshortname,
+      purity: purity,
+      purityType: purityType,
+      branchname: branchname,
+      companyname: companyname,
+      stoneProductname: stoneProductname,
+      stoneSubproductname: stoneSubproductname,
+      diamondProductname: diamondProductname,
+      diamondSubproductname: diamondSubproductname,
+    );
+  }
+}
+
+
 
