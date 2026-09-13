@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/branch_model.dart';
 import '../models/inventory_models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
@@ -23,9 +24,11 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   List<ProductRecord> _allProducts = [];
   List<SubProductRecord> _allSubProducts = [];
   List<Map<String, dynamic>> _allDealers = [];
+  List<Branch> _allBranches = [];
 
   bool _isLoading = false;
   String _searchQuery = '';
+  String _filterBranchId = 'ALL';
   int? _filterProductId;
   String? _filterDealerAccode;
   bool _isTableView = false;
@@ -37,6 +40,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   PriceSettingRecord? _editingRecord;
   final _formKey = GlobalKey<FormState>();
 
+  String _selectedBranchId = '';
   int? _selectedProductId;
   int? _selectedSubProductId;
   String? _selectedDealerAccode;
@@ -81,6 +85,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
         _api.getProducts(token),
         _api.getSubProducts(token),
         _api.getPriceSettingDealers(token),
+        _api.getBranches(token, companyId: auth.activeCompanyId),
       ]);
 
       if (mounted) {
@@ -88,12 +93,14 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
         final products = results[1] as List<ProductRecord>;
         final subProducts = results[2] as List<SubProductRecord>;
         final dealers = results[3] as List<Map<String, dynamic>>;
+        final branches = results[4] as List<Branch>;
 
         setState(() {
           _priceSettings = psData['price_settings'] as List<PriceSettingRecord>? ?? [];
           _allProducts = products;
           _allSubProducts = subProducts;
           _allDealers = dealers;
+          _allBranches = branches;
 
           if ((_selectedProductId == null || !_allProducts.any((p) => p.productid == _selectedProductId)) &&
               _allProducts.isNotEmpty) {
@@ -125,9 +132,11 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   void _applyFilter() {
     final q = _searchQuery.trim().toLowerCase();
     _filteredPriceSettings = _priceSettings.where((ps) {
+      final matchesBranch = _filterBranchId == 'ALL' ||
+          (ps.branchid ?? '').toUpperCase() == _filterBranchId.toUpperCase();
       final matchesProduct = _filterProductId == null || ps.productid == _filterProductId;
       final matchesDealer = _filterDealerAccode == null || ps.accode == _filterDealerAccode;
-      if (!matchesProduct || !matchesDealer) return false;
+      if (!matchesBranch || !matchesProduct || !matchesDealer) return false;
 
       if (q.isEmpty) return true;
 
@@ -135,6 +144,8 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
           (ps.subproductname ?? '').toLowerCase().contains(q) ||
           (ps.dealername ?? '').toLowerCase().contains(q) ||
           (ps.accounttype ?? '').toLowerCase().contains(q) ||
+          (ps.branchname ?? '').toLowerCase().contains(q) ||
+          (ps.branchid ?? '').toLowerCase().contains(q) ||
           ps.accode.toLowerCase().contains(q) ||
           ps.weightFrom.toString().contains(q) ||
           ps.weightTo.toString().contains(q) ||
@@ -159,6 +170,9 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
     }
 
     final matching = _priceSettings.where((ps) {
+      final psBranch = (ps.branchid ?? '').toUpperCase();
+      final selBranch = _selectedBranchId.toUpperCase();
+      if (psBranch != selBranch) return false;
       if (ps.productid != _selectedProductId) return false;
       if (ps.accode != _selectedDealerAccode) return false;
 
@@ -197,12 +211,19 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   String _getWeightRangeHelperText() {
     if (_selectedProductId == null || _selectedDealerAccode == null) return '';
     final matching = _priceSettings.where((ps) {
+      final psBranch = (ps.branchid ?? '').toUpperCase();
+      final selBranch = _selectedBranchId.toUpperCase();
+      if (psBranch != selBranch) return false;
       if (ps.productid != _selectedProductId) return false;
       if (ps.accode != _selectedDealerAccode) return false;
       final psSub = (ps.subproductid == null || ps.subproductid == 0) ? null : ps.subproductid;
       final selSub = (_selectedSubProductId == null || _selectedSubProductId == 0) ? null : _selectedSubProductId;
       return psSub == selSub;
     }).toList();
+
+    final branchName = _selectedBranchId.isEmpty
+        ? "Global / All Branches"
+        : (_allBranches.where((b) => b.branchId.toUpperCase() == _selectedBranchId.toUpperCase()).firstOrNull?.branchName ?? _selectedBranchId);
 
     if (matching.isNotEmpty) {
       matching.sort((a, b) => a.weightFrom.compareTo(b.weightFrom));
@@ -211,9 +232,9 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
       for (final m in matching) {
         if (m.weightTo > maxTo) maxTo = m.weightTo;
       }
-      return "Existing range(s): $ranges. Next weight starts automatically at ${(maxTo + 0.001).toStringAsFixed(3)}g.";
+      return "[$branchName] Existing range(s): $ranges. Next weight starts automatically at ${(maxTo + 0.001).toStringAsFixed(3)}g.";
     } else {
-      return "No prior ranges found for this combination. New weight range starts from 0.000g.";
+      return "[$branchName] No prior ranges found for this combination. New weight range starts from 0.000g.";
     }
   }
 
@@ -222,6 +243,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
       _editingRecord = existing;
       _showForm = true;
       if (existing != null) {
+        _selectedBranchId = existing.branchid ?? '';
         _selectedProductId = existing.productid;
         _selectedSubProductId = existing.subproductid;
         _selectedDealerAccode = existing.accode;
@@ -238,6 +260,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   }
 
   void _resetFormFields() {
+    _selectedBranchId = '';
     _selectedProductId = _allProducts.isNotEmpty ? _allProducts.first.productid : null;
     _selectedSubProductId = null; // None / General by default
     _selectedDealerAccode = _allDealers.isNotEmpty ? _allDealers.first['accode']?.toString() : null;
@@ -303,6 +326,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
 
     final record = PriceSettingRecord(
       id: _editingRecord?.id,
+      branchid: _selectedBranchId,
       productid: _selectedProductId!,
       subproductid: _selectedSubProductId,
       accode: _selectedDealerAccode!,
@@ -576,6 +600,10 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   Widget _buildSummaryStats() {
     final uniqueProducts = _priceSettings.map((p) => p.productid).toSet().length;
     final uniqueDealers = _priceSettings.map((p) => p.accode).toSet().length;
+    final uniqueBranches = _priceSettings
+        .map((p) => (p.branchid == null || p.branchid!.isEmpty) ? 'GLOBAL' : p.branchid!.toUpperCase())
+        .toSet()
+        .length;
 
     return Row(
       children: [
@@ -603,6 +631,15 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
             value: uniqueDealers.toString(),
             icon: Icons.badge_rounded,
             color: const Color(0xFFF59E0B),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _buildMetricCard(
+            title: "Active Branches",
+            value: uniqueBranches.toString(),
+            icon: Icons.store_rounded,
+            color: const Color(0xFF8B5CF6),
           ),
         ),
       ],
@@ -695,126 +732,194 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
               ],
             ),
             const Divider(height: 24, color: Color(0xFFE2E8F0)),
-            // Row 1: Product, Sub-Product, Dealer
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. PRODUCTNAME DROPDOWN (Stores productid)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Product Name *",
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<int>(
-                        value: _selectedProductId,
-                        decoration: _inputDecoration("Select Product"),
-                        items: _allProducts.map((p) {
-                          return DropdownMenuItem<int>(
-                            value: p.productid,
-                            child: Text(
-                              p.productname,
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedProductId = val;
-                            final subs = _getAvailableSubProducts(val);
-                            if (_selectedSubProductId != null && !subs.any((s) => s.subproductid == _selectedSubProductId)) {
-                              _selectedSubProductId = null;
-                            }
-                            _autoCalculateNextWeightRange();
-                          });
-                        },
-                        validator: (val) => val == null ? "Product is required" : null,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // 2. SUB-PRODUCTNAME DROPDOWN (Stores subproductid)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Sub-Product Name",
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<int?>(
-                        value: _selectedSubProductId,
-                        decoration: _inputDecoration("General / None"),
-                        items: [
-                          const DropdownMenuItem<int?>(
-                            value: null,
-                            child: Text("(None / Main Product Only)", style: TextStyle(fontSize: 13, color: Colors.grey)),
-                          ),
-                          ...availableSubProducts.map((sp) {
-                            return DropdownMenuItem<int?>(
-                              value: sp.subproductid,
-                              child: Text(
-                                sp.subproductname,
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }),
-                        ],
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedSubProductId = val;
-                            _autoCalculateNextWeightRange();
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // 3. DEALERNAME DROPDOWN (Stores accode, Filtered to SMITH & DEALER)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Dealer / Smith Name *",
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<String>(
-                        value: _selectedDealerAccode,
-                        decoration: _inputDecoration("Select Dealer / Smith"),
-                        items: _allDealers.map((d) {
-                          final name = d['accountname'] ?? d['accode'];
-                          final type = d['accounttype'] ?? 'DEALER';
+            // Row 1: Branch, Product, Sub-Product, Dealer
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 950;
+
+                final branchField = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Branch",
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _allBranches.any((b) => b.branchId.toUpperCase() == _selectedBranchId.toUpperCase())
+                          ? _selectedBranchId
+                          : (_selectedBranchId.isEmpty ? '' : ''),
+                      decoration: _inputDecoration("Select Branch"),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: '',
+                          child: Text("Global / All Branches", style: TextStyle(fontSize: 13, color: Color(0xFF6366F1), fontWeight: FontWeight.w700)),
+                        ),
+                        ..._allBranches.map((b) {
                           return DropdownMenuItem<String>(
-                            value: d['accode']?.toString(),
+                            value: b.branchId,
                             child: Text(
-                              "$name ($type)",
+                              "${b.branchId} - ${b.branchName}",
                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                               overflow: TextOverflow.ellipsis,
                             ),
                           );
-                        }).toList(),
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedDealerAccode = val;
-                            _autoCalculateNextWeightRange();
-                          });
-                        },
-                        validator: (val) => (val == null || val.isEmpty) ? "Dealer is required" : null,
+                        }),
+                      ],
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedBranchId = val ?? '';
+                          _autoCalculateNextWeightRange();
+                        });
+                      },
+                    ),
+                  ],
+                );
+
+                final productField = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Product Name *",
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<int>(
+                      value: _selectedProductId,
+                      decoration: _inputDecoration("Select Product"),
+                      items: _allProducts.map((p) {
+                        return DropdownMenuItem<int>(
+                          value: p.productid,
+                          child: Text(
+                            p.productname,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedProductId = val;
+                          final subs = _getAvailableSubProducts(val);
+                          if (_selectedSubProductId != null && !subs.any((s) => s.subproductid == _selectedSubProductId)) {
+                            _selectedSubProductId = null;
+                          }
+                          _autoCalculateNextWeightRange();
+                        });
+                      },
+                      validator: (val) => val == null ? "Product is required" : null,
+                    ),
+                  ],
+                );
+
+                final subProductField = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Sub-Product Name",
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<int?>(
+                      value: _selectedSubProductId,
+                      decoration: _inputDecoration("General / None"),
+                      items: [
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text("(None / Main Product Only)", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                        ),
+                        ...availableSubProducts.map((sp) {
+                          return DropdownMenuItem<int?>(
+                            value: sp.subproductid,
+                            child: Text(
+                              sp.subproductname,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }),
+                      ],
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedSubProductId = val;
+                          _autoCalculateNextWeightRange();
+                        });
+                      },
+                    ),
+                  ],
+                );
+
+                final dealerField = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Dealer / Smith Name *",
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: GlassTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _selectedDealerAccode,
+                      decoration: _inputDecoration("Select Dealer / Smith"),
+                      items: _allDealers.map((d) {
+                        final name = d['accountname'] ?? d['accode'];
+                        final type = d['accounttype'] ?? 'DEALER';
+                        return DropdownMenuItem<String>(
+                          value: d['accode']?.toString(),
+                          child: Text(
+                            "$name ($type)",
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedDealerAccode = val;
+                          _autoCalculateNextWeightRange();
+                        });
+                      },
+                      validator: (val) => (val == null || val.isEmpty) ? "Dealer is required" : null,
+                    ),
+                  ],
+                );
+
+                if (isWide) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: branchField),
+                      const SizedBox(width: 14),
+                      Expanded(child: productField),
+                      const SizedBox(width: 14),
+                      Expanded(child: subProductField),
+                      const SizedBox(width: 14),
+                      Expanded(child: dealerField),
+                    ],
+                  );
+                } else {
+                  return Column(
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: branchField),
+                          const SizedBox(width: 14),
+                          Expanded(child: productField),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: subProductField),
+                          const SizedBox(width: 14),
+                          Expanded(child: dealerField),
+                        ],
                       ),
                     ],
-                  ),
-                ),
-              ],
+                  );
+                }
+              },
             ),
             const SizedBox(height: 16),
             // Helper info banner for weight range auto-continuation
@@ -1035,7 +1140,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText: "Search by Product, Sub-product, Dealer name...",
+              hintText: "Search by Product, Sub-product, Dealer, Branch...",
               prefixIcon: const Icon(Icons.search, color: GlassTheme.textSecondary, size: 20),
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
@@ -1063,7 +1168,30 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
             },
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
+        // Filter by Branch
+        Expanded(
+          flex: 1,
+          child: DropdownButtonFormField<String>(
+            value: _filterBranchId,
+            decoration: _filterDecoration("Branch"),
+            items: [
+              const DropdownMenuItem<String>(value: 'ALL', child: Text("All Branches", style: TextStyle(fontSize: 13))),
+              const DropdownMenuItem<String>(value: '', child: Text("Global / All Only", style: TextStyle(fontSize: 13))),
+              ..._allBranches.map((b) => DropdownMenuItem<String>(
+                value: b.branchId,
+                child: Text("${b.branchId} - ${b.branchName}", style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+              )),
+            ],
+            onChanged: (val) {
+              setState(() {
+                _filterBranchId = val ?? 'ALL';
+                _applyFilter();
+              });
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
         // Filter by Product
         Expanded(
           flex: 1,
@@ -1072,7 +1200,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
             decoration: _filterDecoration("All Products"),
             items: [
               const DropdownMenuItem<int?>(value: null, child: Text("All Products", style: TextStyle(fontSize: 13))),
-              ..._allProducts.map((p) => DropdownMenuItem<int?>(value: p.productid, child: Text(p.productname, style: const TextStyle(fontSize: 13)))),
+              ..._allProducts.map((p) => DropdownMenuItem<int?>(value: p.productid, child: Text(p.productname, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis))),
             ],
             onChanged: (val) {
               setState(() {
@@ -1082,7 +1210,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
             },
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         // Filter by Dealer
         Expanded(
           flex: 1,
@@ -1091,7 +1219,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
             decoration: _filterDecoration("All Dealers"),
             items: [
               const DropdownMenuItem<String?>(value: null, child: Text("All Dealers / Smiths", style: TextStyle(fontSize: 13))),
-              ..._allDealers.map((d) => DropdownMenuItem<String?>(value: d['accode']?.toString(), child: Text(d['accountname'] ?? d['accode'], style: const TextStyle(fontSize: 13)))),
+              ..._allDealers.map((d) => DropdownMenuItem<String?>(value: d['accode']?.toString(), child: Text(d['accountname'] ?? d['accode'], style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis))),
             ],
             onChanged: (val) {
               setState(() {
@@ -1139,6 +1267,11 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   }
 
   Widget _buildPriceSettingCard(PriceSettingRecord ps) {
+    final isGlobal = (ps.branchid == null || ps.branchid!.isEmpty || ps.branchid == 'ALL');
+    final branchText = isGlobal
+        ? "Global / All"
+        : (ps.branchname != null && ps.branchname!.isNotEmpty ? "${ps.branchid} - ${ps.branchname}" : ps.branchid!);
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1198,9 +1331,40 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          // Dealer tag & Weight range badge
-          Row(
+          // Branch tag & Dealer tag & Weight range badge
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              // Branch Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isGlobal ? const Color(0xFF6366F1).withValues(alpha: 0.1) : const Color(0xFF10B981).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isGlobal ? Icons.public_rounded : Icons.store_rounded,
+                      size: 12,
+                      color: isGlobal ? const Color(0xFF4F46E5) : const Color(0xFF059669),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      branchText,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isGlobal ? const Color(0xFF4F46E5) : const Color(0xFF059669),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Dealer Badge
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -1219,16 +1383,16 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                   ],
                 ),
               ),
-              const Spacer(),
+              // Weight Range Badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFF6366F1).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   "${ps.weightFrom.toStringAsFixed(2)}g - ${ps.weightTo.toStringAsFixed(2)}g",
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF6366F1)),
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF6366F1)),
                 ),
               ),
             ],
@@ -1300,6 +1464,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
             columnSpacing: 24,
             columns: const [
               DataColumn(label: Text("#", style: TextStyle(fontWeight: FontWeight.w800, color: GlassTheme.textPrimary))),
+              DataColumn(label: Text("BRANCH", style: TextStyle(fontWeight: FontWeight.w800, color: GlassTheme.textPrimary))),
               DataColumn(label: Text("PRODUCT", style: TextStyle(fontWeight: FontWeight.w800, color: GlassTheme.textPrimary))),
               DataColumn(label: Text("SUB-PRODUCT", style: TextStyle(fontWeight: FontWeight.w800, color: GlassTheme.textPrimary))),
               DataColumn(label: Text("DEALER / SMITH", style: TextStyle(fontWeight: FontWeight.w800, color: GlassTheme.textPrimary))),
@@ -1311,9 +1476,31 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
               DataColumn(label: Text("ACTIONS", style: TextStyle(fontWeight: FontWeight.w800, color: GlassTheme.textPrimary))),
             ],
             rows: _filteredPriceSettings.map((ps) {
+              final isGlobal = (ps.branchid == null || ps.branchid!.isEmpty || ps.branchid == 'ALL');
+              final branchText = isGlobal
+                  ? "Global / All"
+                  : (ps.branchname != null && ps.branchname!.isNotEmpty ? "${ps.branchid} (${ps.branchname})" : ps.branchid!);
+
               return DataRow(
                 cells: [
                   DataCell(Text(ps.id.toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: GlassTheme.textSecondary))),
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isGlobal ? const Color(0xFF6366F1).withValues(alpha: 0.1) : const Color(0xFF10B981).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        branchText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isGlobal ? const Color(0xFF4F46E5) : const Color(0xFF059669),
+                        ),
+                      ),
+                    ),
+                  ),
                   DataCell(Text(ps.productname ?? "Prod #${ps.productid}", style: const TextStyle(fontWeight: FontWeight.w700))),
                   DataCell(Text(ps.subproductname != null && ps.subproductname!.isNotEmpty ? ps.subproductname! : "—", style: TextStyle(color: ps.subproductname != null ? const Color(0xFFEC4899) : Colors.grey))),
                   DataCell(Text(ps.dealername ?? ps.accode, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFFD97706)))),

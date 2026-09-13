@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/tenant_model.dart';
 import '../models/user_model.dart';
+import '../models/company_model.dart';
 import '../services/api_service.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -31,6 +32,11 @@ class AuthProvider with ChangeNotifier {
   bool _isReinstallingDb = false;
   TursoTestResult? _tenantDbHealth;
 
+  // Multi-Company Scoping & Login Selection State
+  Company? _activeCompany;
+  List<Company> _availableCompanies = [];
+  bool _isSelectingCompany = false;
+
   // Verification-First Login State
   String? _userRole; // "ADMIN" or "USER"
   AppUser? _currentUser; // populated if role is USER
@@ -42,7 +48,7 @@ class AuthProvider with ChangeNotifier {
   // Getters
   Tenant? get currentTenant => _currentTenant;
   String? get authToken => _authToken;
-  bool get isAuthenticated => _authToken != null && _currentTenant != null;
+  bool get isAuthenticated => _authToken != null && _currentTenant != null && !_isSelectingCompany;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   String? get successMessage => _successMessage;
@@ -59,6 +65,13 @@ class AuthProvider with ChangeNotifier {
   bool get isLoadingTables => _isLoadingTables;
   bool get isReinstallingDb => _isReinstallingDb;
   TursoTestResult? get tenantDbHealth => _tenantDbHealth;
+
+  // Multi-Company Getters
+  Company? get activeCompany => _activeCompany;
+  String get activeCompanyId => _activeCompany?.companyId ?? '';
+  String get activeCompanyName => _activeCompany?.companyName ?? (_currentTenant?.businessName ?? 'ProGold ERP');
+  List<Company> get availableCompanies => _availableCompanies;
+  bool get isSelectingCompany => _isSelectingCompany;
 
   String? get userRole => _userRole;
   AppUser? get currentUser => _currentUser;
@@ -82,6 +95,8 @@ class AuthProvider with ChangeNotifier {
   Future<void> _loadSavedSession() async {
     final prefs = await SharedPreferences.getInstance();
     _authToken = prefs.getString('auth_token');
+    final savedCompanyId = prefs.getString('active_company_id');
+
     if (_authToken != null) {
       final profileData = await _api.getProfile(_authToken!);
       if (profileData != null && profileData['tenant'] != null) {
@@ -92,16 +107,71 @@ class AuthProvider with ChangeNotifier {
         } else {
           _currentUser = null;
         }
+
+        // Fetch available companies for the tenant
+        try {
+          final comps = await _api.getCompanies(_authToken!);
+          _availableCompanies = comps;
+
+          if (savedCompanyId != null && savedCompanyId.isNotEmpty) {
+            final match = comps.where((c) => c.companyId.toUpperCase() == savedCompanyId.toUpperCase()).firstOrNull;
+            if (match != null) {
+              _activeCompany = match;
+            }
+          }
+
+          if (_activeCompany == null) {
+            if (comps.length == 1) {
+              _activeCompany = comps.first;
+              await prefs.setString('active_company_id', _activeCompany!.companyId);
+            } else if (comps.length > 1) {
+              // Multiple companies: require selection
+              _isSelectingCompany = true;
+            }
+          }
+        } catch (_) {}
+
         fetchTenantDbOverview();
       } else {
         _authToken = null;
         _currentTenant = null;
         _userRole = null;
         _currentUser = null;
+        _activeCompany = null;
+        _availableCompanies = [];
+        _isSelectingCompany = false;
         await prefs.remove('auth_token');
+        await prefs.remove('active_company_id');
       }
       notifyListeners();
     }
+  }
+
+  /// Select active company and persist to preferences
+  Future<void> selectCompany(Company company) async {
+    _activeCompany = company;
+    _isSelectingCompany = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('active_company_id', company.companyId);
+    notifyListeners();
+  }
+
+  /// Reload available companies
+  Future<void> loadCompanies() async {
+    if (_authToken == null) return;
+    try {
+      final comps = await _api.getCompanies(_authToken!);
+      _availableCompanies = comps;
+      if (_activeCompany != null) {
+        final match = comps.where((c) => c.companyId.toUpperCase() == _activeCompany!.companyId.toUpperCase()).firstOrNull;
+        if (match != null) {
+          _activeCompany = match;
+        }
+      } else if (comps.isNotEmpty) {
+        _activeCompany = comps.first;
+      }
+      notifyListeners();
+    } catch (_) {}
   }
 
   /// Request OTP for registration
@@ -279,7 +349,32 @@ class AuthProvider with ChangeNotifier {
       if (_authToken != null) {
         await prefs.setString('auth_token', _authToken!);
       }
-      _successMessage = "Welcome back!";
+
+      // Fetch companies and determine if company selection is required
+      try {
+        final companies = await _api.getCompanies(_authToken!);
+        _availableCompanies = companies;
+
+        if (companies.length > 1) {
+          _isSelectingCompany = true;
+          _activeCompany = null;
+          _successMessage = "Credentials verified. Please select company.";
+        } else if (companies.length == 1) {
+          _activeCompany = companies.first;
+          _isSelectingCompany = false;
+          if (_authToken != null) {
+            await prefs.setString('active_company_id', _activeCompany!.companyId);
+          }
+          _successMessage = "Welcome back!";
+        } else {
+          _activeCompany = null;
+          _isSelectingCompany = false;
+          _successMessage = "Welcome back!";
+        }
+      } catch (_) {
+        _isSelectingCompany = false;
+      }
+
       fetchTenantDbOverview();
       notifyListeners();
       return true;
@@ -426,6 +521,9 @@ class AuthProvider with ChangeNotifier {
     _currentTenant = null;
     _userRole = null;
     _currentUser = null;
+    _activeCompany = null;
+    _availableCompanies = [];
+    _isSelectingCompany = false;
     _otpSent = false;
     _otpVerified = false;
     _tursoTestResult = null;
@@ -436,6 +534,7 @@ class AuthProvider with ChangeNotifier {
     _verifiedEmailRole = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
+    await prefs.remove('active_company_id');
     notifyListeners();
   }
 

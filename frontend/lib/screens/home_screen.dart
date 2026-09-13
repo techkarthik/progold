@@ -27,6 +27,7 @@ import 'sales_and_price_screen.dart';
 import 'smith_purchase_screen.dart';
 import '../services/api_service.dart';
 import '../constants/menu_registry.dart';
+import '../constants/app_version.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -259,6 +260,49 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       actions: [
+        // Active Company Indicator & Switcher Pill
+        if (auth.activeCompany != null || auth.availableCompanies.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: InkWell(
+              onTap: () => _showCompanySwitcherDialog(context, auth),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x060F172A), blurRadius: 4, offset: Offset(0, 1)),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.corporate_fare_rounded, size: 16, color: GlassTheme.primaryNeon),
+                    const SizedBox(width: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 160),
+                      child: Text(
+                        auth.activeCompany != null
+                            ? "${auth.activeCompany!.companyName} (${auth.activeCompany!.companyId})"
+                            : "Select Company",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: GlassTheme.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: GlassTheme.textMuted),
+                  ],
+                ),
+              ),
+            ),
+          ),
         if (_selectedModule != "HOME")
           TextButton.icon(
             style: TextButton.styleFrom(foregroundColor: GlassTheme.primaryNeon),
@@ -381,6 +425,65 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Active Company Card in Drawer
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.corporate_fare_rounded, size: 16, color: GlassTheme.primaryNeon),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "ACTIVE OPERATING COMPANY",
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: GlassTheme.textMuted,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            Text(
+                              auth.activeCompany != null
+                                  ? "${auth.activeCompany!.companyName} (${auth.activeCompany!.companyId})"
+                                  : "No Company Selected",
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: GlassTheme.textPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (auth.availableCompanies.length > 1)
+                        InkWell(
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showCompanySwitcherDialog(context, auth);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: GlassTheme.primaryNeon.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(Icons.swap_horiz_rounded, size: 16, color: GlassTheme.primaryNeon),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -586,9 +689,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    const Text(
-                      "ProGold v2.4.0 • Build: 03-Sep-2026 22:45 IST",
-                      style: TextStyle(
+                    Text(
+                      AppVersion.drawerVersion,
+                      style: const TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                         color: GlassTheme.textMuted,
@@ -872,9 +975,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
-                      "ProGold v2.4.0 • Build: 03-Sep-2026 22:45 IST • Cloud Active",
-                      style: TextStyle(
+                    Text(
+                      AppVersion.badgeVersion,
+                      style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         color: GlassTheme.textSecondary,
@@ -2556,4 +2659,129 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ================= COMPANY SWITCHER DIALOG =================
+  void _showCompanySwitcherDialog(BuildContext context, AuthProvider auth) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+        contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: GlassTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.corporate_fare_rounded, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Switch Operating Company", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary)),
+                  Text("Select company to isolate transactions and branch data", style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 520,
+          child: auth.availableCompanies.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: Text("No corporate companies registered yet.", style: TextStyle(color: GlassTheme.textMuted))),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: auth.availableCompanies.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, idx) {
+                    final comp = auth.availableCompanies[idx];
+                    final isSelected = auth.activeCompanyId.toUpperCase() == comp.companyId.toUpperCase();
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: isSelected ? GlassTheme.primaryNeon.withValues(alpha: 0.06) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? GlassTheme.primaryNeon : const Color(0xFFE2E8F0),
+                          width: isSelected ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: ListTile(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        onTap: () {
+                          auth.selectCompany(comp);
+                          Navigator.pop(ctx);
+                          setState(() {});
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("Switched active company to ${comp.companyName} (${comp.companyId})"),
+                              backgroundColor: GlassTheme.accentEmerald,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: isSelected ? GlassTheme.primaryNeon : const Color(0xFFE2E8F0),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: Text(
+                              comp.companyId,
+                              style: TextStyle(
+                                color: isSelected ? Colors.white : GlassTheme.textPrimary,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          comp.companyName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                            color: isSelected ? GlassTheme.primaryNeon : GlassTheme.textPrimary,
+                          ),
+                        ),
+                        subtitle: Text(
+                          [
+                            if (comp.city.isNotEmpty) comp.city,
+                            if (comp.state.isNotEmpty) comp.state,
+                            if (comp.gstNo.isNotEmpty) "GST: ${comp.gstNo}",
+                          ].join(" • ").ifEmpty("Headquarters"),
+                          style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check_circle_rounded, color: GlassTheme.primaryNeon, size: 22)
+                            : const Icon(Icons.radio_button_unchecked_rounded, color: Color(0xFFCBD5E1), size: 22),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Close", style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+extension _HomeStringEmptyHelper on String {
+  String ifEmpty(String fallback) => isEmpty ? fallback : this;
 }

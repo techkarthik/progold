@@ -91,6 +91,11 @@ import {
   createSizeController,
   updateSizeController,
   deleteSizeController,
+  getPriceSettingsController,
+  getPriceSettingDealersController,
+  createPriceSettingController,
+  updatePriceSettingController,
+  deletePriceSettingController,
 } from "../backend/src/controllers/inventoryMasterController.js";
 import {
   getSystemControlsController,
@@ -309,6 +314,13 @@ router.get("/tenant/sizes", requireAuth, getSizesController);
 router.post("/tenant/sizes", requireAuth, createSizeController);
 router.put("/tenant/sizes/:id", requireAuth, updateSizeController);
 router.delete("/tenant/sizes/:id", requireAuth, deleteSizeController);
+
+// Tenant Price Setting CRUD Routes (8th Master under Inventory)
+router.get("/tenant/price-settings", requireAuth, getPriceSettingsController);
+router.get("/tenant/price-settings/dealers", requireAuth, getPriceSettingDealersController);
+router.post("/tenant/price-settings", requireAuth, createPriceSettingController);
+router.put("/tenant/price-settings/:id", requireAuth, updatePriceSettingController);
+router.delete("/tenant/price-settings/:id", requireAuth, deletePriceSettingController);
 
 // Tenant System Controls CRUD Routes (4th Menu under Settings)
 router.get("/tenant/system-controls", requireAuth, getSystemControlsController);

@@ -608,6 +608,8 @@ class SizeRecord {
 
 class PriceSettingRecord {
   final int? id;
+  final String? branchid;
+  final String? branchname;
   final int productid;
   final String? productname;
   final int? subproductid;
@@ -626,6 +628,8 @@ class PriceSettingRecord {
 
   PriceSettingRecord({
     this.id,
+    this.branchid = '',
+    this.branchname,
     required this.productid,
     this.productname,
     this.subproductid,
@@ -646,6 +650,8 @@ class PriceSettingRecord {
   factory PriceSettingRecord.fromJson(Map<String, dynamic> json) {
     return PriceSettingRecord(
       id: json['id'] != null ? int.tryParse(json['id'].toString()) : null,
+      branchid: json['branchid']?.toString() ?? '',
+      branchname: json['branchname']?.toString() ?? '',
       productid: int.tryParse(json['productid']?.toString() ?? '0') ?? 0,
       productname: json['productname']?.toString(),
       subproductid: json['subproductid'] != null && json['subproductid'].toString().isNotEmpty && json['subproductid'].toString() != '0'
@@ -669,6 +675,7 @@ class PriceSettingRecord {
   Map<String, dynamic> toJson() {
     return {
       if (id != null) 'id': id,
+      'branchid': branchid ?? '',
       'productid': productid,
       'subproductid': subproductid,
       'accode': accode,
@@ -685,6 +692,8 @@ class PriceSettingRecord {
 
   PriceSettingRecord copyWith({
     int? id,
+    String? branchid,
+    String? branchname,
     int? productid,
     String? productname,
     int? subproductid,
@@ -703,6 +712,8 @@ class PriceSettingRecord {
   }) {
     return PriceSettingRecord(
       id: id ?? this.id,
+      branchid: branchid ?? this.branchid,
+      branchname: branchname ?? this.branchname,
       productid: productid ?? this.productid,
       productname: productname ?? this.productname,
       subproductid: subproductid ?? this.subproductid,

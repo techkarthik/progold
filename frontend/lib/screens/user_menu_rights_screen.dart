@@ -59,7 +59,7 @@ class _UserMenuRightsScreenState extends State<UserMenuRightsScreen> {
     setState(() => _isLoading = true);
     final results = await Future.wait([
       _api.getUsers(token),
-      _api.getBranches(token),
+      _api.getBranches(token, companyId: auth.activeCompanyId),
     ]);
 
     if (mounted) {

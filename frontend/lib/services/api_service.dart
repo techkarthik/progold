@@ -410,11 +410,15 @@ class ApiService {
 
   // ================= BRANCH MASTER API METHODS =================
 
-  /// Fetches all branch records for the tenant
-  Future<List<Branch>> getBranches(String token) async {
+  /// Fetches branch records for the tenant, optionally filtered by companyId
+  Future<List<Branch>> getBranches(String token, {String? companyId}) async {
     try {
+      String url = '$baseUrl/tenant/branches';
+      if (companyId != null && companyId.trim().isNotEmpty) {
+        url += '?companyid=${Uri.encodeComponent(companyId.trim())}';
+      }
       final res = await http.get(
-        Uri.parse('$baseUrl/tenant/branches'),
+        Uri.parse(url),
         headers: _headers(token),
       );
       if (res.statusCode == 200) {

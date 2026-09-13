@@ -169,6 +169,7 @@ async function ensureInventoryTables(client, tenantUrl = "") {
     await client.execute(`
       CREATE TABLE IF NOT EXISTS pricesetting (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        branchid TEXT DEFAULT '',
         productid INTEGER NOT NULL,
         subproductid INTEGER DEFAULT NULL,
         accode TEXT NOT NULL,
@@ -184,6 +185,10 @@ async function ensureInventoryTables(client, tenantUrl = "") {
         FOREIGN KEY (subproductid) REFERENCES subproducts(subproductid)
       );
     `);
+
+    try {
+      await client.execute(`ALTER TABLE pricesetting ADD COLUMN branchid TEXT DEFAULT '';`);
+    } catch (_) { }
   });
 }
 
@@ -1853,6 +1858,8 @@ export async function getPriceSettingsController(req, res) {
     const result = await client.execute(`
       SELECT 
         ps.id,
+        ps.branchid,
+        COALESCE(b.branchname, '') AS branchname,
         ps.productid,
         COALESCE(p.productname, '') AS productname,
         ps.subproductid,
@@ -1869,10 +1876,11 @@ export async function getPriceSettingsController(req, res) {
         ps.created_at,
         ps.updated_at
       FROM pricesetting ps
+      LEFT JOIN branches b ON UPPER(TRIM(ps.branchid)) = UPPER(TRIM(b.branchid))
       LEFT JOIN products p ON ps.productid = p.productid
       LEFT JOIN subproducts sp ON ps.subproductid = sp.subproductid
       LEFT JOIN account_heads ah ON ps.accode = ah.accode
-      ORDER BY p.productname ASC, sp.subproductname ASC, ah.accountname ASC, ps.weight_from ASC;
+      ORDER BY ps.branchid ASC, p.productname ASC, sp.subproductname ASC, ah.accountname ASC, ps.weight_from ASC;
     `);
 
     return res.json({
@@ -1916,6 +1924,7 @@ export async function createPriceSettingController(req, res) {
     await ensureInventoryTables(client);
 
     const {
+      branchid = "",
       productid,
       subproductid,
       accode,
@@ -1926,6 +1935,8 @@ export async function createPriceSettingController(req, res) {
       mc_per_gram,
       m_charge,
     } = req.body;
+
+    const branchClean = (branchid || "").toString().trim().toUpperCase();
 
     if (!productid) {
       return res.status(400).json({ success: false, message: "Product selection is required." });
@@ -1950,7 +1961,20 @@ export async function createPriceSettingController(req, res) {
       return res.status(400).json({ success: false, message: "Weight To must be greater than Weight From." });
     }
 
-    // 1. Verify Product exists
+    // 1. Verify Branch exists if provided and not global/ALL
+    let branchName = "All / Global";
+    if (branchClean && branchClean !== "ALL") {
+      const branchCheck = await client.execute({
+        sql: `SELECT branchid, branchname FROM branches WHERE UPPER(TRIM(branchid)) = ? LIMIT 1;`,
+        args: [branchClean],
+      });
+      if (branchCheck.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Selected Branch does not exist." });
+      }
+      branchName = branchCheck.rows[0].branchname || branchClean;
+    }
+
+    // 2. Verify Product exists
     const prodCheck = await client.execute({
       sql: `SELECT productid, productname FROM products WHERE productid = ? LIMIT 1;`,
       args: [Number(productid)],
@@ -1960,7 +1984,7 @@ export async function createPriceSettingController(req, res) {
     }
     const prodName = prodCheck.rows[0].productname;
 
-    // 2. If subproductid provided, verify it belongs to productid
+    // 3. If subproductid provided, verify it belongs to productid
     let subProdId = null;
     let subProdName = "None / General";
     if (subproductid !== undefined && subproductid !== null && subproductid !== "" && Number(subproductid) > 0) {
@@ -1975,7 +1999,7 @@ export async function createPriceSettingController(req, res) {
       subProdName = subCheck.rows[0].subproductname;
     }
 
-    // 3. Verify Dealer exists with accounttype in ('SMITH', 'DEALER')
+    // 4. Verify Dealer exists with accounttype in ('SMITH', 'DEALER')
     const dealerCheck = await client.execute({
       sql: `SELECT accode, accountname, accounttype FROM account_heads WHERE accode = ? AND UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') LIMIT 1;`,
       args: [accode.trim()],
@@ -1985,34 +2009,35 @@ export async function createPriceSettingController(req, res) {
     }
     const dealerName = dealerCheck.rows[0].accountname;
 
-    // 4. Overlap & Duplicate check for the same (productid, subproductid, accode)
-    // Overlap condition: existing.weight_from < new_weight_to AND existing.weight_to > new_weight_from
+    // 5. Overlap & Duplicate check scoped for the same (branchid, productid, subproductid, accode)
     let overlapQuery;
     let overlapArgs;
     if (subProdId !== null) {
       overlapQuery = `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE productid = ? 
+        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = ?
+          AND productid = ? 
           AND subproductid = ? 
           AND accode = ? 
           AND weight_from < ? 
           AND weight_to > ? 
         LIMIT 1;
       `;
-      overlapArgs = [Number(productid), subProdId, accode.trim(), wTo, wFrom];
+      overlapArgs = [branchClean, Number(productid), subProdId, accode.trim(), wTo, wFrom];
     } else {
       overlapQuery = `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE productid = ? 
+        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = ?
+          AND productid = ? 
           AND (subproductid IS NULL OR subproductid = 0) 
           AND accode = ? 
           AND weight_from < ? 
           AND weight_to > ? 
         LIMIT 1;
       `;
-      overlapArgs = [Number(productid), accode.trim(), wTo, wFrom];
+      overlapArgs = [branchClean, Number(productid), accode.trim(), wTo, wFrom];
     }
 
     const overlapResult = await client.execute({
@@ -2022,9 +2047,10 @@ export async function createPriceSettingController(req, res) {
 
     if (overlapResult.rows.length > 0) {
       const existing = overlapResult.rows[0];
+      const branchDisplay = branchClean ? `Branch '${branchName}'` : "Global / All Branches";
       return res.status(400).json({
         success: false,
-        message: `Weight range ${wFrom}g - ${wTo}g overlaps with existing range (${existing.weight_from}g - ${existing.weight_to}g) for Product '${prodName}', Sub-Product '${subProdName}', and Dealer '${dealerName}'.`,
+        message: `Weight range ${wFrom}g - ${wTo}g overlaps with existing range (${existing.weight_from}g - ${existing.weight_to}g) for ${branchDisplay}, Product '${prodName}', Sub-Product '${subProdName}', and Dealer '${dealerName}'.`,
       });
     }
 
@@ -2038,6 +2064,7 @@ export async function createPriceSettingController(req, res) {
     const insertResult = await client.execute({
       sql: `
         INSERT INTO pricesetting (
+          branchid,
           productid,
           subproductid,
           accode,
@@ -2049,9 +2076,10 @@ export async function createPriceSettingController(req, res) {
           m_charge,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       args: [
+        branchClean,
         Number(productid),
         subProdId,
         accode.trim(),
@@ -2087,6 +2115,7 @@ export async function updatePriceSettingController(req, res) {
     await ensureInventoryTables(client);
 
     const {
+      branchid = "",
       productid,
       subproductid,
       accode,
@@ -2097,6 +2126,8 @@ export async function updatePriceSettingController(req, res) {
       mc_per_gram,
       m_charge,
     } = req.body;
+
+    const branchClean = (branchid || "").toString().trim().toUpperCase();
 
     if (!productid) {
       return res.status(400).json({ success: false, message: "Product selection is required." });
@@ -2121,7 +2152,20 @@ export async function updatePriceSettingController(req, res) {
       return res.status(400).json({ success: false, message: "Weight To must be greater than Weight From." });
     }
 
-    // 1. Verify Product exists
+    // 1. Verify Branch exists if provided and not global/ALL
+    let branchName = "All / Global";
+    if (branchClean && branchClean !== "ALL") {
+      const branchCheck = await client.execute({
+        sql: `SELECT branchid, branchname FROM branches WHERE UPPER(TRIM(branchid)) = ? LIMIT 1;`,
+        args: [branchClean],
+      });
+      if (branchCheck.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Selected Branch does not exist." });
+      }
+      branchName = branchCheck.rows[0].branchname || branchClean;
+    }
+
+    // 2. Verify Product exists
     const prodCheck = await client.execute({
       sql: `SELECT productid, productname FROM products WHERE productid = ? LIMIT 1;`,
       args: [Number(productid)],
@@ -2131,7 +2175,7 @@ export async function updatePriceSettingController(req, res) {
     }
     const prodName = prodCheck.rows[0].productname;
 
-    // 2. If subproductid provided, verify it belongs to productid
+    // 3. If subproductid provided, verify it belongs to productid
     let subProdId = null;
     let subProdName = "None / General";
     if (subproductid !== undefined && subproductid !== null && subproductid !== "" && Number(subproductid) > 0) {
@@ -2146,7 +2190,7 @@ export async function updatePriceSettingController(req, res) {
       subProdName = subCheck.rows[0].subproductname;
     }
 
-    // 3. Verify Dealer exists
+    // 4. Verify Dealer exists
     const dealerCheck = await client.execute({
       sql: `SELECT accode, accountname, accounttype FROM account_heads WHERE accode = ? AND UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') LIMIT 1;`,
       args: [accode.trim()],
@@ -2156,14 +2200,15 @@ export async function updatePriceSettingController(req, res) {
     }
     const dealerName = dealerCheck.rows[0].accountname;
 
-    // 4. Overlap check excluding current ID
+    // 5. Overlap check excluding current ID
     let overlapQuery;
     let overlapArgs;
     if (subProdId !== null) {
       overlapQuery = `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE productid = ? 
+        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = ?
+          AND productid = ? 
           AND subproductid = ? 
           AND accode = ? 
           AND weight_from < ? 
@@ -2171,12 +2216,13 @@ export async function updatePriceSettingController(req, res) {
           AND id != ?
         LIMIT 1;
       `;
-      overlapArgs = [Number(productid), subProdId, accode.trim(), wTo, wFrom, Number(id)];
+      overlapArgs = [branchClean, Number(productid), subProdId, accode.trim(), wTo, wFrom, Number(id)];
     } else {
       overlapQuery = `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE productid = ? 
+        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = ?
+          AND productid = ? 
           AND (subproductid IS NULL OR subproductid = 0) 
           AND accode = ? 
           AND weight_from < ? 
@@ -2184,7 +2230,7 @@ export async function updatePriceSettingController(req, res) {
           AND id != ?
         LIMIT 1;
       `;
-      overlapArgs = [Number(productid), accode.trim(), wTo, wFrom, Number(id)];
+      overlapArgs = [branchClean, Number(productid), accode.trim(), wTo, wFrom, Number(id)];
     }
 
     const overlapResult = await client.execute({
@@ -2194,9 +2240,10 @@ export async function updatePriceSettingController(req, res) {
 
     if (overlapResult.rows.length > 0) {
       const existing = overlapResult.rows[0];
+      const branchDisplay = branchClean ? `Branch '${branchName}'` : "Global / All Branches";
       return res.status(400).json({
         success: false,
-        message: `Weight range ${wFrom}g - ${wTo}g overlaps with existing range (${existing.weight_from}g - ${existing.weight_to}g) for Product '${prodName}', Sub-Product '${subProdName}', and Dealer '${dealerName}'.`,
+        message: `Weight range ${wFrom}g - ${wTo}g overlaps with existing range (${existing.weight_from}g - ${existing.weight_to}g) for ${branchDisplay}, Product '${prodName}', Sub-Product '${subProdName}', and Dealer '${dealerName}'.`,
       });
     }
 
@@ -2210,7 +2257,8 @@ export async function updatePriceSettingController(req, res) {
     await client.execute({
       sql: `
         UPDATE pricesetting
-        SET productid = ?,
+        SET branchid = ?,
+            productid = ?,
             subproductid = ?,
             accode = ?,
             weight_from = ?,
@@ -2223,6 +2271,7 @@ export async function updatePriceSettingController(req, res) {
         WHERE id = ?;
       `,
       args: [
+        branchClean,
         Number(productid),
         subProdId,
         accode.trim(),

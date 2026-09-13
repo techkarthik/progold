@@ -101,7 +101,7 @@ class _EmployeeMasterScreenState extends State<EmployeeMasterScreen> {
     try {
       final results = await Future.wait([
         _api.getEmployeesData(token),
-        _api.getBranches(token),
+        _api.getBranches(token, companyId: auth.activeCompanyId),
       ]);
 
       if (mounted) {

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bash vercel-build.sh",
+    "build:desktop": "node scripts/build_desktop.js",
     "start": "node backend/src/server.js"
   },
   "dependencies": {

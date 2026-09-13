@@ -81,7 +81,7 @@ class _SystemControlsScreenState extends State<SystemControlsScreen> {
     try {
       final results = await Future.wait([
         _api.getSystemControlsData(token),
-        _api.getBranches(token),
+        _api.getBranches(token, companyId: auth.activeCompanyId),
       ]);
 
       if (mounted) {

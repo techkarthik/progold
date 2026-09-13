@@ -49,15 +49,22 @@ export async function getBranchesController(req, res) {
     const client = createTenantClient(turso_url, turso_token);
     await ensureBranchesTable(client);
 
-    // Fetch branches with company name if company table exists
-    const result = await client.execute(`
+    // Fetch branches with company name if company table exists, optionally filtered by companyid
+    let sql = `
       SELECT 
         b.*,
         COALESCE(c.companyname, '') AS companyname
       FROM branches b
-      LEFT JOIN company c ON b.companyid = c.companyid
-      ORDER BY b.created_at DESC;
-    `);
+      LEFT JOIN company c ON UPPER(TRIM(b.companyid)) = UPPER(TRIM(c.companyid))
+    `;
+    const args = [];
+    if (req.query.companyid && String(req.query.companyid).trim()) {
+      sql += ` WHERE UPPER(TRIM(b.companyid)) = ?`;
+      args.push(String(req.query.companyid).trim().toUpperCase());
+    }
+    sql += ` ORDER BY b.created_at DESC;`;
+
+    const result = await client.execute({ sql, args });
 
     return res.json({
       success: true,

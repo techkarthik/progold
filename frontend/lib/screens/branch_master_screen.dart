@@ -153,9 +153,14 @@ class _BranchMasterScreenState extends State<BranchMasterScreen> {
   }
 
   void _resetFormFields() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     _idController.clear();
     _nameController.clear();
-    _selectedCompanyId = _companies.isNotEmpty ? _companies.first.companyId : null;
+    if (auth.activeCompanyId.isNotEmpty && _companies.any((c) => c.companyId.toUpperCase() == auth.activeCompanyId.toUpperCase())) {
+      _selectedCompanyId = auth.activeCompanyId;
+    } else {
+      _selectedCompanyId = _companies.isNotEmpty ? _companies.first.companyId : null;
+    }
     _addressController.clear();
     _cityController.clear();
     _selectedStateId = 33;

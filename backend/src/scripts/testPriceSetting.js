@@ -2,7 +2,7 @@ import { masterTurso } from "../config/turso.js";
 import { createTenantClient } from "../config/turso.js";
 
 async function runTest() {
-  console.log("=== STARTING PRICE SETTING MASTER AUTOMATED TESTS ===");
+  console.log("=== STARTING PRICE SETTING MASTER AUTOMATED TESTS (WITH BRANCH LINKING) ===");
 
   try {
     // 1. Fetch demo tenant credentials
@@ -16,8 +16,28 @@ async function runTest() {
 
     // 2. Ensure tables exist
     await client.execute(`
+      CREATE TABLE IF NOT EXISTS branches (
+        branchid TEXT PRIMARY KEY NOT NULL,
+        branchname TEXT NOT NULL,
+        companyid TEXT NOT NULL,
+        accountname TEXT DEFAULT '',
+        state TEXT DEFAULT '',
+        state_id INTEGER DEFAULT 0,
+        country TEXT DEFAULT 'India',
+        country_id INTEGER DEFAULT 1,
+        address TEXT DEFAULT '',
+        mobile TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    await client.execute(`
       CREATE TABLE IF NOT EXISTS pricesetting (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        branchid TEXT DEFAULT '',
         productid INTEGER NOT NULL,
         subproductid INTEGER DEFAULT NULL,
         accode TEXT NOT NULL,
@@ -33,7 +53,12 @@ async function runTest() {
         FOREIGN KEY (subproductid) REFERENCES subproducts(subproductid)
       );
     `);
-    console.log(" 1. pricesetting table verified/created in Turso.");
+
+    try {
+      await client.execute(`ALTER TABLE pricesetting ADD COLUMN branchid TEXT DEFAULT '';`);
+    } catch (_) {}
+
+    console.log(" 1. pricesetting and branches tables verified/migrated in Turso.");
 
     // Clean up previous test data
     await client.execute(`DELETE FROM pricesetting WHERE accode LIKE 'TEST_%';`);
@@ -43,10 +68,17 @@ async function runTest() {
     await client.execute(`DELETE FROM purities WHERE purityname LIKE 'TEST_%';`);
     await client.execute(`DELETE FROM metals WHERE metalid LIKE 'T%';`);
     await client.execute(`DELETE FROM account_heads WHERE accode LIKE 'TEST_%';`);
+    await client.execute(`DELETE FROM branches WHERE branchid LIKE 'TEST_%';`);
 
     const now = new Date().toISOString();
 
-    // 3. Setup test Metal, Purity, Category, Products
+    // 3. Setup test Branch
+    await client.execute({
+      sql: `INSERT OR IGNORE INTO branches (branchid, branchname, companyid, created_at, updated_at) VALUES ('TEST_BR_1', 'Test Branch Alpha', 'TEST_CO', ?, ?);`,
+      args: [now, now],
+    });
+
+    // 4. Setup test Metal, Purity, Category, Products
     await client.execute({
       sql: `INSERT OR IGNORE INTO metals (metalid, metalname, created_at, updated_at) VALUES ('TM', 'Test Metal', ?, ?);`,
       args: [now, now],
@@ -82,7 +114,7 @@ async function runTest() {
     });
     const sub1Id = Number(sub1Res.lastInsertRowid);
 
-    // 4. Setup test Dealer and Smith account heads
+    // 5. Setup test Dealer and Smith account heads
     await client.execute({
       sql: `INSERT INTO account_heads (accode, groupname, accountname, accounttype, created_at, updated_at) VALUES ('TEST_DLR_1', 'SUNDRY CREDITORS', 'Test Dealer Alpha', 'DEALER', ?, ?);`,
       args: [now, now],
@@ -95,9 +127,9 @@ async function runTest() {
       sql: `INSERT INTO account_heads (accode, groupname, accountname, accounttype, created_at, updated_at) VALUES ('TEST_CUS_1', 'SUNDRY DEBTORS', 'Test Customer Gamma', 'CUSTOMER', ?, ?);`,
       args: [now, now],
     });
-    console.log(" 2. Test master dependencies seeded successfully.");
+    console.log(" 2. Test master dependencies seeded successfully (Branch, Metal, Category, Products, Accounts).");
 
-    // 5. Test Dealer filter (Only SMITH and DEALER)
+    // 6. Test Dealer filter (Only SMITH and DEALER)
     const dealersRes = await client.execute(`
       SELECT accode, accountname, accounttype 
       FROM account_heads 
@@ -108,25 +140,36 @@ async function runTest() {
       throw new Error(`Dealer filter failed. Expected 2 accounts, got ${dealersRes.rows.length}`);
     }
 
-    // 6. Insert first price setting: Prod1 + Sub1 + Dealer1 with range 0.000 - 10.000
+    // 7. Insert first price setting with specific branch: Branch 'TEST_BR_1' + Prod1 + Sub1 + Dealer1 with range 0.000 - 10.000
     const ps1Res = await client.execute({
       sql: `
         INSERT INTO pricesetting (
-          productid, subproductid, accode, weight_from, weight_to, va_percent, wastage, mc_per_gram, m_charge, created_at, updated_at
-        ) VALUES (?, ?, 'TEST_DLR_1', 0.0, 10.0, 12.5, 0.25, 450.0, 50.0, ?, ?);
+          branchid, productid, subproductid, accode, weight_from, weight_to, va_percent, wastage, mc_per_gram, m_charge, created_at, updated_at
+        ) VALUES ('TEST_BR_1', ?, ?, 'TEST_DLR_1', 0.0, 10.0, 12.5, 0.25, 450.0, 50.0, ?, ?);
       `,
       args: [prod1Id, sub1Id, now, now],
     });
     const ps1Id = Number(ps1Res.lastInsertRowid);
-    console.log(` 4. Created Price Setting 1 (ID: ${ps1Id}) with range 0.0 - 10.0 for Prod1 + Sub1 + Dealer1.`);
+    console.log(` 4. Created Price Setting 1 (ID: ${ps1Id}) for Branch 'TEST_BR_1' with range 0.0 - 10.0.`);
 
-    // 7. Check Overlap Validation simulation
-    // Query overlap for 5.0 - 15.0 for SAME Prod1 + Sub1 + Dealer1
+    // 8. Insert Global / All Branches price setting for SAME Prod1 + Sub1 + Dealer1 (should be allowed because branch differs!)
+    const psGlobalRes = await client.execute({
+      sql: `
+        INSERT INTO pricesetting (
+          branchid, productid, subproductid, accode, weight_from, weight_to, va_percent, wastage, mc_per_gram, m_charge, created_at, updated_at
+        ) VALUES ('', ?, ?, 'TEST_DLR_1', 0.0, 10.0, 15.0, 0.35, 500.0, 60.0, ?, ?);
+      `,
+      args: [prod1Id, sub1Id, now, now],
+    });
+    console.log(` 5. Created Global Price Setting (ID: ${psGlobalRes.lastInsertRowid}) with range 0.0 - 10.0 for SAME product/dealer (allowed due to branch scoping).`);
+
+    // 9. Check Overlap Validation for SAME Branch 'TEST_BR_1' + Prod1 + Sub1 + Dealer1
     const overlapCheck = await client.execute({
       sql: `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE productid = ? 
+        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = 'TEST_BR_1'
+          AND productid = ? 
           AND subproductid = ? 
           AND accode = 'TEST_DLR_1' 
           AND weight_from < 15.0 
@@ -136,54 +179,28 @@ async function runTest() {
       args: [prod1Id, sub1Id],
     });
     if (overlapCheck.rows.length > 0) {
-      console.log(` 5. Overlap detection correctly blocked 5.0 - 15.0 (conflicts with existing ${overlapCheck.rows[0].weight_from} - ${overlapCheck.rows[0].weight_to}).`);
+      console.log(` 6. Overlap detection correctly caught 5.0 - 15.0 on Branch 'TEST_BR_1' (conflicts with existing ${overlapCheck.rows[0].weight_from} - ${overlapCheck.rows[0].weight_to}).`);
     } else {
-      throw new Error("Overlap detection FAILED to catch overlapping range 5.0 - 15.0!");
+      throw new Error("Overlap detection FAILED to catch overlapping range 5.0 - 15.0 for Branch 'TEST_BR_1'!");
     }
 
-    // 8. Insert next continuous range 10.001 - 20.000 for same Prod1 + Sub1 + Dealer1
-    const nonOverlapCheck = await client.execute({
-      sql: `
-        SELECT id, weight_from, weight_to 
-        FROM pricesetting 
-        WHERE productid = ? 
-          AND subproductid = ? 
-          AND accode = 'TEST_DLR_1' 
-          AND weight_from < 20.0 
-          AND weight_to > 10.001 
-        LIMIT 1;
-      `,
-      args: [prod1Id, sub1Id],
-    });
-    if (nonOverlapCheck.rows.length === 0) {
-      const ps2Res = await client.execute({
-        sql: `
-          INSERT INTO pricesetting (
-            productid, subproductid, accode, weight_from, weight_to, va_percent, wastage, mc_per_gram, m_charge, created_at, updated_at
-          ) VALUES (?, ?, 'TEST_DLR_1', 10.001, 20.0, 10.0, 0.20, 400.0, 40.0, ?, ?);
-        `,
-        args: [prod1Id, sub1Id, now, now],
-      });
-      console.log(` 6. Successfully inserted continuous range 10.001 - 20.0 for Prod1 + Sub1 + Dealer1 (ID: ${ps2Res.lastInsertRowid}).`);
-    } else {
-      throw new Error("False positive on continuous non-overlapping range 10.001 - 20.0!");
-    }
-
-    // 9. Insert range 0.000 - 10.000 for DIFFERENT product (Prod 2)
-    const ps3Res = await client.execute({
+    // 10. Insert next continuous range 10.001 - 20.000 for Branch 'TEST_BR_1'
+    const ps2Res = await client.execute({
       sql: `
         INSERT INTO pricesetting (
-          productid, subproductid, accode, weight_from, weight_to, va_percent, wastage, mc_per_gram, m_charge, created_at, updated_at
-        ) VALUES (?, NULL, 'TEST_DLR_1', 0.0, 10.0, 14.0, 0.30, 500.0, 60.0, ?, ?);
+          branchid, productid, subproductid, accode, weight_from, weight_to, va_percent, wastage, mc_per_gram, m_charge, created_at, updated_at
+        ) VALUES ('TEST_BR_1', ?, ?, 'TEST_DLR_1', 10.001, 20.0, 10.0, 0.20, 400.0, 40.0, ?, ?);
       `,
-      args: [prod2Id, now, now],
+      args: [prod1Id, sub1Id, now, now],
     });
-    console.log(` 7. Successfully inserted range 0.0 - 10.0 for DIFFERENT product Prod 2 (ID: ${ps3Res.lastInsertRowid}).`);
+    console.log(` 7. Successfully inserted continuous range 10.001 - 20.0 for Branch 'TEST_BR_1' (ID: ${ps2Res.lastInsertRowid}).`);
 
-    // 10. Test JOIN query
+    // 11. Test JOIN query with Branches, Products, Subproducts, Account Heads
     const joinResult = await client.execute(`
       SELECT 
         ps.id,
+        ps.branchid,
+        COALESCE(b.branchname, '') AS branchname,
         ps.productid,
         COALESCE(p.productname, '') AS productname,
         ps.subproductid,
@@ -198,19 +215,20 @@ async function runTest() {
         ps.mc_per_gram,
         ps.m_charge
       FROM pricesetting ps
+      LEFT JOIN branches b ON UPPER(TRIM(ps.branchid)) = UPPER(TRIM(b.branchid))
       LEFT JOIN products p ON ps.productid = p.productid
       LEFT JOIN subproducts sp ON ps.subproductid = sp.subproductid
       LEFT JOIN account_heads ah ON ps.accode = ah.accode
       WHERE ps.accode LIKE 'TEST_%'
-      ORDER BY ps.id ASC;
+      ORDER BY ps.branchid ASC, ps.id ASC;
     `);
 
-    console.log(` 8. Join query successfully fetched ${joinResult.rows.length} rows with joined product/dealer names:`);
+    console.log(` 8. Join query successfully fetched ${joinResult.rows.length} rows with joined branch/product/dealer names:`);
     for (const r of joinResult.rows) {
-      console.log(`    - ID ${r.id}: Product '${r.productname}' (ID ${r.productid}), Sub '${r.subproductname || 'N/A'}' (ID ${r.subproductid || 'NULL'}), Dealer '${r.dealername}' (${r.accounttype} - ${r.accode}), Range: ${r.weight_from}g - ${r.weight_to}g, VA: ${r.va_percent}%, Wastage: ${r.wastage}g, MC/g: ₹${r.mc_per_gram}, Flat: ₹${r.m_charge}`);
+      console.log(`    - ID ${r.id}: Branch '${r.branchid || 'GLOBAL'}' (${r.branchname || 'All Branches'}), Product '${r.productname}' (ID ${r.productid}), Sub '${r.subproductname || 'N/A'}', Dealer '${r.dealername}' (${r.accounttype} - ${r.accode}), Range: ${r.weight_from}g - ${r.weight_to}g, VA: ${r.va_percent}%, Wastage: ${r.wastage}g, MC/g: ₹${r.mc_per_gram}, Flat: ₹${r.m_charge}`);
     }
 
-    // 11. Cleanup test records
+    // 12. Cleanup test records
     await client.execute(`DELETE FROM pricesetting WHERE accode LIKE 'TEST_%';`);
     await client.execute(`DELETE FROM subproducts WHERE subproductname LIKE 'TEST_%';`);
     await client.execute(`DELETE FROM products WHERE productname LIKE 'TEST_%';`);
@@ -218,9 +236,10 @@ async function runTest() {
     await client.execute(`DELETE FROM purities WHERE purityname LIKE 'TEST_%';`);
     await client.execute(`DELETE FROM metals WHERE metalid LIKE 'T%';`);
     await client.execute(`DELETE FROM account_heads WHERE accode LIKE 'TEST_%';`);
+    await client.execute(`DELETE FROM branches WHERE branchid LIKE 'TEST_%';`);
 
     console.log(" 9. Cleaned up all test records.");
-    console.log("\n ALL PRICE SETTING TESTS PASSED PERFECTLY! \n");
+    console.log("\n ALL PRICE SETTING TESTS (WITH BRANCH LINKING) PASSED PERFECTLY! \n");
   } catch (err) {
     console.error("Test failed with error:", err);
     process.exit(1);

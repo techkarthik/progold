@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/glass_theme.dart';
 import '../widgets/glass_widgets.dart';
+import '../constants/app_version.dart';
+import '../models/company_model.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -169,28 +171,33 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Tab Selector
-                            _buildTabSelector(),
-                            const SizedBox(height: 24),
+                            // Content: either Company Selection or Login/Register Tabs
+                            if (auth.isSelectingCompany) ...[
+                              _buildCompanySelectionView(auth),
+                            ] else ...[
+                              // Tab Selector
+                              _buildTabSelector(),
+                              const SizedBox(height: 24),
 
-                            // Alert messages
-                            if (auth.errorMessage != null) ...[
-                              _buildAlertBanner(auth.errorMessage!, isError: true),
-                              const SizedBox(height: 16),
-                            ],
-                            if (auth.successMessage != null) ...[
-                              _buildAlertBanner(auth.successMessage!, isError: false),
-                              const SizedBox(height: 16),
-                            ],
+                              // Alert messages
+                              if (auth.errorMessage != null) ...[
+                                _buildAlertBanner(auth.errorMessage!, isError: true),
+                                const SizedBox(height: 16),
+                              ],
+                              if (auth.successMessage != null) ...[
+                                _buildAlertBanner(auth.successMessage!, isError: false),
+                                const SizedBox(height: 16),
+                              ],
 
-                            // Tab Views
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOut,
-                              child: _tabController.index == 0
-                                  ? _buildLoginForm(auth)
-                                  : _buildRegisterForm(auth),
-                            ),
+                              // Tab Views
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                                child: _tabController.index == 0
+                                    ? _buildLoginForm(auth)
+                                    : _buildRegisterForm(auth),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -204,6 +211,15 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                         color: GlassTheme.textMuted,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      AppVersion.drawerVersion,
+                      style: const TextStyle(
+                        color: GlassTheme.textMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -871,4 +887,211 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       ],
     );
   }
+
+  // ================= COMPANY SELECTION VIEW =================
+  Widget _buildCompanySelectionView(AuthProvider auth) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: GlassTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: GlassTheme.primaryNeon.withValues(alpha: 0.3),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.corporate_fare_rounded, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Select Operating Company",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: GlassTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "Your account has ${auth.availableCompanies.length} companies registered. Choose one to launch workspace.",
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: GlassTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // Company Cards List
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 380),
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: auth.availableCompanies.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final company = auth.availableCompanies[index];
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x060F172A), blurRadius: 8, offset: Offset(0, 2)),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => auth.selectCompany(company),
+                    hoverColor: GlassTheme.primaryNeon.withValues(alpha: 0.04),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          // Company Icon / Initial Avatar
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Center(
+                              child: Text(
+                                company.companyId,
+                                style: const TextStyle(
+                                  color: GlassTheme.primaryNeon,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+
+                          // Company Info
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        company.companyName,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w800,
+                                          color: GlassTheme.textPrimary,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    StatusBadge(label: company.companyId, color: GlassTheme.primaryNeon),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.location_on_outlined, size: 13, color: GlassTheme.textMuted),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        [
+                                          if (company.city.isNotEmpty) company.city,
+                                          if (company.state.isNotEmpty) company.state,
+                                        ].join(", ").ifEmpty("Headquarters"),
+                                        style: const TextStyle(fontSize: 12, color: GlassTheme.textSecondary, fontWeight: FontWeight.w500),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (company.mobileNumber.isNotEmpty || company.gstNo.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      if (company.mobileNumber.isNotEmpty) ...[
+                                        const Icon(Icons.phone_iphone_rounded, size: 13, color: GlassTheme.textMuted),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          company.mobileNumber,
+                                          style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted, fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(width: 12),
+                                      ],
+                                      if (company.gstNo.isNotEmpty) ...[
+                                        const Icon(Icons.receipt_long_rounded, size: 13, color: GlassTheme.textMuted),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          "GST: ${company.gstNo}",
+                                          style: const TextStyle(fontSize: 11, color: GlassTheme.textMuted, fontWeight: FontWeight.w600),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+
+                          // Selection Arrow
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: GlassTheme.primaryNeon.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.arrow_forward_rounded, color: GlassTheme.primaryNeon, size: 18),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 18),
+
+        // Sign Out / Change Account Option
+        Center(
+          child: TextButton.icon(
+            icon: const Icon(Icons.logout_rounded, size: 16, color: GlassTheme.textMuted),
+            label: const Text(
+              "Sign in with a different account",
+              style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            onPressed: () => auth.logout(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+extension _StringEmptyHelper on String {
+  String ifEmpty(String fallback) => isEmpty ? fallback : this;
 }
