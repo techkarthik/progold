@@ -4,6 +4,7 @@ import '../models/inventory_models.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/glass_theme.dart';
+import '../widgets/glass_widgets.dart';
 
 class PriceSettingScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -342,111 +343,111 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
     }
   }
 
+  // ================= MAIN BUILD =================
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: GlassTheme.primaryNeon))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSummaryStats(),
-                          const SizedBox(height: 20),
-                          if (_showForm) ...[
-                            _buildEntryForm(),
-                            const SizedBox(height: 24),
-                          ],
-                          _buildFilterAndSearchRow(),
-                          const SizedBox(height: 18),
-                          if (_filteredPriceSettings.isEmpty)
-                            _buildEmptyState()
-                          else if (_isTableView)
-                            _buildTableView()
-                          else
-                            _buildCardGridView(),
-                        ],
-                      ),
-                    ),
-            ),
-          ],
-        ),
-      ),
+    final auth = Provider.of<AuthProvider>(context);
+    final isMobile = MediaQuery.of(context).size.width < 700;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header Bar
+        _buildHeaderBar(context, auth, isMobile),
+        const SizedBox(height: 16),
+
+        // Summary Metric Cards
+        _buildSummaryStats(),
+        const SizedBox(height: 18),
+
+        // In-page Entry Form
+        if (_showForm) ...[
+          _buildInPageEntryForm(),
+          const SizedBox(height: 20),
+        ],
+
+        // Search & Filter Toolbar
+        _buildSearchToolbar(),
+        const SizedBox(height: 18),
+
+        // Main Content Area
+        if (_isLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 60),
+            child: Center(child: CircularProgressIndicator(color: Color(0xFF6366F1))),
+          )
+        else if (_filteredPriceSettings.isEmpty)
+          _buildEmptyState()
+        else if (_isTableView)
+          _buildTableView()
+        else
+          _buildCardsGridView(),
+
+        const SizedBox(height: 40),
+      ],
     );
   }
 
   // ================= HEADER BAR =================
-  Widget _buildHeader() {
+  Widget _buildHeaderBar(BuildContext context, AuthProvider auth, bool isMobile) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-        boxShadow: [
-          BoxShadow(color: Color(0x05000000), blurRadius: 4, offset: Offset(0, 2)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x060F172A), blurRadius: 10, offset: Offset(0, 3)),
         ],
       ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: Row(
         children: [
           if (widget.onBack != null) ...[
             IconButton(
               icon: const Icon(Icons.arrow_back_rounded, color: GlassTheme.textPrimary),
-              tooltip: "Back to Inventory Masters",
+              tooltip: "Back to Item Master",
               onPressed: widget.onBack,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
           ],
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(color: const Color(0xFF6366F1).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2)),
+              ],
             ),
-            child: const Icon(Icons.price_change_rounded, color: Color(0xFF6366F1), size: 22),
+            child: const Icon(Icons.price_change_rounded, color: Colors.white, size: 22),
           ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Row(
-                children: [
-                  Text(
-                    "PRICE SETTING",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: GlassTheme.textPrimary,
-                      letterSpacing: 0.5,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Row(
+                  children: [
+                    Text(
+                      "Price Setting",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: GlassTheme.textPrimary, letterSpacing: -0.3),
                     ),
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    "MASTER / INVENTORY",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF6366F1),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-              Text(
-                "Configure weight-wise VA%, wastage & making charges linked to products and dealers",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-              ),
-            ],
+                    SizedBox(width: 8),
+                    StatusBadge(label: "Inventory Master #8", color: Color(0xFF6366F1)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Configure weight-wise VA%, wastage & making charges linked to products and dealers",
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
           ),
-          const Spacer(),
-          // Toggle View
+          // View Toggle
           Container(
             decoration: BoxDecoration(
               color: const Color(0xFFF1F5F9),
@@ -467,20 +468,20 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           // Refresh Button
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: GlassTheme.textSecondary),
             tooltip: "Refresh Data",
             onPressed: _loadData,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           // New Button
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF6366F1),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               elevation: 0,
             ),
@@ -546,7 +547,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -580,7 +581,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   }
 
   // ================= IN-PAGE ENTRY FORM =================
-  Widget _buildEntryForm() {
+  Widget _buildInPageEntryForm() {
     final availableSubProducts = _getAvailableSubProducts(_selectedProductId);
 
     return Container(
@@ -624,7 +625,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                 ),
               ],
             ),
-            const Divider(height: 28, color: Color(0xFFE2E8F0)),
+            const Divider(height: 24, color: Color(0xFFE2E8F0)),
             // Row 1: Product, Sub-Product, Dealer
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -655,7 +656,6 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                         onChanged: (val) {
                           setState(() {
                             _selectedProductId = val;
-                            // Check if existing subproduct is valid under new product
                             final subs = _getAvailableSubProducts(val);
                             if (_selectedSubProductId != null && !subs.any((s) => s.subproductid == _selectedSubProductId)) {
                               _selectedSubProductId = null;
@@ -736,7 +736,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             // Row 2: Weight Range (From, To)
             Row(
               children: [
@@ -791,7 +791,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             // Row 3: Pricing fields: VA%, Wastage, MC/g, Flat M.Charge
             Row(
               children: [
@@ -921,8 +921,8 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
     );
   }
 
-  // ================= FILTER AND SEARCH ROW =================
-  Widget _buildFilterAndSearchRow() {
+  // ================= FILTER AND SEARCH TOOLBAR =================
+  Widget _buildSearchToolbar() {
     return Row(
       children: [
         // Search Bar
@@ -1014,7 +1014,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   }
 
   // ================= CARD GRID VIEW =================
-  Widget _buildCardGridView() {
+  Widget _buildCardsGridView() {
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = constraints.maxWidth > 1100 ? 3 : (constraints.maxWidth > 700 ? 2 : 1);
