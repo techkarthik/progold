@@ -1192,10 +1192,14 @@ class ApiService {
 
   // ================= PRICE SETTING CRUD (8th Master under Inventory) =================
 
-  /// Fetches price settings
-  Future<Map<String, dynamic>> getPriceSettingsData(String token) async {
+  /// Fetches price settings, optionally filtered by companyId
+  Future<Map<String, dynamic>> getPriceSettingsData(String token, {String? companyId}) async {
     try {
-      final res = await http.get(Uri.parse('$baseUrl/tenant/price-settings'), headers: _headers(token));
+      String url = '$baseUrl/tenant/price-settings';
+      if (companyId != null && companyId.trim().isNotEmpty) {
+        url += '?companyid=${Uri.encodeComponent(companyId.trim())}';
+      }
+      final res = await http.get(Uri.parse(url), headers: _headers(token));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['price_settings'] is List) {
@@ -1214,8 +1218,8 @@ class ApiService {
     }
   }
 
-  Future<List<PriceSettingRecord>> getPriceSettings(String token) async {
-    final data = await getPriceSettingsData(token);
+  Future<List<PriceSettingRecord>> getPriceSettings(String token, {String? companyId}) async {
+    final data = await getPriceSettingsData(token, companyId: companyId);
     return data['price_settings'] as List<PriceSettingRecord>? ?? [];
   }
 
@@ -1275,6 +1279,187 @@ class ApiService {
   Future<Map<String, dynamic>> deletePriceSetting(String token, int id) async {
     try {
       final res = await http.delete(Uri.parse('$baseUrl/tenant/price-settings/$id'), headers: _headers(token));
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= DIAMOND PRICE SETTING CRUD (Master under Inventory) =================
+
+  /// Fetches diamond price settings, optionally filtered by companyId
+  Future<Map<String, dynamic>> getDiamondPriceSettingsData(String token, {String? companyId}) async {
+    try {
+      String url = '$baseUrl/tenant/diamond-price-settings';
+      if (companyId != null && companyId.trim().isNotEmpty) {
+        url += '?companyid=${Uri.encodeComponent(companyId.trim())}';
+      }
+      final res = await http.get(Uri.parse(url), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['diamond_price_settings'] is List) {
+          final items = (data['diamond_price_settings'] as List).map((i) => DiamondPriceSettingRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'diamond_price_settings': items,
+            'total_count': data['total_count'] ?? items.length,
+          };
+        }
+      }
+      return {'success': false, 'diamond_price_settings': <DiamondPriceSettingRecord>[], 'total_count': 0};
+    } catch (e) {
+      debugPrint("Error getDiamondPriceSettingsData: $e");
+      return {'success': false, 'diamond_price_settings': <DiamondPriceSettingRecord>[], 'total_count': 0};
+    }
+  }
+
+  Future<List<DiamondPriceSettingRecord>> getDiamondPriceSettings(String token, {String? companyId}) async {
+    final data = await getDiamondPriceSettingsData(token, companyId: companyId);
+    return data['diamond_price_settings'] as List<DiamondPriceSettingRecord>? ?? [];
+  }
+
+  /// Fetches products where diastone IN ('D', 'S')
+  Future<List<ProductRecord>> getDiamondProducts(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/diamond-price-settings/products'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['products'] is List) {
+          return (data['products'] as List).map((i) => ProductRecord.fromJson(i)).toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error getDiamondProducts: $e");
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> createDiamondPriceSetting(String token, DiamondPriceSettingRecord record) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/diamond-price-settings'),
+        headers: _headers(token),
+        body: jsonEncode(record.toJson()),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200 || res.statusCode == 201, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateDiamondPriceSetting(String token, int id, DiamondPriceSettingRecord record) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/diamond-price-settings/$id'),
+        headers: _headers(token),
+        body: jsonEncode(record.toJson()),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteDiamondPriceSetting(String token, int id) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/diamond-price-settings/$id'), headers: _headers(token));
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= DESIGNER MASTER CRUD (Master under Inventory) =================
+
+  /// Fetches designers list along with metadata
+  Future<Map<String, dynamic>> getDesignersData(String token) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/tenant/designers'), headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['designers'] is List) {
+          final items = (data['designers'] as List).map((i) => DesignerRecord.fromJson(i)).toList();
+          return {
+            'success': true,
+            'designers': items,
+            'last_designerid': data['last_designerid'] ?? 0,
+            'next_designerid': data['next_designerid'] ?? 1,
+            'total_count': data['total_count'] ?? items.length,
+          };
+        }
+      }
+      return {'success': false, 'designers': <DesignerRecord>[], 'total_count': 0};
+    } catch (e) {
+      debugPrint("Error getDesignersData: $e");
+      return {'success': false, 'designers': <DesignerRecord>[], 'total_count': 0};
+    }
+  }
+
+  Future<List<DesignerRecord>> getDesigners(String token) async {
+    final data = await getDesignersData(token);
+    return data['designers'] as List<DesignerRecord>? ?? [];
+  }
+
+  Future<Map<String, dynamic>> createDesigner(String token, DesignerRecord record) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/designers'),
+        headers: _headers(token),
+        body: jsonEncode(record.toJson()),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200 || res.statusCode == 201, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateDesigner(String token, int id, DesignerRecord record) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/designers/$id'),
+        headers: _headers(token),
+        body: jsonEncode(record.toJson()),
+      );
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteDesigner(String token, int id) async {
+    try {
+      final res = await http.delete(Uri.parse('$baseUrl/tenant/designers/$id'), headers: _headers(token));
       if (res.body.isNotEmpty) {
         try {
           return jsonDecode(res.body);

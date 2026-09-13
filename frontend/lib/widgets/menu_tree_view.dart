@@ -94,6 +94,13 @@ class MenuTreeRegistry {
               color: Color(0xFF3B82F6),
             ),
             MenuTreeNode(
+              code: MenuRegistry.MASTER_INVENTORY_DESIGNERS,
+              title: "Designer Master",
+              subtitle: "Manage jewellery designers, linked smiths & dealers",
+              icon: Icons.brush_rounded,
+              color: Color(0xFFE11D48),
+            ),
+            MenuTreeNode(
               code: MenuRegistry.MASTER_INVENTORY_PRODUCTS,
               title: "Product Master",
               subtitle: "Products, calculation types, SKU/Open stock & stone options",
@@ -127,6 +134,13 @@ class MenuTreeRegistry {
               subtitle: "Configure weight ranges, VA%, wastage & making charges per dealer",
               icon: Icons.price_change_rounded,
               color: Color(0xFF6366F1),
+            ),
+            MenuTreeNode(
+              code: MenuRegistry.MASTER_INVENTORY_DIAMOND_PRICE_SETTING,
+              title: "Diamond Price Setting",
+              subtitle: "Configure cent weight ranges & cent rates for diamond/stone products",
+              icon: Icons.diamond_rounded,
+              color: Color(0xFF0284C7),
             ),
           ],
         ),

@@ -608,6 +608,7 @@ class SizeRecord {
 
 class PriceSettingRecord {
   final int? id;
+  final String? companyid;
   final String? branchid;
   final String? branchname;
   final int productid;
@@ -628,6 +629,7 @@ class PriceSettingRecord {
 
   PriceSettingRecord({
     this.id,
+    this.companyid = '',
     this.branchid = '',
     this.branchname,
     required this.productid,
@@ -650,6 +652,7 @@ class PriceSettingRecord {
   factory PriceSettingRecord.fromJson(Map<String, dynamic> json) {
     return PriceSettingRecord(
       id: json['id'] != null ? int.tryParse(json['id'].toString()) : null,
+      companyid: json['companyid']?.toString() ?? '',
       branchid: json['branchid']?.toString() ?? '',
       branchname: json['branchname']?.toString() ?? '',
       productid: int.tryParse(json['productid']?.toString() ?? '0') ?? 0,
@@ -675,6 +678,7 @@ class PriceSettingRecord {
   Map<String, dynamic> toJson() {
     return {
       if (id != null) 'id': id,
+      'companyid': companyid ?? '',
       'branchid': branchid ?? '',
       'productid': productid,
       'subproductid': subproductid,
@@ -692,6 +696,7 @@ class PriceSettingRecord {
 
   PriceSettingRecord copyWith({
     int? id,
+    String? companyid,
     String? branchid,
     String? branchname,
     int? productid,
@@ -712,6 +717,7 @@ class PriceSettingRecord {
   }) {
     return PriceSettingRecord(
       id: id ?? this.id,
+      companyid: companyid ?? this.companyid,
       branchid: branchid ?? this.branchid,
       branchname: branchname ?? this.branchname,
       productid: productid ?? this.productid,
@@ -732,3 +738,188 @@ class PriceSettingRecord {
     );
   }
 }
+
+class DiamondPriceSettingRecord {
+  final int? id;
+  final String? companyid;
+  final String? branchid;
+  final String? branchname;
+  final int productid;
+  final String? productname;
+  final int? subproductid;
+  final String? subproductname;
+  final String accode;
+  final String? dealername;
+  final String? accounttype;
+  final double fromCent;
+  final double toCent;
+  final double centRate;
+  final String? createdAt;
+  final String? updatedAt;
+
+  DiamondPriceSettingRecord({
+    this.id,
+    this.companyid = '',
+    this.branchid = '',
+    this.branchname,
+    required this.productid,
+    this.productname,
+    this.subproductid,
+    this.subproductname,
+    required this.accode,
+    this.dealername,
+    this.accounttype,
+    required this.fromCent,
+    required this.toCent,
+    required this.centRate,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory DiamondPriceSettingRecord.fromJson(Map<String, dynamic> json) {
+    return DiamondPriceSettingRecord(
+      id: json['id'] != null ? int.tryParse(json['id'].toString()) : null,
+      companyid: json['companyid']?.toString() ?? '',
+      branchid: json['branchid']?.toString() ?? '',
+      branchname: json['branchname']?.toString(),
+      productid: int.tryParse(json['productid']?.toString() ?? '0') ?? 0,
+      productname: json['productname']?.toString(),
+      subproductid: json['subproductid'] != null && json['subproductid'].toString() != '0'
+          ? int.tryParse(json['subproductid'].toString())
+          : null,
+      subproductname: json['subproductname']?.toString(),
+      accode: json['accode']?.toString() ?? '',
+      dealername: json['dealername']?.toString(),
+      accounttype: json['accounttype']?.toString(),
+      fromCent: double.tryParse(json['from_cent']?.toString() ?? json['fromcent']?.toString() ?? '0') ?? 0.0,
+      toCent: double.tryParse(json['to_cent']?.toString() ?? json['tocent']?.toString() ?? '0') ?? 0.0,
+      centRate: double.tryParse(json['cent_rate']?.toString() ?? json['centrate']?.toString() ?? '0') ?? 0.0,
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'companyid': companyid ?? '',
+      'branchid': branchid ?? '',
+      'productid': productid,
+      'subproductid': subproductid,
+      'accode': accode,
+      'from_cent': fromCent,
+      'to_cent': toCent,
+      'cent_rate': centRate,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
+
+  DiamondPriceSettingRecord copyWith({
+    int? id,
+    String? companyid,
+    String? branchid,
+    String? branchname,
+    int? productid,
+    String? productname,
+    int? subproductid,
+    String? subproductname,
+    String? accode,
+    String? dealername,
+    String? accounttype,
+    double? fromCent,
+    double? toCent,
+    double? centRate,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return DiamondPriceSettingRecord(
+      id: id ?? this.id,
+      companyid: companyid ?? this.companyid,
+      branchid: branchid ?? this.branchid,
+      branchname: branchname ?? this.branchname,
+      productid: productid ?? this.productid,
+      productname: productname ?? this.productname,
+      subproductid: subproductid ?? this.subproductid,
+      subproductname: subproductname ?? this.subproductname,
+      accode: accode ?? this.accode,
+      dealername: dealername ?? this.dealername,
+      accounttype: accounttype ?? this.accounttype,
+      fromCent: fromCent ?? this.fromCent,
+      toCent: toCent ?? this.toCent,
+      centRate: centRate ?? this.centRate,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+class DesignerRecord {
+  final int? designerid;
+  final String accode;
+  final String designername;
+  final String designershortname;
+  final String? accountname;
+  final String? accounttype;
+  final String? createdAt;
+  final String? updatedAt;
+
+  DesignerRecord({
+    this.designerid,
+    required this.accode,
+    required this.designername,
+    this.designershortname = '',
+    this.accountname,
+    this.accounttype,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory DesignerRecord.fromJson(Map<String, dynamic> json) {
+    return DesignerRecord(
+      designerid: json['designerid'] != null ? int.tryParse(json['designerid'].toString()) : null,
+      accode: json['accode']?.toString() ?? '',
+      designername: json['designername']?.toString() ?? '',
+      designershortname: json['designershortname']?.toString() ?? '',
+      accountname: json['accountname']?.toString(),
+      accounttype: json['accounttype']?.toString(),
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (designerid != null) 'designerid': designerid,
+      'accode': accode,
+      'designername': designername,
+      'designershortname': designershortname,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
+
+  DesignerRecord copyWith({
+    int? designerid,
+    String? accode,
+    String? designername,
+    String? designershortname,
+    String? accountname,
+    String? accounttype,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return DesignerRecord(
+      designerid: designerid ?? this.designerid,
+      accode: accode ?? this.accode,
+      designername: designername ?? this.designername,
+      designershortname: designershortname ?? this.designershortname,
+      accountname: accountname ?? this.accountname,
+      accounttype: accounttype ?? this.accounttype,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+

@@ -81,7 +81,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
 
     try {
       final results = await Future.wait([
-        _api.getPriceSettingsData(token),
+        _api.getPriceSettingsData(token, companyId: auth.activeCompanyId),
         _api.getProducts(token),
         _api.getSubProducts(token),
         _api.getPriceSettingDealers(token),
@@ -130,8 +130,16 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
   }
 
   void _applyFilter() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final activeComp = auth.activeCompanyId.trim().toUpperCase();
     final q = _searchQuery.trim().toLowerCase();
+
     _filteredPriceSettings = _priceSettings.where((ps) {
+      if (activeComp.isNotEmpty) {
+        final psComp = (ps.companyid ?? '').trim().toUpperCase();
+        if (psComp.isNotEmpty && psComp != activeComp) return false;
+      }
+
       final matchesBranch = _filterBranchId == 'ALL' ||
           (ps.branchid ?? '').toUpperCase() == _filterBranchId.toUpperCase();
       final matchesProduct = _filterProductId == null || ps.productid == _filterProductId;
@@ -326,6 +334,7 @@ class _PriceSettingScreenState extends State<PriceSettingScreen> {
 
     final record = PriceSettingRecord(
       id: _editingRecord?.id,
+      companyid: auth.activeCompanyId,
       branchid: _selectedBranchId,
       productid: _selectedProductId!,
       subproductid: _selectedSubProductId,

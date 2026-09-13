@@ -169,6 +169,7 @@ async function ensureInventoryTables(client, tenantUrl = "") {
     await client.execute(`
       CREATE TABLE IF NOT EXISTS pricesetting (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        companyid TEXT DEFAULT '',
         branchid TEXT DEFAULT '',
         productid INTEGER NOT NULL,
         subproductid INTEGER DEFAULT NULL,
@@ -188,6 +189,56 @@ async function ensureInventoryTables(client, tenantUrl = "") {
 
     try {
       await client.execute(`ALTER TABLE pricesetting ADD COLUMN branchid TEXT DEFAULT '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE pricesetting ADD COLUMN companyid TEXT DEFAULT '';`);
+    } catch (_) { }
+
+    // Diamond Price Setting (Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS diamondpricesetting (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        companyid TEXT DEFAULT '',
+        branchid TEXT DEFAULT '',
+        productid INTEGER NOT NULL,
+        subproductid INTEGER DEFAULT NULL,
+        accode TEXT NOT NULL,
+        from_cent REAL NOT NULL DEFAULT 0.0,
+        to_cent REAL NOT NULL DEFAULT 0.0,
+        cent_rate REAL NOT NULL DEFAULT 0.0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        FOREIGN KEY (subproductid) REFERENCES subproducts(subproductid)
+      );
+    `);
+
+    try {
+      await client.execute(`ALTER TABLE diamondpricesetting ADD COLUMN branchid TEXT DEFAULT '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE diamondpricesetting ADD COLUMN companyid TEXT DEFAULT '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE diamondpricesetting ADD COLUMN subproductid INTEGER DEFAULT NULL;`);
+    } catch (_) { }
+
+    // Designers (Master under Inventory)
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS designers (
+        designerid INTEGER PRIMARY KEY AUTOINCREMENT,
+        accode TEXT NOT NULL,
+        designername TEXT NOT NULL,
+        designershortname TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    try {
+      await client.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_designers_designername_unique ON designers (UPPER(TRIM(designername)));
+      `);
     } catch (_) { }
   });
 }
@@ -1855,11 +1906,15 @@ export async function getPriceSettingsController(req, res) {
     const client = createTenantClient(turso_url, turso_token);
     await ensureInventoryTables(client);
 
-    const result = await client.execute(`
+    const companyClean = (req.query.companyid || "").toString().trim().toUpperCase();
+
+    let sql = `
       SELECT 
         ps.id,
+        COALESCE(ps.companyid, '') AS companyid,
         ps.branchid,
         COALESCE(b.branchname, '') AS branchname,
+        COALESCE(b.companyid, '') AS branch_companyid,
         ps.productid,
         COALESCE(p.productname, '') AS productname,
         ps.subproductid,
@@ -1880,8 +1935,15 @@ export async function getPriceSettingsController(req, res) {
       LEFT JOIN products p ON ps.productid = p.productid
       LEFT JOIN subproducts sp ON ps.subproductid = sp.subproductid
       LEFT JOIN account_heads ah ON ps.accode = ah.accode
-      ORDER BY ps.branchid ASC, p.productname ASC, sp.subproductname ASC, ah.accountname ASC, ps.weight_from ASC;
-    `);
+    `;
+    const args = [];
+    if (companyClean) {
+      sql += ` WHERE (UPPER(TRIM(COALESCE(ps.companyid, ''))) = ? OR UPPER(TRIM(COALESCE(b.companyid, ''))) = ?)`;
+      args.push(companyClean, companyClean);
+    }
+    sql += ` ORDER BY ps.branchid ASC, p.productname ASC, sp.subproductname ASC, ah.accountname ASC, ps.weight_from ASC;`;
+
+    const result = await client.execute({ sql, args });
 
     return res.json({
       success: true,
@@ -1924,6 +1986,7 @@ export async function createPriceSettingController(req, res) {
     await ensureInventoryTables(client);
 
     const {
+      companyid = "",
       branchid = "",
       productid,
       subproductid,
@@ -1937,6 +2000,7 @@ export async function createPriceSettingController(req, res) {
     } = req.body;
 
     const branchClean = (branchid || "").toString().trim().toUpperCase();
+    let companyClean = (companyid || req.query.companyid || "").toString().trim().toUpperCase();
 
     if (!productid) {
       return res.status(400).json({ success: false, message: "Product selection is required." });
@@ -1965,13 +2029,16 @@ export async function createPriceSettingController(req, res) {
     let branchName = "All / Global";
     if (branchClean && branchClean !== "ALL") {
       const branchCheck = await client.execute({
-        sql: `SELECT branchid, branchname FROM branches WHERE UPPER(TRIM(branchid)) = ? LIMIT 1;`,
+        sql: `SELECT branchid, branchname, companyid FROM branches WHERE UPPER(TRIM(branchid)) = ? LIMIT 1;`,
         args: [branchClean],
       });
       if (branchCheck.rows.length === 0) {
         return res.status(400).json({ success: false, message: "Selected Branch does not exist." });
       }
       branchName = branchCheck.rows[0].branchname || branchClean;
+      if (!companyClean && branchCheck.rows[0].companyid) {
+        companyClean = branchCheck.rows[0].companyid.toString().trim().toUpperCase();
+      }
     }
 
     // 2. Verify Product exists
@@ -2009,14 +2076,15 @@ export async function createPriceSettingController(req, res) {
     }
     const dealerName = dealerCheck.rows[0].accountname;
 
-    // 5. Overlap & Duplicate check scoped for the same (branchid, productid, subproductid, accode)
+    // 5. Overlap & Duplicate check scoped for the same (companyid, branchid, productid, subproductid, accode)
     let overlapQuery;
     let overlapArgs;
     if (subProdId !== null) {
       overlapQuery = `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = ?
+        WHERE (UPPER(TRIM(COALESCE(companyid, ''))) = ? OR ? = '')
+          AND UPPER(TRIM(COALESCE(branchid, ''))) = ?
           AND productid = ? 
           AND subproductid = ? 
           AND accode = ? 
@@ -2024,12 +2092,13 @@ export async function createPriceSettingController(req, res) {
           AND weight_to > ? 
         LIMIT 1;
       `;
-      overlapArgs = [branchClean, Number(productid), subProdId, accode.trim(), wTo, wFrom];
+      overlapArgs = [companyClean, companyClean, branchClean, Number(productid), subProdId, accode.trim(), wTo, wFrom];
     } else {
       overlapQuery = `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = ?
+        WHERE (UPPER(TRIM(COALESCE(companyid, ''))) = ? OR ? = '')
+          AND UPPER(TRIM(COALESCE(branchid, ''))) = ?
           AND productid = ? 
           AND (subproductid IS NULL OR subproductid = 0) 
           AND accode = ? 
@@ -2037,7 +2106,7 @@ export async function createPriceSettingController(req, res) {
           AND weight_to > ? 
         LIMIT 1;
       `;
-      overlapArgs = [branchClean, Number(productid), accode.trim(), wTo, wFrom];
+      overlapArgs = [companyClean, companyClean, branchClean, Number(productid), accode.trim(), wTo, wFrom];
     }
 
     const overlapResult = await client.execute({
@@ -2064,6 +2133,7 @@ export async function createPriceSettingController(req, res) {
     const insertResult = await client.execute({
       sql: `
         INSERT INTO pricesetting (
+          companyid,
           branchid,
           productid,
           subproductid,
@@ -2076,9 +2146,10 @@ export async function createPriceSettingController(req, res) {
           m_charge,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       `,
       args: [
+        companyClean,
         branchClean,
         Number(productid),
         subProdId,
@@ -2115,6 +2186,7 @@ export async function updatePriceSettingController(req, res) {
     await ensureInventoryTables(client);
 
     const {
+      companyid = "",
       branchid = "",
       productid,
       subproductid,
@@ -2128,6 +2200,7 @@ export async function updatePriceSettingController(req, res) {
     } = req.body;
 
     const branchClean = (branchid || "").toString().trim().toUpperCase();
+    let companyClean = (companyid || req.query.companyid || "").toString().trim().toUpperCase();
 
     if (!productid) {
       return res.status(400).json({ success: false, message: "Product selection is required." });
@@ -2156,13 +2229,16 @@ export async function updatePriceSettingController(req, res) {
     let branchName = "All / Global";
     if (branchClean && branchClean !== "ALL") {
       const branchCheck = await client.execute({
-        sql: `SELECT branchid, branchname FROM branches WHERE UPPER(TRIM(branchid)) = ? LIMIT 1;`,
+        sql: `SELECT branchid, branchname, companyid FROM branches WHERE UPPER(TRIM(branchid)) = ? LIMIT 1;`,
         args: [branchClean],
       });
       if (branchCheck.rows.length === 0) {
         return res.status(400).json({ success: false, message: "Selected Branch does not exist." });
       }
       branchName = branchCheck.rows[0].branchname || branchClean;
+      if (!companyClean && branchCheck.rows[0].companyid) {
+        companyClean = branchCheck.rows[0].companyid.toString().trim().toUpperCase();
+      }
     }
 
     // 2. Verify Product exists
@@ -2207,7 +2283,8 @@ export async function updatePriceSettingController(req, res) {
       overlapQuery = `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = ?
+        WHERE (UPPER(TRIM(COALESCE(companyid, ''))) = ? OR ? = '')
+          AND UPPER(TRIM(COALESCE(branchid, ''))) = ?
           AND productid = ? 
           AND subproductid = ? 
           AND accode = ? 
@@ -2216,12 +2293,13 @@ export async function updatePriceSettingController(req, res) {
           AND id != ?
         LIMIT 1;
       `;
-      overlapArgs = [branchClean, Number(productid), subProdId, accode.trim(), wTo, wFrom, Number(id)];
+      overlapArgs = [companyClean, companyClean, branchClean, Number(productid), subProdId, accode.trim(), wTo, wFrom, Number(id)];
     } else {
       overlapQuery = `
         SELECT id, weight_from, weight_to 
         FROM pricesetting 
-        WHERE UPPER(TRIM(COALESCE(branchid, ''))) = ?
+        WHERE (UPPER(TRIM(COALESCE(companyid, ''))) = ? OR ? = '')
+          AND UPPER(TRIM(COALESCE(branchid, ''))) = ?
           AND productid = ? 
           AND (subproductid IS NULL OR subproductid = 0) 
           AND accode = ? 
@@ -2230,7 +2308,7 @@ export async function updatePriceSettingController(req, res) {
           AND id != ?
         LIMIT 1;
       `;
-      overlapArgs = [branchClean, Number(productid), accode.trim(), wTo, wFrom, Number(id)];
+      overlapArgs = [companyClean, companyClean, branchClean, Number(productid), accode.trim(), wTo, wFrom, Number(id)];
     }
 
     const overlapResult = await client.execute({
@@ -2257,7 +2335,8 @@ export async function updatePriceSettingController(req, res) {
     await client.execute({
       sql: `
         UPDATE pricesetting
-        SET branchid = ?,
+        SET companyid = ?,
+            branchid = ?,
             productid = ?,
             subproductid = ?,
             accode = ?,
@@ -2271,6 +2350,7 @@ export async function updatePriceSettingController(req, res) {
         WHERE id = ?;
       `,
       args: [
+        companyClean,
         branchClean,
         Number(productid),
         subProdId,
@@ -2311,3 +2391,727 @@ export async function deletePriceSettingController(req, res) {
     return res.status(500).json({ success: false, message: error.message });
   }
 }
+
+// ==========================================
+// 9. DIAMOND PRICE SETTING CRUD CONTROLLERS
+// ==========================================
+
+export async function getDiamondPriceSettingsController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const companyClean = (req.query.companyid || "").toString().trim().toUpperCase();
+
+    let sql = `
+      SELECT 
+        dps.id,
+        COALESCE(dps.companyid, '') AS companyid,
+        dps.branchid,
+        COALESCE(b.branchname, '') AS branchname,
+        COALESCE(b.companyid, '') AS branch_companyid,
+        dps.productid,
+        COALESCE(p.productname, '') AS productname,
+        dps.subproductid,
+        COALESCE(sp.subproductname, '') AS subproductname,
+        dps.accode,
+        COALESCE(ah.accountname, '') AS dealername,
+        COALESCE(ah.accounttype, '') AS accounttype,
+        dps.from_cent,
+        dps.to_cent,
+        dps.cent_rate,
+        dps.created_at,
+        dps.updated_at
+      FROM diamondpricesetting dps
+      LEFT JOIN branches b ON UPPER(TRIM(dps.branchid)) = UPPER(TRIM(b.branchid))
+      LEFT JOIN products p ON dps.productid = p.productid
+      LEFT JOIN subproducts sp ON dps.subproductid = sp.subproductid
+      LEFT JOIN account_heads ah ON dps.accode = ah.accode
+    `;
+    const args = [];
+    if (companyClean) {
+      sql += ` WHERE (UPPER(TRIM(COALESCE(dps.companyid, ''))) = ? OR UPPER(TRIM(COALESCE(b.companyid, ''))) = ?)`;
+      args.push(companyClean, companyClean);
+    }
+    sql += ` ORDER BY dps.branchid ASC, p.productname ASC, sp.subproductname ASC, ah.accountname ASC, dps.from_cent ASC;`;
+
+    const result = await client.execute({ sql, args });
+
+    return res.json({
+      success: true,
+      diamond_price_settings: result.rows || [],
+      total_count: (result.rows || []).length,
+    });
+  } catch (error) {
+    console.error("getDiamondPriceSettings error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function getDiamondProductsController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const result = await client.execute(`
+      SELECT 
+        p.productid,
+        p.categoryid,
+        p.productname,
+        p.calctype,
+        p.stocktype,
+        p.havestone_diamond,
+        p.havesubproduct,
+        p.studded,
+        p.diastone,
+        p.hsncode,
+        p.stoneunit,
+        c.catname,
+        c.catcode,
+        c.categorytype,
+        m.metalid,
+        m.metalname,
+        p.created_at,
+        p.updated_at
+      FROM products p
+      JOIN categories c ON p.categoryid = c.id
+      JOIN metals m ON c.metalid = m.metalid
+      WHERE UPPER(TRIM(p.diastone)) IN ('D', 'S')
+      ORDER BY p.productname ASC;
+    `);
+
+    return res.json({
+      success: true,
+      products: result.rows || [],
+      total_count: (result.rows || []).length,
+    });
+  } catch (error) {
+    console.error("getDiamondProducts error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function createDiamondPriceSettingController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      companyid = "",
+      branchid = "",
+      productid,
+      subproductid,
+      accode,
+      from_cent,
+      to_cent,
+      cent_rate,
+    } = req.body;
+
+    const branchClean = (branchid || "").toString().trim().toUpperCase();
+    let companyClean = (companyid || req.query.companyid || "").toString().trim().toUpperCase();
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Product selection is required." });
+    }
+
+    if (!accode || !accode.trim()) {
+      return res.status(400).json({ success: false, message: "Dealer selection is required." });
+    }
+
+    const fCent = parseFloat(from_cent);
+    const tCent = parseFloat(to_cent);
+    const cRate = parseFloat(cent_rate);
+
+    if (isNaN(fCent) || isNaN(tCent)) {
+      return res.status(400).json({ success: false, message: "Valid numeric cent weight range (from and to) is required." });
+    }
+
+    if (fCent < 0) {
+      return res.status(400).json({ success: false, message: "From Cent weight cannot be negative." });
+    }
+
+    if (tCent <= fCent) {
+      return res.status(400).json({ success: false, message: "To Cent weight must be greater than From Cent weight." });
+    }
+
+    if (isNaN(cRate) || cRate < 0) {
+      return res.status(400).json({ success: false, message: "Cent Rate must be a valid non-negative number." });
+    }
+
+    // 1. Verify Branch exists if provided and not global/ALL
+    let branchName = "All / Global";
+    if (branchClean && branchClean !== "ALL") {
+      const branchCheck = await client.execute({
+        sql: `SELECT branchid, branchname, companyid FROM branches WHERE UPPER(TRIM(branchid)) = ? LIMIT 1;`,
+        args: [branchClean],
+      });
+      if (branchCheck.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Selected Branch does not exist." });
+      }
+      branchName = branchCheck.rows[0].branchname || branchClean;
+      if (!companyClean && branchCheck.rows[0].companyid) {
+        companyClean = branchCheck.rows[0].companyid.toString().trim().toUpperCase();
+      }
+    }
+
+    // 2. Verify Product exists and has diastone IN ('D', 'S')
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname, diastone FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Product does not exist." });
+    }
+    const prodName = prodCheck.rows[0].productname;
+    const diaStoneVal = (prodCheck.rows[0].diastone || "").toString().trim().toUpperCase();
+    if (diaStoneVal !== "D" && diaStoneVal !== "S") {
+      return res.status(400).json({
+        success: false,
+        message: `Product '${prodName}' does not have Diamond/Stone type (diastone='D' or 'S').`,
+      });
+    }
+
+    // 3. If subproductid provided, verify it belongs to productid
+    let subProdId = null;
+    let subProdName = "None / General";
+    if (subproductid !== undefined && subproductid !== null && subproductid !== "" && Number(subproductid) > 0) {
+      subProdId = Number(subproductid);
+      const subCheck = await client.execute({
+        sql: `SELECT subproductid, subproductname FROM subproducts WHERE subproductid = ? AND productid = ? LIMIT 1;`,
+        args: [subProdId, Number(productid)],
+      });
+      if (subCheck.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Selected Sub-Product does not belong to this Product." });
+      }
+      subProdName = subCheck.rows[0].subproductname;
+    }
+
+    // 4. Verify Dealer exists
+    const dealerCheck = await client.execute({
+      sql: `SELECT accode, accountname, accounttype FROM account_heads WHERE accode = ? AND UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') LIMIT 1;`,
+      args: [accode.trim()],
+    });
+    if (dealerCheck.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Selected Dealer is not a valid Smith or Dealer account." });
+    }
+    const dealerName = dealerCheck.rows[0].accountname;
+
+    // 5. Overlap & Duplicate check scoped for (companyid, branchid, productid, subproductid, accode)
+    let overlapQuery;
+    let overlapArgs;
+    if (subProdId !== null) {
+      overlapQuery = `
+        SELECT id, from_cent, to_cent 
+        FROM diamondpricesetting 
+        WHERE (UPPER(TRIM(COALESCE(companyid, ''))) = ? OR ? = '')
+          AND UPPER(TRIM(COALESCE(branchid, ''))) = ?
+          AND productid = ? 
+          AND subproductid = ? 
+          AND accode = ? 
+          AND from_cent < ? 
+          AND to_cent > ? 
+        LIMIT 1;
+      `;
+      overlapArgs = [companyClean, companyClean, branchClean, Number(productid), subProdId, accode.trim(), tCent, fCent];
+    } else {
+      overlapQuery = `
+        SELECT id, from_cent, to_cent 
+        FROM diamondpricesetting 
+        WHERE (UPPER(TRIM(COALESCE(companyid, ''))) = ? OR ? = '')
+          AND UPPER(TRIM(COALESCE(branchid, ''))) = ?
+          AND productid = ? 
+          AND (subproductid IS NULL OR subproductid = 0) 
+          AND accode = ? 
+          AND from_cent < ? 
+          AND to_cent > ? 
+        LIMIT 1;
+      `;
+      overlapArgs = [companyClean, companyClean, branchClean, Number(productid), accode.trim(), tCent, fCent];
+    }
+
+    const overlapResult = await client.execute({
+      sql: overlapQuery,
+      args: overlapArgs,
+    });
+
+    if (overlapResult.rows.length > 0) {
+      const existing = overlapResult.rows[0];
+      const branchDisplay = branchClean ? `Branch '${branchName}'` : "Global / All Branches";
+      return res.status(400).json({
+        success: false,
+        message: `Cent weight range ${fCent} - ${tCent} overlaps with existing range (${existing.from_cent} - ${existing.to_cent}) for ${branchDisplay}, Product '${prodName}', Sub-Product '${subProdName}', and Dealer '${dealerName}'.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    const insertResult = await client.execute({
+      sql: `
+        INSERT INTO diamondpricesetting (
+          companyid,
+          branchid,
+          productid,
+          subproductid,
+          accode,
+          from_cent,
+          to_cent,
+          cent_rate,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `,
+      args: [
+        companyClean,
+        branchClean,
+        Number(productid),
+        subProdId,
+        accode.trim(),
+        fCent,
+        tCent,
+        cRate,
+        now,
+        now,
+      ],
+    });
+
+    const newId = insertResult.lastInsertRowid ? Number(insertResult.lastInsertRowid) : null;
+
+    return res.status(201).json({
+      success: true,
+      message: "Diamond Price Setting created successfully!",
+      id: newId,
+    });
+  } catch (error) {
+    console.error("createDiamondPriceSetting error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function updateDiamondPriceSettingController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      companyid = "",
+      branchid = "",
+      productid,
+      subproductid,
+      accode,
+      from_cent,
+      to_cent,
+      cent_rate,
+    } = req.body;
+
+    const branchClean = (branchid || "").toString().trim().toUpperCase();
+    let companyClean = (companyid || req.query.companyid || "").toString().trim().toUpperCase();
+
+    if (!productid) {
+      return res.status(400).json({ success: false, message: "Product selection is required." });
+    }
+
+    if (!accode || !accode.trim()) {
+      return res.status(400).json({ success: false, message: "Dealer selection is required." });
+    }
+
+    const fCent = parseFloat(from_cent);
+    const tCent = parseFloat(to_cent);
+    const cRate = parseFloat(cent_rate);
+
+    if (isNaN(fCent) || isNaN(tCent)) {
+      return res.status(400).json({ success: false, message: "Valid numeric cent weight range (from and to) is required." });
+    }
+
+    if (fCent < 0) {
+      return res.status(400).json({ success: false, message: "From Cent weight cannot be negative." });
+    }
+
+    if (tCent <= fCent) {
+      return res.status(400).json({ success: false, message: "To Cent weight must be greater than From Cent weight." });
+    }
+
+    if (isNaN(cRate) || cRate < 0) {
+      return res.status(400).json({ success: false, message: "Cent Rate must be a valid non-negative number." });
+    }
+
+    // 1. Verify Branch exists if provided
+    let branchName = "All / Global";
+    if (branchClean && branchClean !== "ALL") {
+      const branchCheck = await client.execute({
+        sql: `SELECT branchid, branchname, companyid FROM branches WHERE UPPER(TRIM(branchid)) = ? LIMIT 1;`,
+        args: [branchClean],
+      });
+      if (branchCheck.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Selected Branch does not exist." });
+      }
+      branchName = branchCheck.rows[0].branchname || branchClean;
+      if (!companyClean && branchCheck.rows[0].companyid) {
+        companyClean = branchCheck.rows[0].companyid.toString().trim().toUpperCase();
+      }
+    }
+
+    // 2. Verify Product exists and has diastone IN ('D', 'S')
+    const prodCheck = await client.execute({
+      sql: `SELECT productid, productname, diastone FROM products WHERE productid = ? LIMIT 1;`,
+      args: [Number(productid)],
+    });
+    if (prodCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Selected Product does not exist." });
+    }
+    const prodName = prodCheck.rows[0].productname;
+    const diaStoneVal = (prodCheck.rows[0].diastone || "").toString().trim().toUpperCase();
+    if (diaStoneVal !== "D" && diaStoneVal !== "S") {
+      return res.status(400).json({
+        success: false,
+        message: `Product '${prodName}' does not have Diamond/Stone type (diastone='D' or 'S').`,
+      });
+    }
+
+    // 3. If subproductid provided, verify it belongs to productid
+    let subProdId = null;
+    let subProdName = "None / General";
+    if (subproductid !== undefined && subproductid !== null && subproductid !== "" && Number(subproductid) > 0) {
+      subProdId = Number(subproductid);
+      const subCheck = await client.execute({
+        sql: `SELECT subproductid, subproductname FROM subproducts WHERE subproductid = ? AND productid = ? LIMIT 1;`,
+        args: [subProdId, Number(productid)],
+      });
+      if (subCheck.rows.length === 0) {
+        return res.status(400).json({ success: false, message: "Selected Sub-Product does not belong to this Product." });
+      }
+      subProdName = subCheck.rows[0].subproductname;
+    }
+
+    // 4. Verify Dealer exists
+    const dealerCheck = await client.execute({
+      sql: `SELECT accode, accountname, accounttype FROM account_heads WHERE accode = ? AND UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') LIMIT 1;`,
+      args: [accode.trim()],
+    });
+    if (dealerCheck.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Selected Dealer is not a valid Smith or Dealer account." });
+    }
+    const dealerName = dealerCheck.rows[0].accountname;
+
+    // 5. Overlap check excluding current ID
+    let overlapQuery;
+    let overlapArgs;
+    if (subProdId !== null) {
+      overlapQuery = `
+        SELECT id, from_cent, to_cent 
+        FROM diamondpricesetting 
+        WHERE (UPPER(TRIM(COALESCE(companyid, ''))) = ? OR ? = '')
+          AND UPPER(TRIM(COALESCE(branchid, ''))) = ?
+          AND productid = ? 
+          AND subproductid = ? 
+          AND accode = ? 
+          AND from_cent < ? 
+          AND to_cent > ? 
+          AND id != ?
+        LIMIT 1;
+      `;
+      overlapArgs = [companyClean, companyClean, branchClean, Number(productid), subProdId, accode.trim(), tCent, fCent, Number(id)];
+    } else {
+      overlapQuery = `
+        SELECT id, from_cent, to_cent 
+        FROM diamondpricesetting 
+        WHERE (UPPER(TRIM(COALESCE(companyid, ''))) = ? OR ? = '')
+          AND UPPER(TRIM(COALESCE(branchid, ''))) = ?
+          AND productid = ? 
+          AND (subproductid IS NULL OR subproductid = 0) 
+          AND accode = ? 
+          AND from_cent < ? 
+          AND to_cent > ? 
+          AND id != ?
+        LIMIT 1;
+      `;
+      overlapArgs = [companyClean, companyClean, branchClean, Number(productid), accode.trim(), tCent, fCent, Number(id)];
+    }
+
+    const overlapResult = await client.execute({
+      sql: overlapQuery,
+      args: overlapArgs,
+    });
+
+    if (overlapResult.rows.length > 0) {
+      const existing = overlapResult.rows[0];
+      const branchDisplay = branchClean ? `Branch '${branchName}'` : "Global / All Branches";
+      return res.status(400).json({
+        success: false,
+        message: `Cent weight range ${fCent} - ${tCent} overlaps with existing range (${existing.from_cent} - ${existing.to_cent}) for ${branchDisplay}, Product '${prodName}', Sub-Product '${subProdName}', and Dealer '${dealerName}'.`,
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    await client.execute({
+      sql: `
+        UPDATE diamondpricesetting
+        SET companyid = ?,
+            branchid = ?,
+            productid = ?,
+            subproductid = ?,
+            accode = ?,
+            from_cent = ?,
+            to_cent = ?,
+            cent_rate = ?,
+            updated_at = ?
+        WHERE id = ?;
+      `,
+      args: [
+        companyClean,
+        branchClean,
+        Number(productid),
+        subProdId,
+        accode.trim(),
+        fCent,
+        tCent,
+        cRate,
+        now,
+        Number(id),
+      ],
+    });
+
+    return res.json({ success: true, message: "Diamond Price Setting updated successfully!" });
+  } catch (error) {
+    console.error("updateDiamondPriceSetting error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deleteDiamondPriceSettingController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    await client.execute({
+      sql: `DELETE FROM diamondpricesetting WHERE id = ?;`,
+      args: [Number(id)],
+    });
+
+    return res.json({ success: true, message: "Diamond Price Setting deleted successfully!" });
+  } catch (error) {
+    console.error("deleteDiamondPriceSetting error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+// ==========================================
+// 10. DESIGNER MASTER CRUD CONTROLLERS
+// ==========================================
+
+export async function getDesignersController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const result = await client.execute(`
+      SELECT 
+        d.designerid,
+        d.accode,
+        COALESCE(ah.accountname, '') AS accountname,
+        COALESCE(ah.accounttype, '') AS accounttype,
+        d.designername,
+        d.designershortname,
+        d.created_at,
+        d.updated_at
+      FROM designers d
+      LEFT JOIN account_heads ah ON UPPER(TRIM(d.accode)) = UPPER(TRIM(ah.accode))
+      ORDER BY d.designername ASC;
+    `);
+
+    const meta = await client.execute(`
+      SELECT MAX(designerid) AS max_id, COUNT(*) AS total_count FROM designers;
+    `);
+    const maxId = Number(meta.rows[0]?.max_id || 0);
+
+    return res.json({
+      success: true,
+      designers: result.rows || [],
+      last_designerid: maxId,
+      next_designerid: maxId + 1,
+      total_count: Number(meta.rows[0]?.total_count || 0),
+    });
+  } catch (error) {
+    console.error("getDesigners error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function createDesignerController(req, res) {
+  try {
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      accode,
+      designername,
+      designershortname = "",
+    } = req.body;
+
+    if (!accode || !accode.trim()) {
+      return res.status(400).json({ success: false, message: "Account Head (Smith/Dealer) selection is required." });
+    }
+
+    if (!designername || !designername.trim()) {
+      return res.status(400).json({ success: false, message: "Designer Name is required." });
+    }
+
+    const cleanAccode = accode.trim();
+    const cleanName = designername.trim().substring(0, 50);
+    const cleanShortName = (designershortname || "").trim().substring(0, 10).toUpperCase();
+
+    // 1. Verify Dealer/Smith exists in account_heads
+    const checkAccount = await client.execute({
+      sql: `SELECT accode, accountname, accounttype FROM account_heads WHERE UPPER(TRIM(accode)) = UPPER(?) AND UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') LIMIT 1;`,
+      args: [cleanAccode],
+    });
+
+    if (checkAccount.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Selected Account is not a valid Smith or Dealer." });
+    }
+
+    // 2. Check unique designer name
+    const checkDuplicate = await client.execute({
+      sql: `SELECT designerid FROM designers WHERE UPPER(TRIM(designername)) = UPPER(?) LIMIT 1;`,
+      args: [cleanName],
+    });
+
+    if (checkDuplicate.rows.length > 0) {
+      return res.status(400).json({ success: false, message: `Designer Name '${cleanName}' already exists.` });
+    }
+
+    const now = new Date().toISOString();
+
+    const insertResult = await client.execute({
+      sql: `
+        INSERT INTO designers (
+          accode,
+          designername,
+          designershortname,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?);
+      `,
+      args: [
+        cleanAccode,
+        cleanName,
+        cleanShortName,
+        now,
+        now,
+      ],
+    });
+
+    const newId = insertResult.lastInsertRowid ? Number(insertResult.lastInsertRowid) : null;
+
+    return res.status(201).json({
+      success: true,
+      message: "Designer created successfully!",
+      designerid: newId,
+    });
+  } catch (error) {
+    console.error("createDesigner error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function updateDesignerController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    const {
+      accode,
+      designername,
+      designershortname = "",
+    } = req.body;
+
+    if (!accode || !accode.trim()) {
+      return res.status(400).json({ success: false, message: "Account Head (Smith/Dealer) selection is required." });
+    }
+
+    if (!designername || !designername.trim()) {
+      return res.status(400).json({ success: false, message: "Designer Name is required." });
+    }
+
+    const cleanAccode = accode.trim();
+    const cleanName = designername.trim().substring(0, 50);
+    const cleanShortName = (designershortname || "").trim().substring(0, 10).toUpperCase();
+
+    // 1. Verify Dealer/Smith exists
+    const checkAccount = await client.execute({
+      sql: `SELECT accode, accountname, accounttype FROM account_heads WHERE UPPER(TRIM(accode)) = UPPER(?) AND UPPER(TRIM(accounttype)) IN ('SMITH', 'DEALER') LIMIT 1;`,
+      args: [cleanAccode],
+    });
+
+    if (checkAccount.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Selected Account is not a valid Smith or Dealer." });
+    }
+
+    // 2. Check unique designer name excluding current ID
+    const checkDuplicate = await client.execute({
+      sql: `SELECT designerid FROM designers WHERE UPPER(TRIM(designername)) = UPPER(?) AND designerid != ? LIMIT 1;`,
+      args: [cleanName, Number(id)],
+    });
+
+    if (checkDuplicate.rows.length > 0) {
+      return res.status(400).json({ success: false, message: `Designer Name '${cleanName}' already exists.` });
+    }
+
+    const now = new Date().toISOString();
+
+    await client.execute({
+      sql: `
+        UPDATE designers
+        SET accode = ?,
+            designername = ?,
+            designershortname = ?,
+            updated_at = ?
+        WHERE designerid = ?;
+      `,
+      args: [
+        cleanAccode,
+        cleanName,
+        cleanShortName,
+        now,
+        Number(id),
+      ],
+    });
+
+    return res.json({ success: true, message: "Designer updated successfully!" });
+  } catch (error) {
+    console.error("updateDesigner error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+export async function deleteDesignerController(req, res) {
+  try {
+    const { id } = req.params;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+    await ensureInventoryTables(client);
+
+    await client.execute({
+      sql: `DELETE FROM designers WHERE designerid = ?;`,
+      args: [Number(id)],
+    });
+
+    return res.json({ success: true, message: "Designer deleted successfully!" });
+  } catch (error) {
+    console.error("deleteDesigner error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+

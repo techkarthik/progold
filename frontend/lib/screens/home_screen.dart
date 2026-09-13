@@ -14,11 +14,13 @@ import 'tax_master_screen.dart';
 import 'metal_master_screen.dart';
 import 'purity_master_screen.dart';
 import 'category_master_screen.dart';
+import 'designer_master_screen.dart';
 import 'product_master_screen.dart';
 import 'subproduct_master_screen.dart';
 import 'style_master_screen.dart';
 import 'size_master_screen.dart';
 import 'price_setting_screen.dart';
+import 'diamond_price_setting_screen.dart';
 import 'database_status_screen.dart';
 import 'system_controls_screen.dart';
 import 'estimate_screen.dart';
@@ -1350,6 +1352,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case "CATEGORY":
         submenuCode = MenuRegistry.MASTER_INVENTORY_CATEGORY;
         break;
+      case "DESIGNERS":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_DESIGNERS;
+        break;
       case "PRODUCTS":
         submenuCode = MenuRegistry.MASTER_INVENTORY_PRODUCTS;
         break;
@@ -1364,6 +1369,9 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case "PRICESETTING":
         submenuCode = MenuRegistry.MASTER_INVENTORY_PRICE_SETTING;
+        break;
+      case "DIAMONDPRICESETTING":
+        submenuCode = MenuRegistry.MASTER_INVENTORY_DIAMOND_PRICE_SETTING;
         break;
     }
 
@@ -1438,6 +1446,10 @@ class _HomeScreenState extends State<HomeScreen> {
         return CategoryMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
         );
+      case "DESIGNERS":
+        return DesignerMasterScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
       case "PRODUCTS":
         return ProductMasterScreen(
           onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
@@ -1456,6 +1468,10 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       case "PRICESETTING":
         return PriceSettingScreen(
+          onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
+        );
+      case "DIAMONDPRICESETTING":
+        return DiamondPriceSettingScreen(
           onBack: () => setState(() => _masterSubmenu = "INVENTORY"),
         );
       case "HUB":
@@ -1978,6 +1994,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: GlassTheme.accentRose,
                   onTap: () => setState(() => _masterSubmenu = "CATEGORY"),
                 ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_DESIGNERS))
+                _buildSubmenuGridCard(
+                  title: "Designer Master",
+                  desc: "Manage jewellery designers, linked smiths & dealers",
+                  icon: Icons.brush_rounded,
+                  color: const Color(0xFFE11D48),
+                  onTap: () => setState(() => _masterSubmenu = "DESIGNERS"),
+                ),
               if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_PRODUCTS))
                 _buildSubmenuGridCard(
                   title: "Product Master",
@@ -2017,6 +2041,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.price_change_rounded,
                   color: const Color(0xFF6366F1),
                   onTap: () => setState(() => _masterSubmenu = "PRICESETTING"),
+                ),
+              if (_hasAccess(auth, MenuRegistry.MASTER_INVENTORY_DIAMOND_PRICE_SETTING))
+                _buildSubmenuGridCard(
+                  title: "Diamond Price Setting",
+                  desc: "Configure cent weight ranges & cent rates for diamond/stone products",
+                  icon: Icons.diamond_rounded,
+                  color: const Color(0xFF0284C7),
+                  onTap: () => setState(() => _masterSubmenu = "DIAMONDPRICESETTING"),
                 ),
             ],
           ),

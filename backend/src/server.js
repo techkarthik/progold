@@ -95,6 +95,15 @@ import {
   createPriceSettingController,
   updatePriceSettingController,
   deletePriceSettingController,
+  getDiamondPriceSettingsController,
+  getDiamondProductsController,
+  createDiamondPriceSettingController,
+  updateDiamondPriceSettingController,
+  deleteDiamondPriceSettingController,
+  getDesignersController,
+  createDesignerController,
+  updateDesignerController,
+  deleteDesignerController,
 } from "./controllers/inventoryMasterController.js";
 import {
   getSystemControlsController,
@@ -265,6 +274,19 @@ app.get("/api/tenant/price-settings/dealers", requireAuth, getPriceSettingDealer
 app.post("/api/tenant/price-settings", requireAuth, createPriceSettingController);
 app.put("/api/tenant/price-settings/:id", requireAuth, updatePriceSettingController);
 app.delete("/api/tenant/price-settings/:id", requireAuth, deletePriceSettingController);
+
+// Tenant Diamond Price Setting CRUD Routes (Master under Inventory)
+app.get("/api/tenant/diamond-price-settings", requireAuth, getDiamondPriceSettingsController);
+app.get("/api/tenant/diamond-price-settings/products", requireAuth, getDiamondProductsController);
+app.post("/api/tenant/diamond-price-settings", requireAuth, createDiamondPriceSettingController);
+app.put("/api/tenant/diamond-price-settings/:id", requireAuth, updateDiamondPriceSettingController);
+app.delete("/api/tenant/diamond-price-settings/:id", requireAuth, deleteDiamondPriceSettingController);
+
+// Tenant Designer Master CRUD Routes (Master under Inventory)
+app.get("/api/tenant/designers", requireAuth, getDesignersController);
+app.post("/api/tenant/designers", requireAuth, createDesignerController);
+app.put("/api/tenant/designers/:id", requireAuth, updateDesignerController);
+app.delete("/api/tenant/designers/:id", requireAuth, deleteDesignerController);
 
 // Tenant System Controls CRUD Routes (4th Menu under Settings)
 app.get("/api/tenant/system-controls", requireAuth, getSystemControlsController);
