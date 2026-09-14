@@ -28,6 +28,8 @@ import 'employee_master_screen.dart';
 import 'sales_and_price_screen.dart';
 import 'smith_purchase_screen.dart';
 import 'prepare_sku_screen.dart';
+import 'barcode_template_designer_screen.dart';
+import 'stock_barcode_tagging_screen.dart';
 import '../services/api_service.dart';
 import '../constants/menu_registry.dart';
 import '../constants/app_version.dart';
@@ -573,6 +575,36 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                     ),
                   ],
+                  if (_hasAccess(auth, MenuRegistry.STOCK_BARCODE_TAGS)) ...[
+                    const SizedBox(height: 4),
+                    _buildDrawerItem(
+                      icon: Icons.qr_code_2_rounded,
+                      title: "Barcode & RFID Tagging",
+                      subtitle: "Lot tagging, costing & printing",
+                      isSelected: _selectedModule == "STOCK" && _stockSubmenu == "BARCODE_TAGS",
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _selectedModule = "STOCK";
+                          _stockSubmenu = "BARCODE_TAGS";
+                        });
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  _buildDrawerItem(
+                    icon: Icons.design_services_rounded,
+                    title: "Barcode Template Designer",
+                    subtitle: "Visual tag & label layout editor",
+                    isSelected: _selectedModule == "STOCK" && _stockSubmenu == "TEMPLATE_DESIGNER",
+                    onTap: () {
+                      Navigator.pop(context);
+                      setState(() {
+                        _selectedModule = "STOCK";
+                        _stockSubmenu = "TEMPLATE_DESIGNER";
+                      });
+                    },
+                  ),
                 ],
                 if (_hasAccess(auth, MenuRegistry.MENU_ESTIMATE)) ...[
                   const SizedBox(height: 4),
@@ -1237,6 +1269,18 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    // Check for full-screen workspace screens that have their own Scaffolds/headers/Flex layouts
+    final bool isFullScreenView = (module == "SMITH_PURCHASE") ||
+        (module == "ESTIMATE") ||
+        (module == "STOCK" &&
+            (_stockSubmenu == "PREPARE_SKU" ||
+                _stockSubmenu == "BARCODE_TAGS" ||
+                _stockSubmenu == "TEMPLATE_DESIGNER"));
+
+    if (isFullScreenView) {
+      return _buildModuleSpecificContent(module, auth, tenant);
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       child: Center(
@@ -1269,7 +1313,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         : (module == "SETTINGS" && _settingsSubmenu != "HUB"
                             ? "SETTINGS > ${_settingsSubmenu == 'DB_STATUS' ? 'Database Status' : (_settingsSubmenu == 'SYSTEM_CONTROLS' ? 'System Controls' : _settingsSubmenu)}"
                             : (module == "STOCK" && _stockSubmenu != "HUB"
-                                ? "STOCK > ${_stockSubmenu == 'PREPARE_SKU' ? 'Prepare for SKU' : _stockSubmenu}"
+                                ? "STOCK > ${_stockSubmenu == 'PREPARE_SKU' ? 'Prepare for SKU' : (_stockSubmenu == 'BARCODE_TAGS' ? 'Barcode & RFID Tagging' : (_stockSubmenu == 'TEMPLATE_DESIGNER' ? 'Barcode Template Designer' : _stockSubmenu))}"
                                 : (module == "ESTIMATE" ? "ESTIMATE & QUOTATION DESK" : "$module Workspace"))),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: GlassTheme.textPrimary),
                   ),
@@ -1301,6 +1345,16 @@ class _HomeScreenState extends State<HomeScreen> {
       case "STOCK":
         if (_stockSubmenu == "PREPARE_SKU") {
           return PrepareSkuScreen(
+            onBack: () => setState(() => _stockSubmenu = "HUB"),
+          );
+        }
+        if (_stockSubmenu == "BARCODE_TAGS") {
+          return StockBarcodeTaggingScreen(
+            onBack: () => setState(() => _stockSubmenu = "HUB"),
+          );
+        }
+        if (_stockSubmenu == "TEMPLATE_DESIGNER") {
+          return BarcodeTemplateDesignerScreen(
             onBack: () => setState(() => _stockSubmenu = "HUB"),
           );
         }
@@ -2212,15 +2266,22 @@ class _HomeScreenState extends State<HomeScreen> {
               if (_hasAccess(auth, MenuRegistry.STOCK_BARCODE_TAGS))
                 _buildSubmenuGridCard(
                   title: "Barcode & RFID Tagging",
-                  desc: "Generate jewelry tags with QR codes & gross weight",
+                  desc: "Lot-based SKU tagging, VA lookup, purchase costing & 1-click printing",
                   icon: Icons.qr_code_2_rounded,
                   color: const Color(0xFF06B6D4),
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Barcode & RFID Tagging module active")),
-                    );
+                    setState(() => _stockSubmenu = "BARCODE_TAGS");
                   },
                 ),
+              _buildSubmenuGridCard(
+                title: "Barcode Template Designer",
+                desc: "Design dynamic multi-column jewelry tags & roll labels with live preview",
+                icon: Icons.design_services_rounded,
+                color: const Color(0xFFEAB308),
+                onTap: () {
+                  setState(() => _stockSubmenu = "TEMPLATE_DESIGNER");
+                },
+              ),
               if (_hasAccess(auth, MenuRegistry.STOCK_AUDIT))
                 _buildSubmenuGridCard(
                   title: "Physical Stock Audit",

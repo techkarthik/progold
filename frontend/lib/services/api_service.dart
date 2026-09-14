@@ -1965,6 +1965,192 @@ class ApiService {
       return {'success': false, 'message': e.toString()};
     }
   }
+
+  // ================= BARCODE TEMPLATES API METHODS =================
+
+  /// Fetches all dynamic barcode label templates
+  Future<Map<String, dynamic>> getBarcodeTemplates(String token) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/barcode-templates'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Creates a new barcode template
+  Future<Map<String, dynamic>> createBarcodeTemplate(String token, Map<String, dynamic> data) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/barcode-templates'),
+        headers: _headers(token),
+        body: jsonEncode(data),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Updates an existing barcode template
+  Future<Map<String, dynamic>> updateBarcodeTemplate(String token, int templateId, Map<String, dynamic> data) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/barcode-templates/$templateId'),
+        headers: _headers(token),
+        body: jsonEncode(data),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Deletes a barcode template
+  Future<Map<String, dynamic>> deleteBarcodeTemplate(String token, int templateId) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/barcode-templates/$templateId'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Sets a template as the default print template
+  Future<Map<String, dynamic>> setDefaultBarcodeTemplate(String token, int templateId) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/barcode-templates/$templateId/set-default'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ================= STOCK BARCODE TAGGING API METHODS =================
+
+  /// Retrieves tagged stock inventory items with optional filters
+  Future<Map<String, dynamic>> getStockTags(
+    String token, {
+    String? companyId,
+    String? branchId,
+    int? lotId,
+    String? status,
+    String? search,
+  }) async {
+    try {
+      final params = <String, String>{};
+      if (companyId != null && companyId.isNotEmpty) params['companyid'] = companyId;
+      if (branchId != null && branchId.isNotEmpty) params['branchid'] = branchId;
+      if (lotId != null) params['lot_id'] = lotId.toString();
+      if (status != null && status.isNotEmpty) params['status'] = status;
+      if (search != null && search.isNotEmpty) params['search'] = search;
+
+      final uri = Uri.parse('$baseUrl/tenant/stock/tags').replace(queryParameters: params.isNotEmpty ? params : null);
+      final res = await http.get(uri, headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Looks up Value Addition (Price Setting) matching smith, product, and weight range
+  Future<Map<String, dynamic>> lookupVaPriceSetting(
+    String token, {
+    String? companyId,
+    String? branchId,
+    required int productId,
+    int? subproductId,
+    String? accode,
+    double? weight,
+  }) async {
+    try {
+      final params = <String, String>{
+        'productid': productId.toString(),
+      };
+      if (companyId != null && companyId.isNotEmpty) params['companyid'] = companyId;
+      if (branchId != null && branchId.isNotEmpty) params['branchid'] = branchId;
+      if (subproductId != null) params['subproductid'] = subproductId.toString();
+      if (accode != null && accode.isNotEmpty) params['accode'] = accode;
+      if (weight != null) params['weight'] = weight.toString();
+
+      final uri = Uri.parse('$baseUrl/tenant/stock/va-lookup').replace(queryParameters: params);
+      final res = await http.get(uri, headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Generates individual or batch SKU tags from a source Lot
+  Future<Map<String, dynamic>> generateTagsFromLot(String token, Map<String, dynamic> data) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/stock/tags/generate-from-lot'),
+        headers: _headers(token),
+        body: jsonEncode(data),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Updates a tagged stock item
+  Future<Map<String, dynamic>> updateStockTag(String token, int tagId, Map<String, dynamic> data) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/stock/tags/$tagId'),
+        headers: _headers(token),
+        body: jsonEncode(data),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Deletes a tagged stock item
+  Future<Map<String, dynamic>> deleteStockTag(String token, int tagId) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/stock/tags/$tagId'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Marks selected tags as printed
+  Future<Map<String, dynamic>> markStockTagsPrinted(
+    String token, {
+    List<int>? itemIds,
+    List<String>? skuCodes,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/tenant/stock/tags/mark-printed'),
+        headers: _headers(token),
+        body: jsonEncode({
+          if (itemIds != null) 'item_ids': itemIds,
+          if (skuCodes != null) 'sku_codes': skuCodes,
+        }),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
 }
 
 

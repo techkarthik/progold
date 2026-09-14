@@ -4,20 +4,20 @@ class AppVersion {
   static const String appName = "ProGold";
   static const String version = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '2.7.2',
+    defaultValue: '2.8.0',
   );
   static const String buildDate = String.fromEnvironment(
     'BUILD_DATE',
-    defaultValue: '14-Sep-2026 00:15 IST',
+    defaultValue: '14-Sep-2026 23:37 IST',
   );
   static const String channel = "Cloud Active";
 
-  /// Format: "ProGold v2.6.0 • Build: 13-Sep-2026 22:55 IST"
+  /// Format: "ProGold v2.8.0 • Build: 14-Sep-2026 23:37 IST"
   static String get drawerVersion => "$appName v$version • Build: $buildDate";
 
-  /// Format: "ProGold v2.6.0 • Build: 13-Sep-2026 22:55 IST • Cloud Active"
+  /// Format: "ProGold v2.8.0 • Build: 14-Sep-2026 23:37 IST • Cloud Active"
   static String get badgeVersion => "$appName v$version • Build: $buildDate • $channel";
 
-  /// Full title: "ProGold v2.6.0 (13-Sep-2026 22:55 IST)"
+  /// Full title: "ProGold v2.8.0 (14-Sep-2026 23:37 IST)"
   static String get fullTitle => "$appName v$version ($buildDate)";
 }
