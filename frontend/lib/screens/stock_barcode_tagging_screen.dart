@@ -40,8 +40,22 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
   BarcodeTemplate? _selectedTemplate;
   final Set<int> _selectedItemIdsForPrint = {};
 
-  // Form Controls for Single Piece Tagging (Top Entry Form)
+  // Form Controls & Focus Nodes for Single Piece Tagging (Sequential Enter Key Navigation)
+  final FocusNode _pcsFocusNode = FocusNode();
   final FocusNode _grossWeightFocusNode = FocusNode();
+  final FocusNode _netWeightFocusNode = FocusNode();
+  final FocusNode _boardRateFocusNode = FocusNode();
+  final FocusNode _salesVaFocusNode = FocusNode();
+  final FocusNode _salesWastageFocusNode = FocusNode();
+  final FocusNode _salesMcGSimpleFocusNode = FocusNode();
+  final FocusNode _salesMChargeFocusNode = FocusNode();
+  final FocusNode _purchaseTouchFocusNode = FocusNode();
+  final FocusNode _purchaseGoldRateFocusNode = FocusNode();
+  final FocusNode _purchaseMcFocusNode = FocusNode();
+  final FocusNode _purchaseStoneCostFocusNode = FocusNode();
+  final FocusNode _huidFocusNode = FocusNode();
+  final FocusNode _remarksFocusNode = FocusNode();
+
   final TextEditingController _pcsController = TextEditingController(text: '1');
   final TextEditingController _grossWeightController = TextEditingController();
   final TextEditingController _netWeightController = TextEditingController();
@@ -93,7 +107,21 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
 
   @override
   void dispose() {
+    _pcsFocusNode.dispose();
     _grossWeightFocusNode.dispose();
+    _netWeightFocusNode.dispose();
+    _boardRateFocusNode.dispose();
+    _salesVaFocusNode.dispose();
+    _salesWastageFocusNode.dispose();
+    _salesMcGSimpleFocusNode.dispose();
+    _salesMChargeFocusNode.dispose();
+    _purchaseTouchFocusNode.dispose();
+    _purchaseGoldRateFocusNode.dispose();
+    _purchaseMcFocusNode.dispose();
+    _purchaseStoneCostFocusNode.dispose();
+    _huidFocusNode.dispose();
+    _remarksFocusNode.dispose();
+
     _pcsController.dispose();
     _grossWeightController.dispose();
     _netWeightController.dispose();
@@ -181,10 +209,8 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
         if (futures[7] is List<ProductRecord>) _allProducts = futures[7] as List<ProductRecord>;
         if (futures[8] is List<SubProductRecord>) _allSubProducts = futures[8] as List<SubProductRecord>;
 
-        // Auto select first lot if available and none selected
-        if (_selectedLot == null && _allLots.isNotEmpty) {
-          _onLotSelected(_allLots.first);
-        }
+        // NOTE: Screen opens with no default lot pre-selected as per requirement (Point 1).
+        // User explicitly selects or searches the lot number.
 
         setState(() => _isLoading = false);
       }
@@ -455,6 +481,38 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
     final stoneProducts = _stoneProducts;
     final diamondProducts = _diamondProducts;
 
+    // Quick Entry State for Adding Stones Row-by-Row
+    int? quickStnProductId = stoneProducts.isNotEmpty ? stoneProducts.first.productid : null;
+    String quickStnProductName = stoneProducts.isNotEmpty ? stoneProducts.first.productname : '';
+    int? quickStnSubProductId;
+    String quickStnSubProductName = '';
+    String quickStnUnit = 'G';
+    final quickStnPcsCtrl = TextEditingController(text: '1');
+    final quickStnWtCtrl = TextEditingController();
+    final quickStnRateCtrl = TextEditingController();
+    final quickStnAmtCtrl = TextEditingController();
+    final FocusNode quickStnPcsFocus = FocusNode();
+    final FocusNode quickStnWtFocus = FocusNode();
+    final FocusNode quickStnRateFocus = FocusNode();
+    final FocusNode quickStnAmtFocus = FocusNode();
+    String? stnNoticeMsg;
+
+    // Quick Entry State for Adding Diamonds Row-by-Row
+    int? quickDmdProductId = diamondProducts.isNotEmpty ? diamondProducts.first.productid : null;
+    String quickDmdProductName = diamondProducts.isNotEmpty ? diamondProducts.first.productname : '';
+    int? quickDmdSubProductId;
+    String quickDmdSubProductName = '';
+    String quickDmdUnit = 'C';
+    final quickDmdPcsCtrl = TextEditingController(text: '1');
+    final quickDmdWtCtrl = TextEditingController();
+    final quickDmdRateCtrl = TextEditingController();
+    final quickDmdAmtCtrl = TextEditingController();
+    final FocusNode quickDmdPcsFocus = FocusNode();
+    final FocusNode quickDmdWtFocus = FocusNode();
+    final FocusNode quickDmdRateFocus = FocusNode();
+    final FocusNode quickDmdAmtFocus = FocusNode();
+    String? dmdNoticeMsg;
+
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       barrierDismissible: false,
@@ -475,12 +533,100 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
             final totalLessGrams = stoneLessGrams + diamondLessGrams + otherLessGrams;
             final netWeightGrams = (grs - totalLessGrams).clamp(0.0, 999999.0);
 
+            final matchingStnSubProducts = _allSubProducts.where((sp) {
+              if (quickStnProductId == null) return true;
+              return sp.productid == quickStnProductId;
+            }).toList();
+
+            final matchingDmdSubProducts = _allSubProducts.where((sp) {
+              if (quickDmdProductId == null) return true;
+              return sp.productid == quickDmdProductId;
+            }).toList();
+
+            void addQuickStone() {
+              final wt = double.tryParse(quickStnWtCtrl.text.trim()) ?? 0.0;
+              final pcs = int.tryParse(quickStnPcsCtrl.text.trim()) ?? 1;
+              final rate = double.tryParse(quickStnRateCtrl.text.trim()) ?? 0.0;
+              final manualAmt = double.tryParse(quickStnAmtCtrl.text.trim());
+              final amt = manualAmt ?? (wt * rate);
+
+              if (wt <= 0 && pcs <= 0) {
+                setDialogState(() {
+                  stnNoticeMsg = '⚠️ Please enter stone weight or pcs before adding.';
+                });
+                quickStnWtFocus.requestFocus();
+                return;
+              }
+
+              setDialogState(() {
+                tempStones.add(TagStoneItem(
+                  productId: quickStnProductId,
+                  productName: quickStnProductName,
+                  subProductId: quickStnSubProductId,
+                  subProductName: quickStnSubProductName,
+                  unit: quickStnUnit,
+                  pcs: pcs,
+                  weight: wt,
+                  rate: rate,
+                  amount: amt,
+                ));
+                // Reset quick entry fields for the NEXT stone
+                quickStnPcsCtrl.text = '1';
+                quickStnWtCtrl.clear();
+                quickStnRateCtrl.clear();
+                quickStnAmtCtrl.clear();
+                stnNoticeMsg = '✓ Stone #${tempStones.length} added! Enter next stone details above or click Apply & Done.';
+              });
+
+              // Re-focus back to weight input for the next stone
+              quickStnWtFocus.requestFocus();
+            }
+
+            void addQuickDiamond() {
+              final wt = double.tryParse(quickDmdWtCtrl.text.trim()) ?? 0.0;
+              final pcs = int.tryParse(quickDmdPcsCtrl.text.trim()) ?? 1;
+              final rate = double.tryParse(quickDmdRateCtrl.text.trim()) ?? 0.0;
+              final manualAmt = double.tryParse(quickDmdAmtCtrl.text.trim());
+              final amt = manualAmt ?? (wt * rate);
+
+              if (wt <= 0 && pcs <= 0) {
+                setDialogState(() {
+                  dmdNoticeMsg = '⚠️ Please enter diamond weight or pcs before adding.';
+                });
+                quickDmdWtFocus.requestFocus();
+                return;
+              }
+
+              setDialogState(() {
+                tempDiamonds.add(TagDiamondItem(
+                  productId: quickDmdProductId,
+                  productName: quickDmdProductName,
+                  subProductId: quickDmdSubProductId,
+                  subProductName: quickDmdSubProductName,
+                  unit: quickDmdUnit,
+                  pcs: pcs,
+                  weight: wt,
+                  rate: rate,
+                  amount: amt,
+                ));
+                // Reset quick entry fields for the NEXT diamond
+                quickDmdPcsCtrl.text = '1';
+                quickDmdWtCtrl.clear();
+                quickDmdRateCtrl.clear();
+                quickDmdAmtCtrl.clear();
+                dmdNoticeMsg = '✓ Diamond #${tempDiamonds.length} added! Enter next diamond details above or click Apply & Done.';
+              });
+
+              // Re-focus back to weight input for the next diamond
+              quickDmdWtFocus.requestFocus();
+            }
+
             return Dialog(
               backgroundColor: Colors.transparent,
               insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               child: Container(
-                width: 980,
-                constraints: const BoxConstraints(maxHeight: 780),
+                width: 1020,
+                constraints: const BoxConstraints(maxHeight: 820),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0F172A),
                   borderRadius: BorderRadius.circular(16),
@@ -515,11 +661,11 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Stone & Diamond Itemization (diastone Filtered)',
+                                'Stone & Diamond Itemization Grid',
                                 style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                               Text(
-                                'Select products from Product Master with diastone = S (Stones) or D (Diamonds)',
+                                'Add stone and diamond rows sequentially. Press Enter to add and advance to next item.',
                                 style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
                               ),
                             ],
@@ -564,6 +710,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Stones Section Title
                                   Row(
                                     children: [
                                       Container(
@@ -576,7 +723,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                       ),
                                       const SizedBox(width: 8),
                                       const Text(
-                                        "STONES / கற்கள் (diastone = 'S')",
+                                        "STONES (diastone = 'S')",
                                         style: TextStyle(color: Color(0xFF34D399), fontSize: 13, fontWeight: FontWeight.bold),
                                       ),
                                       if (tempStones.isNotEmpty) ...[
@@ -594,81 +741,50 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                         ),
                                       ],
                                       const Spacer(),
-                                      ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF059669),
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          visualDensity: VisualDensity.compact,
+                                      if (stnNoticeMsg != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF059669).withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.5)),
+                                          ),
+                                          child: Text(
+                                            stnNoticeMsg!,
+                                            style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.w600),
+                                          ),
                                         ),
-                                        icon: const Icon(Icons.add, size: 16),
-                                        label: const Text('Add Stone Row', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                        onPressed: () {
-                                          setDialogState(() {
-                                            tempStones.add(TagStoneItem(
-                                              productId: stoneProducts.isNotEmpty ? stoneProducts.first.productid : null,
-                                              productName: stoneProducts.isNotEmpty ? stoneProducts.first.productname : '',
-                                              unit: 'G',
-                                              pcs: 1,
-                                              weight: 0.0,
-                                              rate: 0.0,
-                                              amount: 0.0,
-                                            ));
-                                          });
-                                        },
-                                      ),
                                     ],
                                   ),
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 12),
 
-                                  if (tempStones.isEmpty)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
-                                      alignment: Alignment.center,
-                                      child: const Text(
-                                        "No stone items added. Click '+ Add Stone Row' if this ornament contains stones.",
-                                        style: TextStyle(color: Colors.white54, fontSize: 12),
-                                      ),
-                                    )
-                                  else
-                                    ...tempStones.asMap().entries.map((entry) {
-                                      final index = entry.key;
-                                      final item = entry.value;
-                                      final matchingSubProducts = _allSubProducts.where((sp) {
-                                        if (item.productId == null) return true;
-                                        return sp.productid == item.productId;
-                                      }).toList();
-
-                                      return Container(
-                                        margin: const EdgeInsets.only(bottom: 8),
-                                        padding: const EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF0F172A),
-                                          borderRadius: BorderRadius.circular(10),
-                                          border: Border.all(color: const Color(0xFF334155)),
-                                        ),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                  // Quick Stone Entry Row (Grid Row Input)
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0F172A),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.6)),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Row(
                                           children: [
-                                            // Row # Badge
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF059669).withValues(alpha: 0.2),
-                                                borderRadius: BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                '#${index + 1}',
-                                                style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 11),
-                                              ),
+                                            Text(
+                                              'Add Stone Row (Fill & hit Enter or click "+ Add Stone Row")',
+                                              style: TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold),
                                             ),
-                                            const SizedBox(width: 8),
-
-                                            // Stone Product Dropdown (Filtered by diastone = 'S')
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            // Stone Product Dropdown
                                             Expanded(
                                               flex: 3,
                                               child: DropdownButtonFormField<int?>(
-                                                value: item.productId,
+                                                value: quickStnProductId,
                                                 dropdownColor: const Color(0xFF1E293B),
                                                 isExpanded: true,
                                                 decoration: _buildDialogInputDecoration('Stone Product *'),
@@ -684,12 +800,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                                 }).toList(),
                                                 onChanged: (val) {
                                                   setDialogState(() {
-                                                    item.productId = val;
+                                                    quickStnProductId = val;
                                                     final match = stoneProducts.firstWhere((p) => p.productid == val, orElse: () => stoneProducts.first);
-                                                    item.productName = match.productname;
-                                                    if (item.subProductId != null && !matchingSubProducts.any((sp) => sp.subproductid == item.subProductId && sp.productid == val)) {
-                                                      item.subProductId = null;
-                                                      item.subProductName = '';
+                                                    quickStnProductName = match.productname;
+                                                    if (quickStnSubProductId != null && !matchingStnSubProducts.any((sp) => sp.subproductid == quickStnSubProductId && sp.productid == val)) {
+                                                      quickStnSubProductId = null;
+                                                      quickStnSubProductName = '';
                                                     }
                                                   });
                                                 },
@@ -697,20 +813,20 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             ),
                                             const SizedBox(width: 8),
 
-                                            // Stone Subproduct Dropdown
+                                            // Stone Sub-product Dropdown
                                             Expanded(
                                               flex: 2,
                                               child: DropdownButtonFormField<int?>(
-                                                value: item.subProductId,
+                                                value: quickStnSubProductId,
                                                 dropdownColor: const Color(0xFF1E293B),
                                                 isExpanded: true,
                                                 decoration: _buildDialogInputDecoration('Sub-Product'),
                                                 items: [
                                                   const DropdownMenuItem<int?>(
                                                     value: null,
-                                                    child: Text('-- All / None --', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                                                    child: Text('-- None --', style: TextStyle(color: Colors.white54, fontSize: 12)),
                                                   ),
-                                                  ...matchingSubProducts.map((sp) {
+                                                  ...matchingStnSubProducts.map((sp) {
                                                     return DropdownMenuItem<int?>(
                                                       value: sp.subproductid,
                                                       child: Text(
@@ -723,12 +839,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                                 ],
                                                 onChanged: (val) {
                                                   setDialogState(() {
-                                                    item.subProductId = val;
+                                                    quickStnSubProductId = val;
                                                     if (val != null) {
-                                                      final sp = matchingSubProducts.firstWhere((s) => s.subproductid == val, orElse: () => matchingSubProducts.first);
-                                                      item.subProductName = sp.subproductname;
+                                                      final sp = matchingStnSubProducts.firstWhere((s) => s.subproductid == val, orElse: () => matchingStnSubProducts.first);
+                                                      quickStnSubProductName = sp.subproductname;
                                                     } else {
-                                                      item.subProductName = '';
+                                                      quickStnSubProductName = '';
                                                     }
                                                   });
                                                 },
@@ -736,11 +852,11 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             ),
                                             const SizedBox(width: 8),
 
-                                            // Stone Unit (G / C / cent)
+                                            // Unit Dropdown
                                             SizedBox(
-                                              width: 100,
+                                              width: 90,
                                               child: DropdownButtonFormField<String>(
-                                                value: item.unit.toUpperCase() == 'C' ? 'C' : (item.unit.toLowerCase() == 'cent' ? 'cent' : 'G'),
+                                                value: quickStnUnit,
                                                 dropdownColor: const Color(0xFF1E293B),
                                                 decoration: _buildDialogInputDecoration('Unit'),
                                                 items: const [
@@ -750,7 +866,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                                 ],
                                                 onChanged: (val) {
                                                   setDialogState(() {
-                                                    item.unit = val ?? 'G';
+                                                    quickStnUnit = val ?? 'G';
                                                   });
                                                 },
                                               ),
@@ -759,17 +875,15 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
 
                                             // Pcs
                                             SizedBox(
-                                              width: 70,
+                                              width: 65,
                                               child: TextFormField(
-                                                initialValue: item.pcs > 0 ? item.pcs.toString() : '1',
+                                                controller: quickStnPcsCtrl,
+                                                focusNode: quickStnPcsFocus,
                                                 keyboardType: TextInputType.number,
+                                                textInputAction: TextInputAction.next,
+                                                onFieldSubmitted: (_) => quickStnWtFocus.requestFocus(),
                                                 style: const TextStyle(color: Colors.white, fontSize: 12),
                                                 decoration: _buildDialogInputDecoration('Pcs'),
-                                                onChanged: (v) {
-                                                  setDialogState(() {
-                                                    item.pcs = int.tryParse(v.trim()) ?? 0;
-                                                  });
-                                                },
                                               ),
                                             ),
                                             const SizedBox(width: 8),
@@ -778,15 +892,20 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             SizedBox(
                                               width: 85,
                                               child: TextFormField(
-                                                initialValue: item.weight > 0 ? item.weight.toString() : '',
+                                                controller: quickStnWtCtrl,
+                                                focusNode: quickStnWtFocus,
                                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                                                decoration: _buildDialogInputDecoration('Weight'),
+                                                textInputAction: TextInputAction.next,
+                                                onFieldSubmitted: (_) => quickStnRateFocus.requestFocus(),
+                                                style: const TextStyle(color: Color(0xFF34D399), fontSize: 13, fontWeight: FontWeight.bold),
+                                                decoration: _buildDialogInputDecoration('Weight *'),
                                                 onChanged: (v) {
-                                                  setDialogState(() {
-                                                    item.weight = double.tryParse(v.trim()) ?? 0.0;
-                                                    if (item.rate > 0) item.amount = item.weight * item.rate;
-                                                  });
+                                                  final wt = double.tryParse(v.trim()) ?? 0.0;
+                                                  final rate = double.tryParse(quickStnRateCtrl.text.trim()) ?? 0.0;
+                                                  if (rate > 0) {
+                                                    quickStnAmtCtrl.text = (wt * rate).toStringAsFixed(2);
+                                                  }
+                                                  setDialogState(() {});
                                                 },
                                               ),
                                             ),
@@ -796,15 +915,20 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             SizedBox(
                                               width: 85,
                                               child: TextFormField(
-                                                initialValue: item.rate > 0 ? item.rate.toString() : '',
+                                                controller: quickStnRateCtrl,
+                                                focusNode: quickStnRateFocus,
                                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                                textInputAction: TextInputAction.next,
+                                                onFieldSubmitted: (_) => quickStnAmtFocus.requestFocus(),
                                                 style: const TextStyle(color: Colors.white, fontSize: 12),
                                                 decoration: _buildDialogInputDecoration('Rate (₹)'),
                                                 onChanged: (v) {
-                                                  setDialogState(() {
-                                                    item.rate = double.tryParse(v.trim()) ?? 0.0;
-                                                    item.amount = item.weight * item.rate;
-                                                  });
+                                                  final rate = double.tryParse(v.trim()) ?? 0.0;
+                                                  final wt = double.tryParse(quickStnWtCtrl.text.trim()) ?? 0.0;
+                                                  if (wt > 0) {
+                                                    quickStnAmtCtrl.text = (wt * rate).toStringAsFixed(2);
+                                                  }
+                                                  setDialogState(() {});
                                                 },
                                               ),
                                             ),
@@ -814,48 +938,167 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             SizedBox(
                                               width: 95,
                                               child: TextFormField(
-                                                key: ValueKey('stn_amt_${index}_${item.amount}'),
-                                                initialValue: item.amount > 0 ? item.amount.toStringAsFixed(2) : '',
+                                                controller: quickStnAmtCtrl,
+                                                focusNode: quickStnAmtFocus,
                                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                                textInputAction: TextInputAction.done,
+                                                onFieldSubmitted: (_) => addQuickStone(),
                                                 style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
                                                 decoration: _buildDialogInputDecoration('Amt (₹)'),
-                                                onChanged: (v) {
-                                                  setDialogState(() {
-                                                    item.amount = double.tryParse(v.trim()) ?? 0.0;
-                                                  });
-                                                },
                                               ),
                                             ),
-                                            const SizedBox(width: 6),
+                                            const SizedBox(width: 8),
 
-                                            // Less weight indicator
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withValues(alpha: 0.3),
-                                                borderRadius: BorderRadius.circular(6),
+                                            // Add Button
+                                            ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF059669),
+                                                foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                                               ),
-                                              child: Text(
-                                                'Less: ${_weightFmt.format(item.weightInGrams)}g',
-                                                style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 10, fontWeight: FontWeight.bold),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-
-                                            // Delete Button
-                                            IconButton(
-                                              icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
-                                              tooltip: 'Remove Stone',
-                                              onPressed: () {
-                                                setDialogState(() {
-                                                  tempStones.removeAt(index);
-                                                });
-                                              },
+                                              icon: const Icon(Icons.add, size: 16),
+                                              label: const Text('Add Row', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                              onPressed: addQuickStone,
                                             ),
                                           ],
                                         ),
-                                      );
-                                    }),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  // Grid Table of Added Stones
+                                  if (tempStones.isEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      alignment: Alignment.center,
+                                      child: const Text(
+                                        "No stone items added yet. Fill in details above and click '+ Add Row' (or press Enter).",
+                                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF0F172A),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFF334155)),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          // Table Header
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            decoration: const BoxDecoration(
+                                              color: Color(0xFF1E293B),
+                                              borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+                                            ),
+                                            child: const Row(
+                                              children: [
+                                                SizedBox(width: 32, child: Text('#', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                Expanded(flex: 3, child: Text('STONE PRODUCT', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                Expanded(flex: 2, child: Text('SUB-PRODUCT', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 60, child: Text('UNIT', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 50, child: Text('PCS', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 80, child: Text('WEIGHT', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 80, child: Text('RATE (₹)', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 90, child: Text('AMOUNT (₹)', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 90, child: Text('LESS WT (g)', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 40, child: Text('', textAlign: TextAlign.center)),
+                                              ],
+                                            ),
+                                          ),
+                                          const Divider(height: 1, color: Color(0xFF334155)),
+                                          // Table Rows
+                                          ...tempStones.asMap().entries.map((entry) {
+                                            final index = entry.key;
+                                            final item = entry.value;
+                                            return Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: index.isOdd ? const Color(0xFF1E293B).withValues(alpha: 0.3) : Colors.transparent,
+                                                border: const Border(bottom: BorderSide(color: Color(0xFF1E293B), width: 1)),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  SizedBox(
+                                                    width: 32,
+                                                    child: Text('${index + 1}', style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 11)),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 3,
+                                                    child: Text(
+                                                      (item.productName != null && item.productName!.isNotEmpty) ? item.productName! : 'Stone Item',
+                                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 2,
+                                                    child: Text(
+                                                      (item.subProductName != null && item.subProductName!.isNotEmpty) ? item.subProductName! : '-',
+                                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 60,
+                                                    child: Text(item.unit, style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 50,
+                                                    child: Text('${item.pcs}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 80,
+                                                    child: Text(
+                                                      '${_weightFmt.format(item.weight)} ${item.unit}',
+                                                      style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 80,
+                                                    child: Text(
+                                                      item.rate > 0 ? '₹${item.rate.toStringAsFixed(2)}' : '-',
+                                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 90,
+                                                    child: Text(
+                                                      item.amount > 0 ? '₹${item.amount.toStringAsFixed(2)}' : '₹0.00',
+                                                      style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 90,
+                                                    child: Text(
+                                                      '-${_weightFmt.format(item.weightInGrams)}g',
+                                                      style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 11, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 40,
+                                                    child: IconButton(
+                                                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                                                      padding: EdgeInsets.zero,
+                                                      constraints: const BoxConstraints(),
+                                                      tooltip: 'Remove Stone Row',
+                                                      onPressed: () {
+                                                        setDialogState(() {
+                                                          tempStones.removeAt(index);
+                                                        });
+                                                      },
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }),
+                                        ],
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -872,6 +1115,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Diamond Section Title
                                   Row(
                                     children: [
                                       Container(
@@ -884,7 +1128,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                       ),
                                       const SizedBox(width: 8),
                                       const Text(
-                                        "DIAMONDS / வைரம் (diastone = 'D')",
+                                        "DIAMONDS (diastone = 'D')",
                                         style: TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
                                       ),
                                       if (tempDiamonds.isNotEmpty) ...[
@@ -902,81 +1146,50 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                         ),
                                       ],
                                       const Spacer(),
-                                      ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF0284C7),
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          visualDensity: VisualDensity.compact,
+                                      if (dmdNoticeMsg != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
+                                          ),
+                                          child: Text(
+                                            dmdNoticeMsg!,
+                                            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w600),
+                                          ),
                                         ),
-                                        icon: const Icon(Icons.add, size: 16),
-                                        label: const Text('Add Diamond Row', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                        onPressed: () {
-                                          setDialogState(() {
-                                            tempDiamonds.add(TagDiamondItem(
-                                              productId: diamondProducts.isNotEmpty ? diamondProducts.first.productid : null,
-                                              productName: diamondProducts.isNotEmpty ? diamondProducts.first.productname : '',
-                                              unit: 'C',
-                                              pcs: 1,
-                                              weight: 0.0,
-                                              rate: 0.0,
-                                              amount: 0.0,
-                                            ));
-                                          });
-                                        },
-                                      ),
                                     ],
                                   ),
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 12),
 
-                                  if (tempDiamonds.isEmpty)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(vertical: 16),
-                                      alignment: Alignment.center,
-                                      child: const Text(
-                                        "No diamond items added. Click '+ Add Diamond Row' if this ornament contains diamonds.",
-                                        style: TextStyle(color: Colors.white54, fontSize: 12),
-                                      ),
-                                    )
-                                  else
-                                    ...tempDiamonds.asMap().entries.map((entry) {
-                                      final index = entry.key;
-                                      final item = entry.value;
-                                      final matchingSubProducts = _allSubProducts.where((sp) {
-                                        if (item.productId == null) return true;
-                                        return sp.productid == item.productId;
-                                      }).toList();
-
-                                      return Container(
-                                        margin: const EdgeInsets.only(bottom: 8),
-                                        padding: const EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF0F172A),
-                                          borderRadius: BorderRadius.circular(10),
-                                          border: Border.all(color: const Color(0xFF334155)),
-                                        ),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                  // Quick Diamond Entry Row (Grid Row Input)
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0F172A),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.6)),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Row(
                                           children: [
-                                            // Row # Badge
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF0284C7).withValues(alpha: 0.2),
-                                                borderRadius: BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                '#${index + 1}',
-                                                style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 11),
-                                              ),
+                                            Text(
+                                              'Add Diamond Row (Fill & hit Enter or click "+ Add Diamond Row")',
+                                              style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold),
                                             ),
-                                            const SizedBox(width: 8),
-
-                                            // Diamond Product Dropdown (Filtered by diastone = 'D')
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            // Diamond Product Dropdown
                                             Expanded(
                                               flex: 3,
                                               child: DropdownButtonFormField<int?>(
-                                                value: item.productId,
+                                                value: quickDmdProductId,
                                                 dropdownColor: const Color(0xFF1E293B),
                                                 isExpanded: true,
                                                 decoration: _buildDialogInputDecoration('Diamond Product *'),
@@ -992,12 +1205,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                                 }).toList(),
                                                 onChanged: (val) {
                                                   setDialogState(() {
-                                                    item.productId = val;
+                                                    quickDmdProductId = val;
                                                     final match = diamondProducts.firstWhere((p) => p.productid == val, orElse: () => diamondProducts.first);
-                                                    item.productName = match.productname;
-                                                    if (item.subProductId != null && !matchingSubProducts.any((sp) => sp.subproductid == item.subProductId && sp.productid == val)) {
-                                                      item.subProductId = null;
-                                                      item.subProductName = '';
+                                                    quickDmdProductName = match.productname;
+                                                    if (quickDmdSubProductId != null && !matchingDmdSubProducts.any((sp) => sp.subproductid == quickDmdSubProductId && sp.productid == val)) {
+                                                      quickDmdSubProductId = null;
+                                                      quickDmdSubProductName = '';
                                                     }
                                                   });
                                                 },
@@ -1009,16 +1222,16 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             Expanded(
                                               flex: 2,
                                               child: DropdownButtonFormField<int?>(
-                                                value: item.subProductId,
+                                                value: quickDmdSubProductId,
                                                 dropdownColor: const Color(0xFF1E293B),
                                                 isExpanded: true,
                                                 decoration: _buildDialogInputDecoration('Sub-Product'),
                                                 items: [
                                                   const DropdownMenuItem<int?>(
                                                     value: null,
-                                                    child: Text('-- All / None --', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                                                    child: Text('-- None --', style: TextStyle(color: Colors.white54, fontSize: 12)),
                                                   ),
-                                                  ...matchingSubProducts.map((sp) {
+                                                  ...matchingDmdSubProducts.map((sp) {
                                                     return DropdownMenuItem<int?>(
                                                       value: sp.subproductid,
                                                       child: Text(
@@ -1031,12 +1244,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                                 ],
                                                 onChanged: (val) {
                                                   setDialogState(() {
-                                                    item.subProductId = val;
+                                                    quickDmdSubProductId = val;
                                                     if (val != null) {
-                                                      final sp = matchingSubProducts.firstWhere((s) => s.subproductid == val, orElse: () => matchingSubProducts.first);
-                                                      item.subProductName = sp.subproductname;
+                                                      final sp = matchingDmdSubProducts.firstWhere((s) => s.subproductid == val, orElse: () => matchingDmdSubProducts.first);
+                                                      quickDmdSubProductName = sp.subproductname;
                                                     } else {
-                                                      item.subProductName = '';
+                                                      quickDmdSubProductName = '';
                                                     }
                                                   });
                                                 },
@@ -1044,11 +1257,11 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             ),
                                             const SizedBox(width: 8),
 
-                                            // Diamond Unit (C / cent / G)
+                                            // Diamond Unit
                                             SizedBox(
-                                              width: 100,
+                                              width: 90,
                                               child: DropdownButtonFormField<String>(
-                                                value: item.unit.toUpperCase() == 'G' ? 'G' : (item.unit.toLowerCase() == 'cent' ? 'cent' : 'C'),
+                                                value: quickDmdUnit,
                                                 dropdownColor: const Color(0xFF1E293B),
                                                 decoration: _buildDialogInputDecoration('Unit'),
                                                 items: const [
@@ -1058,7 +1271,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                                 ],
                                                 onChanged: (val) {
                                                   setDialogState(() {
-                                                    item.unit = val ?? 'C';
+                                                    quickDmdUnit = val ?? 'C';
                                                   });
                                                 },
                                               ),
@@ -1067,17 +1280,15 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
 
                                             // Pcs
                                             SizedBox(
-                                              width: 70,
+                                              width: 65,
                                               child: TextFormField(
-                                                initialValue: item.pcs > 0 ? item.pcs.toString() : '1',
+                                                controller: quickDmdPcsCtrl,
+                                                focusNode: quickDmdPcsFocus,
                                                 keyboardType: TextInputType.number,
+                                                textInputAction: TextInputAction.next,
+                                                onFieldSubmitted: (_) => quickDmdWtFocus.requestFocus(),
                                                 style: const TextStyle(color: Colors.white, fontSize: 12),
                                                 decoration: _buildDialogInputDecoration('Pcs'),
-                                                onChanged: (v) {
-                                                  setDialogState(() {
-                                                    item.pcs = int.tryParse(v.trim()) ?? 0;
-                                                  });
-                                                },
                                               ),
                                             ),
                                             const SizedBox(width: 8),
@@ -1086,33 +1297,43 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             SizedBox(
                                               width: 85,
                                               child: TextFormField(
-                                                initialValue: item.weight > 0 ? item.weight.toString() : '',
+                                                controller: quickDmdWtCtrl,
+                                                focusNode: quickDmdWtFocus,
                                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                                                decoration: _buildDialogInputDecoration('Wt (ct)'),
+                                                textInputAction: TextInputAction.next,
+                                                onFieldSubmitted: (_) => quickDmdRateFocus.requestFocus(),
+                                                style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+                                                decoration: _buildDialogInputDecoration('Wt (ct) *'),
                                                 onChanged: (v) {
-                                                  setDialogState(() {
-                                                    item.weight = double.tryParse(v.trim()) ?? 0.0;
-                                                    if (item.rate > 0) item.amount = item.weight * item.rate;
-                                                  });
+                                                  final wt = double.tryParse(v.trim()) ?? 0.0;
+                                                  final rate = double.tryParse(quickDmdRateCtrl.text.trim()) ?? 0.0;
+                                                  if (rate > 0) {
+                                                    quickDmdAmtCtrl.text = (wt * rate).toStringAsFixed(2);
+                                                  }
+                                                  setDialogState(() {});
                                                 },
                                               ),
                                             ),
                                             const SizedBox(width: 8),
 
-                                            // Rate (₹)
+                                            // Rate (₹/ct)
                                             SizedBox(
                                               width: 85,
                                               child: TextFormField(
-                                                initialValue: item.rate > 0 ? item.rate.toString() : '',
+                                                controller: quickDmdRateCtrl,
+                                                focusNode: quickDmdRateFocus,
                                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                                textInputAction: TextInputAction.next,
+                                                onFieldSubmitted: (_) => quickDmdAmtFocus.requestFocus(),
                                                 style: const TextStyle(color: Colors.white, fontSize: 12),
                                                 decoration: _buildDialogInputDecoration('Rate /ct'),
                                                 onChanged: (v) {
-                                                  setDialogState(() {
-                                                    item.rate = double.tryParse(v.trim()) ?? 0.0;
-                                                    item.amount = item.weight * item.rate;
-                                                  });
+                                                  final rate = double.tryParse(v.trim()) ?? 0.0;
+                                                  final wt = double.tryParse(quickDmdWtCtrl.text.trim()) ?? 0.0;
+                                                  if (wt > 0) {
+                                                    quickDmdAmtCtrl.text = (wt * rate).toStringAsFixed(2);
+                                                  }
+                                                  setDialogState(() {});
                                                 },
                                               ),
                                             ),
@@ -1122,48 +1343,167 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                             SizedBox(
                                               width: 95,
                                               child: TextFormField(
-                                                key: ValueKey('dmd_amt_${index}_${item.amount}'),
-                                                initialValue: item.amount > 0 ? item.amount.toStringAsFixed(2) : '',
+                                                controller: quickDmdAmtCtrl,
+                                                focusNode: quickDmdAmtFocus,
                                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                                textInputAction: TextInputAction.done,
+                                                onFieldSubmitted: (_) => addQuickDiamond(),
                                                 style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
                                                 decoration: _buildDialogInputDecoration('Amt (₹)'),
-                                                onChanged: (v) {
-                                                  setDialogState(() {
-                                                    item.amount = double.tryParse(v.trim()) ?? 0.0;
-                                                  });
-                                                },
                                               ),
                                             ),
-                                            const SizedBox(width: 6),
+                                            const SizedBox(width: 8),
 
-                                            // Less weight indicator
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withValues(alpha: 0.3),
-                                                borderRadius: BorderRadius.circular(6),
+                                            // Add Button
+                                            ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF0284C7),
+                                                foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                                               ),
-                                              child: Text(
-                                                'Less: ${_weightFmt.format(item.weightInGrams)}g',
-                                                style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 10, fontWeight: FontWeight.bold),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-
-                                            // Delete Button
-                                            IconButton(
-                                              icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
-                                              tooltip: 'Remove Diamond',
-                                              onPressed: () {
-                                                setDialogState(() {
-                                                  tempDiamonds.removeAt(index);
-                                                });
-                                              },
+                                              icon: const Icon(Icons.add, size: 16),
+                                              label: const Text('Add Row', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                              onPressed: addQuickDiamond,
                                             ),
                                           ],
                                         ),
-                                      );
-                                    }),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  // Grid Table of Added Diamonds
+                                  if (tempDiamonds.isEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      alignment: Alignment.center,
+                                      child: const Text(
+                                        "No diamond items added yet. Fill in details above and click '+ Add Row' (or press Enter).",
+                                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF0F172A),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFF334155)),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          // Table Header
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            decoration: const BoxDecoration(
+                                              color: Color(0xFF1E293B),
+                                              borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+                                            ),
+                                            child: const Row(
+                                              children: [
+                                                SizedBox(width: 32, child: Text('#', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                Expanded(flex: 3, child: Text('DIAMOND PRODUCT', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                Expanded(flex: 2, child: Text('SUB-PRODUCT', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 60, child: Text('UNIT', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 50, child: Text('PCS', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 80, child: Text('WEIGHT', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 80, child: Text('RATE /ct', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 90, child: Text('AMOUNT (₹)', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 90, child: Text('LESS WT (g)', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                SizedBox(width: 40, child: Text('', textAlign: TextAlign.center)),
+                                              ],
+                                            ),
+                                          ),
+                                          const Divider(height: 1, color: Color(0xFF334155)),
+                                          // Table Rows
+                                          ...tempDiamonds.asMap().entries.map((entry) {
+                                            final index = entry.key;
+                                            final item = entry.value;
+                                            return Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: index.isOdd ? const Color(0xFF1E293B).withValues(alpha: 0.3) : Colors.transparent,
+                                                border: const Border(bottom: BorderSide(color: Color(0xFF1E293B), width: 1)),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  SizedBox(
+                                                    width: 32,
+                                                    child: Text('${index + 1}', style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 11)),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 3,
+                                                    child: Text(
+                                                      (item.productName != null && item.productName!.isNotEmpty) ? item.productName! : 'Diamond Item',
+                                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 2,
+                                                    child: Text(
+                                                      (item.subProductName != null && item.subProductName!.isNotEmpty) ? item.subProductName! : '-',
+                                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 60,
+                                                    child: Text(item.unit, style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 50,
+                                                    child: Text('${item.pcs}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 80,
+                                                    child: Text(
+                                                      '${_weightFmt.format(item.weight)} ${item.unit}',
+                                                      style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 80,
+                                                    child: Text(
+                                                      item.rate > 0 ? '₹${item.rate.toStringAsFixed(2)}' : '-',
+                                                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 90,
+                                                    child: Text(
+                                                      item.amount > 0 ? '₹${item.amount.toStringAsFixed(2)}' : '₹0.00',
+                                                      style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 90,
+                                                    child: Text(
+                                                      '-${_weightFmt.format(item.weightInGrams)}g',
+                                                      style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 11, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                  SizedBox(
+                                                    width: 40,
+                                                    child: IconButton(
+                                                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                                                      padding: EdgeInsets.zero,
+                                                      constraints: const BoxConstraints(),
+                                                      tooltip: 'Remove Diamond Row',
+                                                      onPressed: () {
+                                                        setDialogState(() {
+                                                          tempDiamonds.removeAt(index);
+                                                        });
+                                                      },
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }),
+                                        ],
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -1339,7 +1679,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
       labelStyle: const TextStyle(color: Colors.white70, fontSize: 11),
       filled: true,
       fillColor: const Color(0xFF0F172A),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       isDense: true,
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(6),
@@ -1347,7 +1687,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(6),
-        borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
+        borderSide: const BorderSide(color: GlassTheme.accentAmber, width: 2.0),
       ),
     );
   }
@@ -2251,11 +2591,11 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                               };
 
                               final res = await _api.updateStockTag(token, item.itemId, updatePayload);
-                              if (res['success'] == true) {
+                              if (ctx.mounted && res['success'] == true) {
                                 Navigator.pop(ctx);
                                 _showToast('✓ Tag ${item.skuCode} updated successfully!');
                                 _loadInitialData();
-                              } else {
+                              } else if (res['success'] != true) {
                                 _showToast(res['message'] ?? 'Failed to update tag.', isError: true);
                               }
                             },
@@ -2533,11 +2873,11 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                     _buildLotSummaryAndProgressCard(),
                     const SizedBox(height: 14),
 
-                    // TOP PIECE TAGGING ENTRY FORM (ஒன் பை ஒன் என்ட்ரி)
+                    // TOP PIECE TAGGING ENTRY FORM
                     _buildTopPieceTaggingForm(),
                     const SizedBox(height: 20),
 
-                    // BOTTOM TAGGED ITEMS TABLE (கீழே உள்ள ரோ பட்டியல்)
+                    // BOTTOM TAGGED ITEMS TABLE
                     _buildBottomTaggedTableSection(displayedTags),
                   ],
                 ),
@@ -2579,7 +2919,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Stock Barcode & Item Tagging (பார்-கோடிங் & டேக்கிங்)',
+                'Stock Barcode & Item Tagging',
                 style: TextStyle(color: GlassTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w800),
               ),
               Text(
@@ -2623,26 +2963,86 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
         decoration: BoxDecoration(
           color: GlassTheme.bgSurface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: GlassTheme.accentAmber.withValues(alpha: 0.5)),
+          border: Border.all(color: GlassTheme.accentAmber.withValues(alpha: 0.6), width: 1.5),
+          boxShadow: [
+            BoxShadow(color: GlassTheme.accentAmber.withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 4)),
+          ],
         ),
         child: Row(
           children: [
-            const Icon(Icons.info_outline_rounded, color: GlassTheme.accentAmber, size: 24),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'No Prepare SKU Lot selected. Please select a lot to start tagging individual pieces.',
-                style: TextStyle(color: GlassTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: GlassTheme.accentAmber.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.inventory_2_rounded, color: GlassTheme.accentAmber, size: 26),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Select a Prepare SKU Lot to Start Tagging',
+                    style: TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${_allLots.length} lot(s) available in inventory. Choose from dropdown or click search.',
+                    style: const TextStyle(color: GlassTheme.textMuted, fontSize: 12),
+                  ),
+                ],
               ),
             ),
+            const SizedBox(width: 14),
+
+            // Quick Lot Dropdown
+            if (_allLots.isNotEmpty)
+              Container(
+                width: 250,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: GlassTheme.bgSurfaceMuted,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: GlassTheme.glassBorder),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: null,
+                    isExpanded: true,
+                    dropdownColor: Colors.white,
+                    hint: const Text('⚡ Quick Select Lot...', style: TextStyle(color: GlassTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    items: _allLots.map((lot) {
+                      return DropdownMenuItem<int>(
+                        value: lot.lotId,
+                        child: Text(
+                          'Lot ${lot.lotNumber} - ${lot.productname ?? 'Ornament'} (${lot.totalPcs} pcs)',
+                          style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (id) {
+                      if (id != null) {
+                        final chosen = _allLots.firstWhere((l) => l.lotId == id);
+                        _onLotSelected(chosen);
+                      }
+                    },
+                  ),
+                ),
+              ),
+            const SizedBox(width: 10),
+
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: GlassTheme.accentAmber,
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               icon: const Icon(Icons.search, size: 16),
-              label: const Text('Search & Select Lot', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text('Search & Select Lot', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               onPressed: _showLotPickerDialog,
             ),
           ],
@@ -2801,7 +3201,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
     );
   }
 
-  // --- TOP PIECE TAGGING ENTRY FORM (ஒன் பை ஒன் என்ட்ரி) ---
+  // --- TOP PIECE TAGGING ENTRY FORM ---
   Widget _buildTopPieceTaggingForm() {
     return Container(
       decoration: BoxDecoration(
@@ -2832,7 +3232,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Piece Tag Entry (பீஸ் எடை & விவரங்கள் என்ட்ரி - #${_taggedPcsCount + 1})',
+                    'Piece Tag Entry (#${_taggedPcsCount + 1})',
                     style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w800),
                   ),
                   const Text(
@@ -2842,6 +3242,22 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                 ],
               ),
               const Spacer(),
+              if (_selectedLot == null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: GlassTheme.accentAmber.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: GlassTheme.accentAmber),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.lock_outline, size: 14, color: GlassTheme.accentAmber),
+                      SizedBox(width: 4),
+                      Text('Please select a Lot above to begin tagging', style: TextStyle(color: GlassTheme.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
               if (_isSearchingVa)
                 const Row(
                   children: [
@@ -2864,22 +3280,31 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                 child: _buildFormField(
                   label: 'Pcs',
                   controller: _pcsController,
+                  focusNode: _pcsFocusNode,
+                  nextFocusNode: _grossWeightFocusNode,
                   isNum: true,
                 ),
               ),
               const SizedBox(width: 10),
 
-              // 2. GROSS WEIGHT (g) - Auto Focused & Enter opens Stone/Diamond popup
+              // 2. GROSS WEIGHT (g) - Auto Focused & Enter opens Stone/Diamond popup or advances
               Expanded(
                 flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Text('Gross Weight (g) *', style: TextStyle(color: GlassTheme.accentAmber, fontSize: 11, fontWeight: FontWeight.w800)),
-                        SizedBox(width: 4),
-                        Text('(Enter for Stones)', style: TextStyle(fontSize: 10, color: Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+                        Text(
+                          'Gross Weight (g) *',
+                          style: TextStyle(
+                            color: _grossWeightFocusNode.hasFocus ? GlassTheme.accentAmber : GlassTheme.textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Text('(Enter for Stones)', style: TextStyle(fontSize: 10, color: Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -2891,7 +3316,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                       onSubmitted: (val) {
                         final grs = double.tryParse(val.trim()) ?? 0.0;
                         if (grs > 0) {
-                          _openStoneDiamondDialog();
+                          _netWeightFocusNode.requestFocus();
                         } else {
                           _showToast('Please enter a valid Gross Weight (e.g. 10.250g)', isError: true);
                         }
@@ -2905,8 +3330,14 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                         fillColor: GlassTheme.accentAmber.withValues(alpha: 0.06),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         isDense: true,
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: GlassTheme.accentAmber.withValues(alpha: 0.5))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: GlassTheme.accentAmber, width: 2)),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: GlassTheme.accentAmber.withValues(alpha: 0.5)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: GlassTheme.accentAmber, width: 2.0),
+                        ),
                       ),
                     ),
                   ],
@@ -2955,7 +3386,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                 ),
                               ),
                               Text(
-                                _calculatedLessWeight > 0 ? 'Tap to edit' : 'Press Enter ↵',
+                                _calculatedLessWeight > 0 ? 'Tap to edit' : 'Click / Grid ↵',
                                 style: TextStyle(
                                   color: _calculatedLessWeight > 0 ? Colors.white70 : const Color(0xFF94A3B8),
                                   fontSize: 9,
@@ -2977,13 +3408,15 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                 child: _buildFormField(
                   label: 'Net Gold Wt (g)',
                   controller: _netWeightController,
+                  focusNode: _netWeightFocusNode,
+                  nextFocusNode: _boardRateFocusNode,
                   isNum: true,
                   hint: 'Auto calc',
                 ),
               ),
               const SizedBox(width: 10),
 
-              // 4. STYLE MASTER DROPDOWN
+              // 5. STYLE MASTER DROPDOWN
               Expanded(
                 flex: 4,
                 child: Column(
@@ -3035,7 +3468,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
               ),
               const SizedBox(width: 10),
 
-              // 5. SIZE MASTER DROPDOWN
+              // 6. SIZE MASTER DROPDOWN
               Expanded(
                 flex: 3,
                 child: Column(
@@ -3087,7 +3520,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
               ),
               const SizedBox(width: 10),
 
-              // 6. PURITY DROPDOWN
+              // 7. PURITY DROPDOWN
               Expanded(
                 flex: 3,
                 child: Column(
@@ -3233,7 +3666,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                       border: Border.all(color: const Color(0xFFA7F3D0)),
                                     ),
                                     child: Text(
-                                      "💎 ${s.productName ?? 'Stone'}: ${s.pcs}pcs (${s.weight}${s.unit}) = -${_weightFmt.format(s.weightInGrams)}g",
+                                      "💎 ${(s.productName != null && s.productName!.isNotEmpty) ? s.productName! : 'Stone'}: ${s.pcs}pcs (${s.weight}${s.unit}) = -${_weightFmt.format(s.weightInGrams)}g",
                                       style: const TextStyle(fontSize: 10, color: Color(0xFF047857), fontWeight: FontWeight.w600),
                                     ),
                                   )),
@@ -3245,7 +3678,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                       border: Border.all(color: const Color(0xFFBAE6FD)),
                                     ),
                                     child: Text(
-                                      "💍 ${d.productName ?? 'Diamond'}: ${d.pcs}pcs (${d.weight}${d.unit}) = -${_weightFmt.format(d.weightInGrams)}g",
+                                      "💍 ${(d.productName != null && d.productName!.isNotEmpty) ? d.productName! : 'Diamond'}: ${d.pcs}pcs (${d.weight}${d.unit}) = -${_weightFmt.format(d.weightInGrams)}g",
                                       style: const TextStyle(fontSize: 10, color: Color(0xFF0284C7), fontWeight: FontWeight.w600),
                                     ),
                                   )),
@@ -3281,7 +3714,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                         children: [
                           const Icon(Icons.sell_outlined, size: 14, color: Color(0xFF16A34A)),
                           const SizedBox(width: 6),
-                          const Text('Sales Pricing (Price Setting / விற்பனை விலை)',
+                          const Text('Sales Pricing (Price Setting)',
                               style: TextStyle(color: Color(0xFF15803D), fontSize: 11, fontWeight: FontWeight.bold)),
                           const Spacer(),
                           Text('MRP: ₹ ${_currencyFmt.format(_pieceCalculatedSalesPrice)}',
@@ -3291,15 +3724,55 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Expanded(child: _buildFormField(label: 'Board Rate (/g)', controller: _boardRateController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Board Rate (/g)',
+                              controller: _boardRateController,
+                              focusNode: _boardRateFocusNode,
+                              nextFocusNode: _salesVaFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildFormField(label: 'VA %', controller: _salesVaController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'VA %',
+                              controller: _salesVaController,
+                              focusNode: _salesVaFocusNode,
+                              nextFocusNode: _salesWastageFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildFormField(label: 'Wastage %', controller: _salesWastageController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Wastage %',
+                              controller: _salesWastageController,
+                              focusNode: _salesWastageFocusNode,
+                              nextFocusNode: _salesMcGSimpleFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildFormField(label: 'MC /g (₹)', controller: _salesMcGSimpleController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'MC /g (₹)',
+                              controller: _salesMcGSimpleController,
+                              focusNode: _salesMcGSimpleFocusNode,
+                              nextFocusNode: _salesMChargeFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildFormField(label: 'M-Charge (₹)', controller: _salesMChargeController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'M-Charge (₹)',
+                              controller: _salesMChargeController,
+                              focusNode: _salesMChargeFocusNode,
+                              nextFocusNode: _purchaseTouchFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -3324,7 +3797,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                         children: [
                           const Icon(Icons.monetization_on_outlined, size: 14, color: Color(0xFFD97706)),
                           const SizedBox(width: 6),
-                          const Text('Smith Purchase Costing (பர்ச்சேஸ் காஸ்ட்)',
+                          const Text('Smith Purchase Costing',
                               style: TextStyle(color: Color(0xFF92400E), fontSize: 11, fontWeight: FontWeight.bold)),
                           const Spacer(),
                           Text('Cost: ₹ ${_currencyFmt.format(_pieceCalculatedPurchaseCost)} | Margin: ${_pieceMarginPct.toStringAsFixed(1)}%',
@@ -3334,13 +3807,45 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Expanded(child: _buildFormField(label: 'Smith Touch %', controller: _purchaseTouchController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Smith Touch %',
+                              controller: _purchaseTouchController,
+                              focusNode: _purchaseTouchFocusNode,
+                              nextFocusNode: _purchaseGoldRateFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildFormField(label: 'Purchase Rate', controller: _purchaseGoldRateController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Purchase Rate',
+                              controller: _purchaseGoldRateController,
+                              focusNode: _purchaseGoldRateFocusNode,
+                              nextFocusNode: _purchaseMcFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildFormField(label: 'Smith MC (₹)', controller: _purchaseMcController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Smith MC (₹)',
+                              controller: _purchaseMcController,
+                              focusNode: _purchaseMcFocusNode,
+                              nextFocusNode: _purchaseStoneCostFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildFormField(label: 'Stone Cost (₹)', controller: _purchaseStoneCostController, isNum: true)),
+                          Expanded(
+                            child: _buildFormField(
+                              label: 'Stone Cost (₹)',
+                              controller: _purchaseStoneCostController,
+                              focusNode: _purchaseStoneCostFocusNode,
+                              nextFocusNode: _huidFocusNode,
+                              isNum: true,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -3356,12 +3861,25 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
             children: [
               Expanded(
                 flex: 2,
-                child: _buildFormField(label: 'HUID (Hallmark Unique ID)', controller: _huidController, hint: 'e.g. HUID-916ABC'),
+                child: _buildFormField(
+                  label: 'HUID (Hallmark Unique ID)',
+                  controller: _huidController,
+                  focusNode: _huidFocusNode,
+                  nextFocusNode: _remarksFocusNode,
+                  hint: 'e.g. HUID-916ABC',
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 flex: 3,
-                child: _buildFormField(label: 'Remarks / Notes', controller: _remarksController, hint: 'e.g. Counter Tray 1'),
+                child: _buildFormField(
+                  label: 'Remarks / Notes',
+                  controller: _remarksController,
+                  focusNode: _remarksFocusNode,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: () => _saveAndTagSinglePiece(),
+                  hint: 'e.g. Counter Tray 1 (Enter to Save)',
+                ),
               ),
               const SizedBox(width: 14),
 
@@ -3417,7 +3935,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
     );
   }
 
-  // --- BOTTOM TAGGED ITEMS TABLE (கீழே உள்ள ரோ பட்டியல்) ---
+  // --- BOTTOM TAGGED ITEMS TABLE ---
   Widget _buildBottomTaggedTableSection(List<StockTaggedItem> displayedTags) {
     return Container(
       decoration: BoxDecoration(
@@ -3583,8 +4101,8 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                       DataColumn(label: Text('SKU CODE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0F172A)))),
                       DataColumn(label: Text('LOT NO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0F172A)))),
                       DataColumn(label: Text('ITEM NAME', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0F172A)))),
-                      DataColumn(label: Text('STYLE (ஸ்டைல்)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0284C7)))),
-                      DataColumn(label: Text('SIZE (சைஸ்)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFFD97706)))),
+                      DataColumn(label: Text('STYLE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0284C7)))),
+                      DataColumn(label: Text('SIZE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFFD97706)))),
                       DataColumn(label: Text('PURITY', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0F172A)))),
                       DataColumn(label: Text('GROSS WT (g)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0F172A)))),
                       DataColumn(label: Text('STONES / DIA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF0284C7)))),
@@ -3808,35 +4326,74 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
   Widget _buildFormField({
     required String label,
     required TextEditingController controller,
+    FocusNode? focusNode,
+    FocusNode? nextFocusNode,
+    VoidCallback? onFieldSubmitted,
+    TextInputAction textInputAction = TextInputAction.next,
     bool isNum = false,
     String? hint,
     ValueChanged<String>? onChanged,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: GlassTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        TextField(
-          controller: controller,
-          keyboardType: isNum ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-          onChanged: (v) {
-            if (onChanged != null) onChanged(v);
-            setState(() {});
-          },
-          style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: GlassTheme.textMuted.withValues(alpha: 0.5), fontSize: 11),
-            filled: true,
-            fillColor: GlassTheme.bgSurfaceMuted,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            isDense: true,
-            enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(6)), borderSide: BorderSide(color: GlassTheme.glassBorder)),
-            focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(6)), borderSide: BorderSide(color: GlassTheme.accentAmber)),
-          ),
-        ),
-      ],
+    return Focus(
+      focusNode: focusNode != null ? null : null,
+      child: Builder(
+        builder: (ctx) {
+          final isFocused = focusNode?.hasFocus ?? false;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: isFocused ? GlassTheme.accentAmber : GlassTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              TextField(
+                controller: controller,
+                focusNode: focusNode,
+                keyboardType: isNum ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+                textInputAction: textInputAction,
+                onSubmitted: (v) {
+                  if (onFieldSubmitted != null) {
+                    onFieldSubmitted();
+                  } else if (nextFocusNode != null) {
+                    nextFocusNode.requestFocus();
+                  } else {
+                    FocusScope.of(context).nextFocus();
+                  }
+                },
+                onChanged: (v) {
+                  if (onChanged != null) onChanged(v);
+                  setState(() {});
+                },
+                style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+                decoration: InputDecoration(
+                  hintText: hint,
+                  hintStyle: TextStyle(color: GlassTheme.textMuted.withValues(alpha: 0.5), fontSize: 11),
+                  filled: true,
+                  fillColor: isFocused ? GlassTheme.accentAmber.withValues(alpha: 0.08) : GlassTheme.bgSurfaceMuted,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  isDense: true,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: const BorderRadius.all(Radius.circular(6)),
+                    borderSide: BorderSide(
+                      color: isFocused ? GlassTheme.accentAmber : GlassTheme.glassBorder,
+                      width: isFocused ? 2.0 : 1.0,
+                    ),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(6)),
+                    borderSide: BorderSide(color: GlassTheme.accentAmber, width: 2.0),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
