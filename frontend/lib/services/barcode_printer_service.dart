@@ -49,6 +49,12 @@ class BarcodePrinterService {
               : '';
         case 'purity':
           return item.purityName.isNotEmpty ? item.purityName : '22KT';
+        case 'style':
+        case 'stylename':
+          return item.styleName;
+        case 'size':
+        case 'sizename':
+          return item.sizeName;
         case 'product_name':
           return item.productName.isNotEmpty ? item.productName : 'JEWELLERY';
         case 'subproduct_name':
@@ -115,6 +121,10 @@ class BarcodePrinterService {
       productName: 'GOLD RING CASTING',
       subproductId: 1,
       subproductName: 'FLOWER MODEL',
+      styleId: 1,
+      styleName: 'BOMBAY PLAIN',
+      sizeId: 1,
+      sizeName: '2.4',
       purityId: 1,
       purityName: '22KT (916)',
       purity: 91.6,

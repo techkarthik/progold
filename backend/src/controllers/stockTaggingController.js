@@ -18,6 +18,10 @@ export async function ensureStockTaggingTables(client, tenantUrl = "") {
         designerid INTEGER NOT NULL,
         productid INTEGER NOT NULL,
         subproductid INTEGER,
+        styleid INTEGER,
+        stylename TEXT DEFAULT '',
+        sizeid INTEGER,
+        sizename TEXT DEFAULT '',
         purityid INTEGER NOT NULL,
         pcs INTEGER NOT NULL DEFAULT 1,
         gross_weight REAL NOT NULL DEFAULT 0.0,
@@ -59,6 +63,12 @@ export async function ensureStockTaggingTables(client, tenantUrl = "") {
         FOREIGN KEY (lot_id) REFERENCES prepare_sku_lots(lot_id) ON DELETE CASCADE
       );
     `);
+
+    // Add safe column additions for existing installations
+    try { await client.execute(`ALTER TABLE stock_tagged_items ADD COLUMN styleid INTEGER;`); } catch (_) {}
+    try { await client.execute(`ALTER TABLE stock_tagged_items ADD COLUMN stylename TEXT DEFAULT '';`); } catch (_) {}
+    try { await client.execute(`ALTER TABLE stock_tagged_items ADD COLUMN sizeid INTEGER;`); } catch (_) {}
+    try { await client.execute(`ALTER TABLE stock_tagged_items ADD COLUMN sizename TEXT DEFAULT '';`); } catch (_) {}
 
     // Add safe indexes
     try { await client.execute(`CREATE INDEX IF NOT EXISTS idx_stock_tags_sku ON stock_tagged_items (sku_code);`); } catch (_) {}
@@ -197,7 +207,7 @@ export async function getVaLookupController(req, res) {
 
 /**
  * GET /api/tenant/stock/tags
- * Retrieves stock tagged items with joins for product, subproduct, smith, and purity.
+ * Retrieves stock tagged items with joins for product, subproduct, style, size, smith, and purity.
  */
 export async function getStockTagsController(req, res) {
   try {
@@ -215,6 +225,8 @@ export async function getStockTagsController(req, res) {
         d.accode AS designer_accode,
         p.productname,
         sp.subproductname,
+        st.stylename AS ref_stylename,
+        sz.sizename AS ref_sizename,
         pu.purityname,
         pu.purityshortname,
         pu.purity,
@@ -225,6 +237,8 @@ export async function getStockTagsController(req, res) {
       LEFT JOIN designers d ON t.designerid = d.designerid
       LEFT JOIN products p ON t.productid = p.productid
       LEFT JOIN subproducts sp ON t.subproductid = sp.subproductid
+      LEFT JOIN styles st ON t.styleid = st.styleid
+      LEFT JOIN sizes sz ON t.sizeid = sz.sizeid
       LEFT JOIN purities pu ON t.purityid = pu.purityid
       LEFT JOIN branches b ON t.branchid = b.branchid
       LEFT JOIN company c ON t.companyid = c.companyid
@@ -250,8 +264,8 @@ export async function getStockTagsController(req, res) {
     }
     if (search && String(search).trim() !== "") {
       const s = `%${String(search).trim()}%`;
-      query += ` AND (t.sku_code LIKE ? OR t.lot_number LIKE ? OR p.productname LIKE ? OR d.designername LIKE ?)`;
-      args.push(s, s, s, s);
+      query += ` AND (t.sku_code LIKE ? OR t.lot_number LIKE ? OR p.productname LIKE ? OR d.designername LIKE ? OR t.stylename LIKE ? OR t.sizename LIKE ?)`;
+      args.push(s, s, s, s, s, s);
     }
 
     query += ` ORDER BY t.item_id DESC;`;
@@ -272,6 +286,10 @@ export async function getStockTagsController(req, res) {
       productname: row.productname || "",
       subproductid: row.subproductid,
       subproductname: row.subproductname || "",
+      styleid: row.styleid || null,
+      stylename: (row.stylename && String(row.stylename).trim() !== "") ? row.stylename : (row.ref_stylename || ""),
+      sizeid: row.sizeid || null,
+      sizename: (row.sizename && String(row.sizename).trim() !== "") ? row.sizename : (row.ref_sizename || ""),
       purityid: row.purityid,
       purityname: row.purityname || "",
       purity: Number(row.purity || 0.0),
@@ -330,7 +348,7 @@ export async function getStockTagsController(req, res) {
 
 /**
  * POST /api/tenant/stock/tags/generate-from-lot
- * Creates individual or batch SKU tagged items from a Prepare SKU Lot.
+ * Creates individual (one-by-one) or batch SKU tagged items from a Prepare SKU Lot.
  */
 export async function generateTagsFromLotController(req, res) {
   try {
@@ -341,18 +359,36 @@ export async function generateTagsFromLotController(req, res) {
     const {
       lot_id,
       tag_items = [], // Array of individual tag breakdowns
-      // Global defaults if tag_items is not an array of individual items
+      // Single piece tag properties or batch defaults
+      pcs = 1,
+      gross_weight,
+      net_weight,
+      styleid = null,
+      stylename = "",
+      sizeid = null,
+      sizename = "",
+      purityid = null,
+      stone_pcs = 0,
+      stone_weight = 0.0,
+      stone_amt = 0.0,
+      stone_details = [],
+      diamond_pcs = 0,
+      diamond_weight = 0.0,
+      diamond_amt = 0.0,
+      diamond_details = [],
       tags_count = 1,
       board_rate = 0.0,
       sales_va_percent = 0.0,
       sales_wastage = 0.0,
       sales_mc_per_gram = 0.0,
       sales_m_charge = 0.0,
+      sales_total_amt,
       purchase_touch_pct = 0.0,
       purchase_gold_rate = 0.0,
       purchase_mc = 0.0,
       purchase_stone_cost = 0.0,
       purchase_diamond_cost = 0.0,
+      purchase_total_cost,
       huid = "",
       remarks = "",
     } = req.body;
@@ -378,7 +414,7 @@ export async function generateTagsFromLotController(req, res) {
     let itemsToInsert = [];
 
     if (Array.isArray(tag_items) && tag_items.length > 0) {
-      // User provided explicit piece-by-piece breakdown
+      // User provided explicit piece-by-piece breakdown array
       const skuCodes = await generateNextSkuCodes(client, lotNumber, tag_items.length);
       itemsToInsert = tag_items.map((item, idx) => {
         const grs = parseFloat(item.gross_weight) || 0.0;
@@ -401,7 +437,7 @@ export async function generateTagsFromLotController(req, res) {
         const vaAmount = pureGoldCost * (vaPct / 100.0);
         const wastageAmount = pureGoldCost * (wst / 100.0);
         const mcAmount = (net * mcGram) + mCharge;
-        const salesTotal = item.sales_total_amt !== undefined 
+        const sTotal = item.sales_total_amt !== undefined 
           ? parseFloat(item.sales_total_amt) 
           : (pureGoldCost + vaAmount + wastageAmount + mcAmount + stnAmt + dmdAmt);
 
@@ -413,7 +449,7 @@ export async function generateTagsFromLotController(req, res) {
         const pDmd = parseFloat(item.purchase_diamond_cost !== undefined ? item.purchase_diamond_cost : purchase_diamond_cost) || 0.0;
 
         const pGoldCost = pTouch > 0 ? (net * (pTouch / 100.0) * pGoldRate) : (net * pGoldRate);
-        const purchaseTotal = item.purchase_total_cost !== undefined
+        const pTotal = item.purchase_total_cost !== undefined
           ? parseFloat(item.purchase_total_cost)
           : (pGoldCost + pMc + pStone + pDmd);
 
@@ -426,7 +462,11 @@ export async function generateTagsFromLotController(req, res) {
           designerid: lot.designerid,
           productid: lot.productid,
           subproductid: lot.subproductid,
-          purityid: lot.purityid,
+          styleid: item.styleid ? parseInt(item.styleid, 10) : (styleid ? parseInt(styleid, 10) : null),
+          stylename: item.stylename || stylename || "",
+          sizeid: item.sizeid ? parseInt(item.sizeid, 10) : (sizeid ? parseInt(sizeid, 10) : null),
+          sizename: item.sizename || sizename || "",
+          purityid: item.purityid ? parseInt(item.purityid, 10) : (purityid ? parseInt(purityid, 10) : lot.purityid),
           pcs: parseInt(item.pcs, 10) || 1,
           gross_weight: grs,
           net_weight: net,
@@ -443,19 +483,96 @@ export async function generateTagsFromLotController(req, res) {
           sales_wastage: wst,
           sales_mc_per_gram: mcGram,
           sales_m_charge: mCharge,
-          sales_total_amt: salesTotal,
+          sales_total_amt: sTotal,
           purchase_touch_pct: pTouch,
           purchase_gold_rate: pGoldRate,
           purchase_mc: pMc,
           purchase_stone_cost: pStone,
           purchase_diamond_cost: pDmd,
-          purchase_total_cost: purchaseTotal,
+          purchase_total_cost: pTotal,
           huid: item.huid || huid || "",
           remarks: item.remarks || remarks || "",
         };
       });
+    } else if (gross_weight !== undefined && parseFloat(gross_weight) > 0) {
+      // SINGLE PIECE TAGGING MODE (Direct weight entry from Top Form)
+      const skuCodes = await generateNextSkuCodes(client, lotNumber, 1);
+      const grs = parseFloat(gross_weight) || 0.0;
+      const net = net_weight !== undefined ? parseFloat(net_weight) : grs;
+      const stnPcs = parseInt(stone_pcs, 10) || 0;
+      const stnWt = parseFloat(stone_weight) || 0.0;
+      const stnAmt = parseFloat(stone_amt) || 0.0;
+      const dmdPcs = parseInt(diamond_pcs, 10) || 0;
+      const dmdWt = parseFloat(diamond_weight) || 0.0;
+      const dmdAmt = parseFloat(diamond_amt) || 0.0;
+
+      const bRate = parseFloat(board_rate || lot.rate) || 0.0;
+      const vaPct = parseFloat(sales_va_percent) || 0.0;
+      const wst = parseFloat(sales_wastage) || 0.0;
+      const mcGram = parseFloat(sales_mc_per_gram) || 0.0;
+      const mCharge = parseFloat(sales_m_charge) || 0.0;
+
+      const pureGoldCost = net * bRate;
+      const vaAmount = pureGoldCost * (vaPct / 100.0);
+      const wastageAmount = pureGoldCost * (wst / 100.0);
+      const mcAmount = (net * mcGram) + mCharge;
+      const sTotal = sales_total_amt !== undefined 
+        ? parseFloat(sales_total_amt) 
+        : (pureGoldCost + vaAmount + wastageAmount + mcAmount + stnAmt + dmdAmt);
+
+      const pTouch = parseFloat(purchase_touch_pct) || 0.0;
+      const pGoldRate = parseFloat(purchase_gold_rate || bRate) || 0.0;
+      const pMc = parseFloat(purchase_mc) || 0.0;
+      const pStone = parseFloat(purchase_stone_cost) || 0.0;
+      const pDmd = parseFloat(purchase_diamond_cost) || 0.0;
+
+      const pGoldCost = pTouch > 0 ? (net * (pTouch / 100.0) * pGoldRate) : (net * pGoldRate);
+      const pTotal = purchase_total_cost !== undefined
+        ? parseFloat(purchase_total_cost)
+        : (pGoldCost + pMc + pStone + pDmd);
+
+      itemsToInsert.push({
+        sku_code: skuCodes[0],
+        lot_id: lotId,
+        lot_number: lotNumber,
+        companyid: lot.companyid,
+        branchid: lot.branchid,
+        designerid: lot.designerid,
+        productid: lot.productid,
+        subproductid: lot.subproductid,
+        styleid: styleid ? parseInt(styleid, 10) : null,
+        stylename: stylename || "",
+        sizeid: sizeid ? parseInt(sizeid, 10) : null,
+        sizename: sizename || "",
+        purityid: purityid ? parseInt(purityid, 10) : lot.purityid,
+        pcs: parseInt(pcs, 10) || 1,
+        gross_weight: grs,
+        net_weight: net,
+        stone_pcs: stnPcs,
+        stone_weight: stnWt,
+        stone_amt: stnAmt,
+        stone_details_json: JSON.stringify(stone_details || []),
+        diamond_pcs: dmdPcs,
+        diamond_weight: dmdWt,
+        diamond_amt: dmdAmt,
+        diamond_details_json: JSON.stringify(diamond_details || []),
+        board_rate: bRate,
+        sales_va_percent: vaPct,
+        sales_wastage: wst,
+        sales_mc_per_gram: mcGram,
+        sales_m_charge: mCharge,
+        sales_total_amt: sTotal,
+        purchase_touch_pct: pTouch,
+        purchase_gold_rate: pGoldRate,
+        purchase_mc: pMc,
+        purchase_stone_cost: pStone,
+        purchase_diamond_cost: pDmd,
+        purchase_total_cost: pTotal,
+        huid: huid || "",
+        remarks: remarks || "",
+      });
     } else {
-      // Auto-generate tags based on lot pieces and total weight
+      // Auto-generate batch tags based on tags_count
       const count = Math.max(1, parseInt(tags_count, 10) || parseInt(lot.total_pcs, 10) || 1);
       const skuCodes = await generateNextSkuCodes(client, lotNumber, count);
 
@@ -496,7 +613,11 @@ export async function generateTagsFromLotController(req, res) {
           designerid: lot.designerid,
           productid: lot.productid,
           subproductid: lot.subproductid,
-          purityid: lot.purityid,
+          styleid: styleid ? parseInt(styleid, 10) : null,
+          stylename: stylename || "",
+          sizeid: sizeid ? parseInt(sizeid, 10) : null,
+          sizename: sizename || "",
+          purityid: purityid ? parseInt(purityid, 10) : lot.purityid,
           pcs: 1,
           gross_weight: grsPerTag,
           net_weight: netPerTag,
@@ -531,14 +652,16 @@ export async function generateTagsFromLotController(req, res) {
       const resInsert = await client.execute({
         sql: `
           INSERT INTO stock_tagged_items (
-            sku_code, lot_id, lot_number, companyid, branchid, designerid, productid, subproductid, purityid,
+            sku_code, lot_id, lot_number, companyid, branchid, designerid, productid, subproductid,
+            styleid, stylename, sizeid, sizename, purityid,
             pcs, gross_weight, net_weight, stone_pcs, stone_weight, stone_amt, stone_details_json,
             diamond_pcs, diamond_weight, diamond_amt, diamond_details_json,
             board_rate, sales_va_percent, sales_wastage, sales_mc_per_gram, sales_m_charge, sales_total_amt,
             purchase_touch_pct, purchase_gold_rate, purchase_mc, purchase_stone_cost, purchase_diamond_cost, purchase_total_cost,
             huid, status, remarks, created_at, updated_at
           ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?,
@@ -555,6 +678,10 @@ export async function generateTagsFromLotController(req, res) {
           item.designerid,
           item.productid,
           item.subproductid,
+          item.styleid,
+          item.stylename,
+          item.sizeid,
+          item.sizename,
           item.purityid,
           item.pcs,
           item.gross_weight,
@@ -598,6 +725,7 @@ export async function generateTagsFromLotController(req, res) {
       count: itemsToInsert.length,
       created_ids: createdIds,
       sku_codes: itemsToInsert.map((i) => i.sku_code),
+      first_sku: itemsToInsert[0]?.sku_code,
     });
   } catch (error) {
     console.error("Error in generateTagsFromLotController:", error);
@@ -624,12 +752,19 @@ export async function updateStockTagController(req, res) {
       pcs,
       gross_weight,
       net_weight,
+      styleid,
+      stylename,
+      sizeid,
+      sizename,
+      purityid,
       stone_pcs,
       stone_weight,
       stone_amt,
+      stone_details,
       diamond_pcs,
       diamond_weight,
       diamond_amt,
+      diamond_details,
       board_rate,
       sales_va_percent,
       sales_wastage,
@@ -653,12 +788,19 @@ export async function updateStockTagController(req, res) {
           pcs = COALESCE(?, pcs),
           gross_weight = COALESCE(?, gross_weight),
           net_weight = COALESCE(?, net_weight),
+          styleid = COALESCE(?, styleid),
+          stylename = COALESCE(?, stylename),
+          sizeid = COALESCE(?, sizeid),
+          sizename = COALESCE(?, sizename),
+          purityid = COALESCE(?, purityid),
           stone_pcs = COALESCE(?, stone_pcs),
           stone_weight = COALESCE(?, stone_weight),
           stone_amt = COALESCE(?, stone_amt),
+          stone_details_json = COALESCE(?, stone_details_json),
           diamond_pcs = COALESCE(?, diamond_pcs),
           diamond_weight = COALESCE(?, diamond_weight),
           diamond_amt = COALESCE(?, diamond_amt),
+          diamond_details_json = COALESCE(?, diamond_details_json),
           board_rate = COALESCE(?, board_rate),
           sales_va_percent = COALESCE(?, sales_va_percent),
           sales_wastage = COALESCE(?, sales_wastage),
@@ -681,12 +823,19 @@ export async function updateStockTagController(req, res) {
         pcs !== undefined ? parseInt(pcs, 10) : null,
         gross_weight !== undefined ? parseFloat(gross_weight) : null,
         net_weight !== undefined ? parseFloat(net_weight) : null,
+        styleid !== undefined ? (styleid ? parseInt(styleid, 10) : null) : null,
+        stylename !== undefined ? String(stylename).trim() : null,
+        sizeid !== undefined ? (sizeid ? parseInt(sizeid, 10) : null) : null,
+        sizename !== undefined ? String(sizename).trim() : null,
+        purityid !== undefined ? (purityid ? parseInt(purityid, 10) : null) : null,
         stone_pcs !== undefined ? parseInt(stone_pcs, 10) : null,
         stone_weight !== undefined ? parseFloat(stone_weight) : null,
         stone_amt !== undefined ? parseFloat(stone_amt) : null,
+        stone_details !== undefined ? JSON.stringify(stone_details) : null,
         diamond_pcs !== undefined ? parseInt(diamond_pcs, 10) : null,
         diamond_weight !== undefined ? parseFloat(diamond_weight) : null,
         diamond_amt !== undefined ? parseFloat(diamond_amt) : null,
+        diamond_details !== undefined ? JSON.stringify(diamond_details) : null,
         board_rate !== undefined ? parseFloat(board_rate) : null,
         sales_va_percent !== undefined ? parseFloat(sales_va_percent) : null,
         sales_wastage !== undefined ? parseFloat(sales_wastage) : null,

@@ -295,6 +295,20 @@ class BarcodeFieldDefinition {
       category: 'Stones/Diamonds',
     ),
     BarcodeFieldDefinition(
+      key: 'style',
+      label: 'Style / Model Name',
+      sampleValue: 'BOMBAY PLAIN',
+      defaultFormat: '{style}',
+      category: 'Core',
+    ),
+    BarcodeFieldDefinition(
+      key: 'size',
+      label: 'Item Size',
+      sampleValue: '2.4',
+      defaultFormat: 'SIZE: {size}',
+      category: 'Core',
+    ),
+    BarcodeFieldDefinition(
       key: 'purity',
       label: 'Ornament Purity / Karat',
       sampleValue: '22KT (916)',
@@ -396,6 +410,10 @@ class StockTaggedItem {
   final String productName;
   final int? subproductId;
   final String subproductName;
+  final int? styleId;
+  final String styleName;
+  final int? sizeId;
+  final String sizeName;
   final int purityId;
   final String purityName;
   final double purity;
@@ -453,6 +471,10 @@ class StockTaggedItem {
     this.productName = '',
     this.subproductId,
     this.subproductName = '',
+    this.styleId,
+    this.styleName = '',
+    this.sizeId,
+    this.sizeName = '',
     required this.purityId,
     this.purityName = '',
     this.purity = 0.0,
@@ -505,6 +527,10 @@ class StockTaggedItem {
       productName: json['productname']?.toString() ?? '',
       subproductId: (json['subproductid'] as num?)?.toInt(),
       subproductName: json['subproductname']?.toString() ?? '',
+      styleId: (json['styleid'] as num?)?.toInt(),
+      styleName: json['stylename']?.toString() ?? '',
+      sizeId: (json['sizeid'] as num?)?.toInt(),
+      sizeName: json['sizename']?.toString() ?? '',
       purityId: (json['purityid'] as num?)?.toInt() ?? 0,
       purityName: json['purityname']?.toString() ?? '',
       purity: (json['purity'] as num?)?.toDouble() ?? 0.0,
@@ -542,4 +568,205 @@ class StockTaggedItem {
       companyName: json['companyname']?.toString() ?? '',
     );
   }
+
+  List<TagStoneItem> get parsedStoneItems {
+    return stoneDetails
+        .whereType<Map<String, dynamic>>()
+        .map((m) => TagStoneItem.fromJson(m))
+        .toList();
+  }
+
+  List<TagDiamondItem> get parsedDiamondItems {
+    return diamondDetails
+        .whereType<Map<String, dynamic>>()
+        .map((m) => TagDiamondItem.fromJson(m))
+        .toList();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'item_id': itemId,
+      'sku_code': skuCode,
+      'lot_id': lotId,
+      'lot_number': lotNumber,
+      'companyid': companyId,
+      'branchid': branchId,
+      'designerid': designerId,
+      'designername': designerName,
+      'productid': productId,
+      'productname': productName,
+      'subproductid': subproductId,
+      'subproductname': subproductName,
+      'styleid': styleId,
+      'stylename': styleName,
+      'sizeid': sizeId,
+      'sizename': sizeName,
+      'purityid': purityId,
+      'purityname': purityName,
+      'purity': purity,
+      'pcs': pcs,
+      'gross_weight': grossWeight,
+      'net_weight': netWeight,
+      'stone_pcs': stonePcs,
+      'stone_weight': stoneWeight,
+      'stone_amt': stoneAmt,
+      'stone_details': stoneDetails,
+      'diamond_pcs': diamondPcs,
+      'diamond_weight': diamondWeight,
+      'diamond_amt': diamondAmt,
+      'diamond_details': diamondDetails,
+      'board_rate': boardRate,
+      'sales_va_percent': salesVaPercent,
+      'sales_wastage': salesWastage,
+      'sales_mc_per_gram': salesMcPerGram,
+      'sales_m_charge': salesMCharge,
+      'sales_total_amt': salesTotalAmt,
+      'purchase_touch_pct': purchaseTouchPct,
+      'purchase_gold_rate': purchaseGoldRate,
+      'purchase_mc': purchaseMc,
+      'purchase_stone_cost': purchaseStoneCost,
+      'purchase_diamond_cost': purchaseDiamondCost,
+      'purchase_total_cost': purchaseTotalCost,
+      'huid': huid,
+      'status': status,
+      'remarks': remarks,
+    };
+  }
 }
+
+/// Dynamic Stone line-item for Stock Tagging & Barcode generation
+class TagStoneItem {
+  int? productId;
+  String? productName;
+  int? subProductId;
+  String? subProductName;
+  String unit; // 'G' (Gram), 'C' (Carat), 'cent'
+  int pcs;
+  double weight;
+  double rate;
+  double amount;
+
+  TagStoneItem({
+    this.productId,
+    this.productName,
+    this.subProductId,
+    this.subProductName,
+    this.unit = 'G',
+    this.pcs = 0,
+    this.weight = 0.0,
+    this.rate = 0.0,
+    this.amount = 0.0,
+  });
+
+  double get weightInGrams {
+    final u = unit.toLowerCase();
+    if (u == 'c' || u == 'ct') return weight * 0.200;
+    if (u == 'cent') return weight * 0.002;
+    return weight;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'product_id': productId,
+      if (productName != null) 'product_name': productName,
+      if (subProductId != null) 'subproduct_id': subProductId,
+      if (subProductName != null) 'subproduct_name': subProductName,
+      'unit': unit,
+      'pcs': pcs,
+      'weight': weight,
+      'rate': rate,
+      'amount': amount,
+      'less_weight_grams': weightInGrams,
+    };
+  }
+
+  factory TagStoneItem.fromJson(Map<String, dynamic> json) {
+    final w = double.tryParse(json['weight']?.toString() ?? json['total_stone_weight']?.toString() ?? '0') ?? 0.0;
+    final r = double.tryParse(json['rate']?.toString() ?? '0') ?? 0.0;
+    final a = double.tryParse(json['amount']?.toString() ?? json['stone_amt']?.toString() ?? '0') ?? (w * r);
+    return TagStoneItem(
+      productId: json['product_id'] != null
+          ? int.tryParse(json['product_id'].toString())
+          : (json['stone_productid'] != null ? int.tryParse(json['stone_productid'].toString()) : null),
+      productName: json['product_name']?.toString() ?? json['stone_productname']?.toString(),
+      subProductId: json['subproduct_id'] != null
+          ? int.tryParse(json['subproduct_id'].toString())
+          : (json['stone_subproductid'] != null ? int.tryParse(json['stone_subproductid'].toString()) : null),
+      subProductName: json['subproduct_name']?.toString() ?? json['stone_subproductname']?.toString(),
+      unit: json['unit']?.toString() ?? json['stone_unit']?.toString() ?? 'G',
+      pcs: int.tryParse(json['pcs']?.toString() ?? json['total_stone_pcs']?.toString() ?? '0') ?? 0,
+      weight: w,
+      rate: r,
+      amount: a,
+    );
+  }
+}
+
+/// Dynamic Diamond line-item for Stock Tagging & Barcode generation
+class TagDiamondItem {
+  int? productId;
+  String? productName;
+  int? subProductId;
+  String? subProductName;
+  String unit; // 'C' (Carat), 'cent', 'G' (Gram)
+  int pcs;
+  double weight;
+  double rate;
+  double amount;
+
+  TagDiamondItem({
+    this.productId,
+    this.productName,
+    this.subProductId,
+    this.subProductName,
+    this.unit = 'C',
+    this.pcs = 0,
+    this.weight = 0.0,
+    this.rate = 0.0,
+    this.amount = 0.0,
+  });
+
+  double get weightInGrams {
+    final u = unit.toLowerCase();
+    if (u == 'c' || u == 'ct') return weight * 0.200;
+    if (u == 'cent') return weight * 0.002;
+    return weight;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'product_id': productId,
+      if (productName != null) 'product_name': productName,
+      if (subProductId != null) 'subproduct_id': subProductId,
+      if (subProductName != null) 'subproduct_name': subProductName,
+      'unit': unit,
+      'pcs': pcs,
+      'weight': weight,
+      'rate': rate,
+      'amount': amount,
+      'less_weight_grams': weightInGrams,
+    };
+  }
+
+  factory TagDiamondItem.fromJson(Map<String, dynamic> json) {
+    final w = double.tryParse(json['weight']?.toString() ?? json['total_diamond_weight']?.toString() ?? '0') ?? 0.0;
+    final r = double.tryParse(json['rate']?.toString() ?? '0') ?? 0.0;
+    final a = double.tryParse(json['amount']?.toString() ?? json['diamond_amt']?.toString() ?? '0') ?? (w * r);
+    return TagDiamondItem(
+      productId: json['product_id'] != null
+          ? int.tryParse(json['product_id'].toString())
+          : (json['diamond_productid'] != null ? int.tryParse(json['diamond_productid'].toString()) : null),
+      productName: json['product_name']?.toString() ?? json['diamond_productname']?.toString(),
+      subProductId: json['subproduct_id'] != null
+          ? int.tryParse(json['subproduct_id'].toString())
+          : (json['diamond_subproductid'] != null ? int.tryParse(json['diamond_subproductid'].toString()) : null),
+      subProductName: json['subproduct_name']?.toString() ?? json['diamond_subproductname']?.toString(),
+      unit: json['unit']?.toString() ?? json['diamond_unit']?.toString() ?? 'C',
+      pcs: int.tryParse(json['pcs']?.toString() ?? json['total_diamond_pcs']?.toString() ?? '0') ?? 0,
+      weight: w,
+      rate: r,
+      amount: a,
+    );
+  }
+}
+
