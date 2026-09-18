@@ -97,6 +97,7 @@ class MenuRegistry {
   static const String SETTINGS_DB_STATUS = "M_SETTINGS.DB_STATUS";
   static const String SETTINGS_SYSTEM_CONTROLS = "M_SETTINGS.SYSTEM_CONTROLS";
   static const String SETTINGS_TURSO_SYNC = "M_SETTINGS.TURSO_SYNC";
+  static const String SETTINGS_REINSTALL_SYNC = "M_SETTINGS.REINSTALL_SYNC";
 
   // ==========================================
   // 8. SUB-MENUS UNDER CRM (M_CRM) - Extensible

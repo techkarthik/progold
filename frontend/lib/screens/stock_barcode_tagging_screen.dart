@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/barcode_models.dart';
@@ -55,6 +56,8 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
   final FocusNode _purchaseStoneCostFocusNode = FocusNode();
   final FocusNode _huidFocusNode = FocusNode();
   final FocusNode _remarksFocusNode = FocusNode();
+  final FocusNode _saveAndPrintFocusNode = FocusNode();
+  final FocusNode _saveOnlyFocusNode = FocusNode();
 
   final TextEditingController _pcsController = TextEditingController(text: '1');
   final TextEditingController _grossWeightController = TextEditingController();
@@ -102,6 +105,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
   @override
   void initState() {
     super.initState();
+    _saveAndPrintFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _saveOnlyFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadInitialData();
   }
 
@@ -121,6 +130,8 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
     _purchaseStoneCostFocusNode.dispose();
     _huidFocusNode.dispose();
     _remarksFocusNode.dispose();
+    _saveAndPrintFocusNode.dispose();
+    _saveOnlyFocusNode.dispose();
 
     _pcsController.dispose();
     _grossWeightController.dispose();
@@ -2854,20 +2865,43 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
       return true;
     }).toList();
 
-    return Scaffold(
-      backgroundColor: GlassTheme.bgDark,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 1. Top Navigation Bar
-            _buildTopActionBar(),
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.f9): () {
+          if (!_isSaving && _selectedLot != null) {
+            _saveAndTagSinglePiece(andPrint: true);
+          }
+        },
+        const SingleActivator(LogicalKeyboardKey.keyP, control: true): () {
+          if (!_isSaving && _selectedLot != null) {
+            _saveAndTagSinglePiece(andPrint: true);
+          }
+        },
+        const SingleActivator(LogicalKeyboardKey.f8): () {
+          if (!_isSaving && _selectedLot != null) {
+            _saveAndTagSinglePiece(andPrint: false);
+          }
+        },
+        const SingleActivator(LogicalKeyboardKey.f2): () {
+          if (_grossWeightFocusNode.canRequestFocus) {
+            _grossWeightFocusNode.requestFocus();
+          }
+        },
+      },
+      child: Scaffold(
+        backgroundColor: GlassTheme.bgDark,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // 1. Top Navigation Bar
+              _buildTopActionBar(),
 
-            // 2. Scrollable Content (Top Lot Summary & Entry Form + Bottom Tagged Grid)
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              // 2. Scrollable Content (Top Lot Summary & Entry Form + Bottom Tagged Grid)
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // LOT SUMMARY & PROGRESS BAR
                     _buildLotSummaryAndProgressCard(),
@@ -2886,8 +2920,9 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildTopActionBar() {
     return Container(
@@ -3876,44 +3911,60 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                   label: 'Remarks / Notes',
                   controller: _remarksController,
                   focusNode: _remarksFocusNode,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: () => _saveAndTagSinglePiece(),
-                  hint: 'e.g. Counter Tray 1 (Enter to Save)',
+                  nextFocusNode: _saveAndPrintFocusNode,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: () {
+                    if (_saveAndPrintFocusNode.canRequestFocus) {
+                      _saveAndPrintFocusNode.requestFocus();
+                    }
+                  },
+                  hint: 'e.g. Counter Tray 1 (Enter -> Save & Print)',
                 ),
               ),
               const SizedBox(width: 14),
 
-              // ACTION: Save & Tag Single Piece (ENTER)
+              // ACTION: Save & 1-Click Print (PRIMARY KEYBOARD FOCUS TARGET)
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  elevation: 2,
-                ),
-                icon: _isSaving
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.bolt_rounded, size: 20),
-                label: Text(
-                  _isSaving ? 'Tagging...' : 'Save & Tag Piece (Enter)',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                ),
-                onPressed: (_isSaving || _selectedLot == null) ? null : () => _saveAndTagSinglePiece(),
-              ),
-              const SizedBox(width: 8),
-
-              // ACTION: Save & 1-Click Print
-              ElevatedButton.icon(
+                focusNode: _saveAndPrintFocusNode,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0284C7),
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: _saveAndPrintFocusNode.hasFocus ? 4 : 2,
+                  side: _saveAndPrintFocusNode.hasFocus
+                      ? const BorderSide(color: Color(0xFF38BDF8), width: 2.5)
+                      : BorderSide.none,
+                ),
+                icon: _isSaving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.print_rounded, size: 18),
+                label: Text(
+                  _isSaving ? 'Tagging...' : 'Save & Print Tag (Enter)',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+                onPressed: (_isSaving || _selectedLot == null) ? null : () => _saveAndTagSinglePiece(andPrint: true),
+              ),
+              const SizedBox(width: 8),
+
+              // ACTION: Save & Tag Single Piece (SAVE ONLY)
+              ElevatedButton.icon(
+                focusNode: _saveOnlyFocusNode,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  side: _saveOnlyFocusNode.hasFocus
+                      ? const BorderSide(color: Color(0xFF34D399), width: 2.5)
+                      : BorderSide.none,
                 ),
-                icon: const Icon(Icons.print_rounded, size: 18),
-                label: const Text('Save & Print Tag', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                onPressed: (_isSaving || _selectedLot == null) ? null : () => _saveAndTagSinglePiece(andPrint: true),
+                icon: const Icon(Icons.save_rounded, size: 18),
+                label: const Text(
+                  'Save Only',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                onPressed: (_isSaving || _selectedLot == null) ? null : () => _saveAndTagSinglePiece(andPrint: false),
               ),
               const SizedBox(width: 8),
 

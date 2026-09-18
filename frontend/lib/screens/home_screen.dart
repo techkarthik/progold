@@ -705,6 +705,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                     ),
                   ],
+                  if (_hasAccess(auth, MenuRegistry.SETTINGS_REINSTALL_SYNC)) ...[
+                    const SizedBox(height: 4),
+                    _buildDrawerItem(
+                      icon: Icons.system_update_rounded,
+                      title: "Reinstall / Sync Schema",
+                      subtitle: "Sync missing tables & barcode templates",
+                      isSelected: false,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showReinstallSchemaDialog(context, auth);
+                      },
+                    ),
+                  ],
                 ],
                 if (_hasAccess(auth, MenuRegistry.MENU_CRM)) ...[
                   const SizedBox(height: 4),
@@ -2757,8 +2770,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showReinstallSchemaDialog(BuildContext context, AuthProvider auth) {
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) {
+      builder: (ctx) => Consumer<AuthProvider>(
+        builder: (context, authState, _) {
+          final isBusy = authState.isReinstallingDb;
           return AlertDialog(
             backgroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -2797,7 +2811,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    "This operation applies the latest ProGold ERP database structures, newly added master tables (Styles, Sizes, Sub-products, System Controls), and new schema columns to your private store database.",
+                    "This operation applies the latest ProGold ERP database structures, newly added master tables (Barcode Templates, Stock Tagging, SKU Lots, Styles, Sizes, Sub-products, System Controls), and new schema columns to your private store database.",
                     style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13, height: 1.4, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 12),
@@ -2810,7 +2824,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: auth.isReinstallingDb ? null : () => Navigator.pop(ctx),
+                onPressed: isBusy ? null : () => Navigator.pop(ctx),
                 child: const Text("Cancel", style: TextStyle(color: GlassTheme.textSecondary, fontWeight: FontWeight.bold)),
               ),
               ElevatedButton.icon(
@@ -2820,15 +2834,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
-                icon: auth.isReinstallingDb
+                icon: isBusy
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.sync_rounded, size: 16),
-                label: Text(auth.isReinstallingDb ? "Synchronizing Schema..." : "Run Reinstall & Sync Now", style: const TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: auth.isReinstallingDb
+                label: Text(isBusy ? "Synchronizing Schema..." : "Run Reinstall & Sync Now", style: const TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: isBusy
                     ? null
                     : () async {
-                        setModalState(() {});
-                        final result = await auth.reinstallDatabase();
+                        final result = await authState.reinstallDatabase();
                         if (context.mounted) {
                           Navigator.pop(ctx);
                           final isSuccess = result['success'] == true;

@@ -484,6 +484,13 @@ class MenuTreeRegistry {
           icon: Icons.cloud_sync_rounded,
           color: Color(0xFF10B981),
         ),
+        MenuTreeNode(
+          code: MenuRegistry.SETTINGS_REINSTALL_SYNC,
+          title: "Reinstall / Sync Schema",
+          subtitle: "Synchronize missing tables, barcode templates & migrations",
+          icon: Icons.system_update_rounded,
+          color: Color(0xFF6366F1),
+        ),
       ],
     ),
   ];

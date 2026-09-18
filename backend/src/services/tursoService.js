@@ -771,6 +771,128 @@ export async function syncTenantDatabaseSchema(url, token) {
         details TEXT DEFAULT '',
         created_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS designers (
+        designerid INTEGER PRIMARY KEY AUTOINCREMENT,
+        designername TEXT NOT NULL UNIQUE,
+        contact_person TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        city TEXT DEFAULT '',
+        linked_accode TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS diamond_pricesetting (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        productid INTEGER NOT NULL,
+        accode TEXT NOT NULL,
+        diamond_quality TEXT NOT NULL DEFAULT 'EF-VVS',
+        carat_from REAL NOT NULL DEFAULT 0.0,
+        carat_to REAL NOT NULL DEFAULT 0.0,
+        rate_per_carat REAL NOT NULL DEFAULT 0.0,
+        selling_rate_per_carat REAL NOT NULL DEFAULT 0.0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS prepare_sku_lots (
+        lot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lot_number TEXT UNIQUE NOT NULL,
+        companyid TEXT NOT NULL,
+        branchid TEXT NOT NULL,
+        dealer_accode TEXT NOT NULL,
+        dealer_name TEXT NOT NULL,
+        purityid INTEGER NOT NULL,
+        purity_name TEXT NOT NULL,
+        categoryid INTEGER NOT NULL,
+        category_name TEXT NOT NULL,
+        productid INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        subproductid INTEGER,
+        subproduct_name TEXT DEFAULT '',
+        designerid INTEGER NOT NULL,
+        designer_name TEXT NOT NULL,
+        total_pcs INTEGER NOT NULL DEFAULT 1,
+        total_gross_weight REAL NOT NULL DEFAULT 0.0,
+        touch_pct REAL DEFAULT 0.0,
+        gold_rate REAL DEFAULT 0.0,
+        mc_per_piece REAL DEFAULT 0.0,
+        stone_cost REAL DEFAULT 0.0,
+        diamond_cost REAL DEFAULT 0.0,
+        total_cost REAL DEFAULT 0.0,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        created_by TEXT DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS barcode_templates (
+        template_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        companyid TEXT NOT NULL DEFAULT '',
+        name TEXT NOT NULL,
+        width_mm REAL NOT NULL DEFAULT 80.0,
+        height_mm REAL NOT NULL DEFAULT 13.0,
+        unit TEXT NOT NULL DEFAULT 'mm',
+        labels_per_row INTEGER NOT NULL DEFAULT 2,
+        gap_mm REAL DEFAULT 2.0,
+        margin_top_mm REAL DEFAULT 1.0,
+        margin_left_mm REAL DEFAULT 1.0,
+        tag_style TEXT NOT NULL DEFAULT 'JEWELRY_BUTTERFLY',
+        is_default INTEGER DEFAULT 0,
+        elements_json TEXT NOT NULL DEFAULT '[]',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS stock_tagged_items (
+        item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sku_code TEXT UNIQUE NOT NULL,
+        lot_id INTEGER NOT NULL,
+        lot_number TEXT NOT NULL,
+        companyid TEXT NOT NULL,
+        branchid TEXT NOT NULL,
+        designerid INTEGER NOT NULL,
+        productid INTEGER NOT NULL,
+        subproductid INTEGER,
+        styleid INTEGER,
+        stylename TEXT DEFAULT '',
+        sizeid INTEGER,
+        sizename TEXT DEFAULT '',
+        purityid INTEGER NOT NULL,
+        pcs INTEGER NOT NULL DEFAULT 1,
+        gross_weight REAL NOT NULL DEFAULT 0.0,
+        net_weight REAL NOT NULL DEFAULT 0.0,
+        stone_pcs INTEGER DEFAULT 0,
+        stone_weight REAL DEFAULT 0.0,
+        stone_amt REAL DEFAULT 0.0,
+        stone_details_json TEXT DEFAULT '[]',
+        diamond_pcs INTEGER DEFAULT 0,
+        diamond_weight REAL DEFAULT 0.0,
+        diamond_amt REAL DEFAULT 0.0,
+        diamond_details_json TEXT DEFAULT '[]',
+        board_rate REAL DEFAULT 0.0,
+        sales_va_percent REAL DEFAULT 0.0,
+        sales_wastage REAL DEFAULT 0.0,
+        sales_mc_per_gram REAL DEFAULT 0.0,
+        sales_m_charge REAL DEFAULT 0.0,
+        sales_total_amt REAL DEFAULT 0.0,
+        purchase_touch_pct REAL DEFAULT 0.0,
+        purchase_gold_rate REAL DEFAULT 0.0,
+        purchase_mc REAL DEFAULT 0.0,
+        purchase_stone_cost REAL DEFAULT 0.0,
+        purchase_diamond_cost REAL DEFAULT 0.0,
+        purchase_total_cost REAL DEFAULT 0.0,
+        huid TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'IN_STOCK',
+        tag_printed_count INTEGER DEFAULT 0,
+        tag_last_printed_at DATETIME,
+        remarks TEXT DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `;
 
     try {
@@ -907,6 +1029,11 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE estimates ADD COLUMN items_json TEXT DEFAULT '[]';`,
       `ALTER TABLE estimates ADD COLUMN notes TEXT DEFAULT '';`,
       `ALTER TABLE estimates ADD COLUMN updated_at TEXT;`,
+      // Stock tagged items migrations
+      `ALTER TABLE stock_tagged_items ADD COLUMN styleid INTEGER;`,
+      `ALTER TABLE stock_tagged_items ADD COLUMN stylename TEXT DEFAULT '';`,
+      `ALTER TABLE stock_tagged_items ADD COLUMN sizeid INTEGER;`,
+      `ALTER TABLE stock_tagged_items ADD COLUMN sizename TEXT DEFAULT '';`,
     ];
 
     // Execute safe column additions in sequential batches to avoid SQLITE_BUSY table locks
@@ -930,6 +1057,14 @@ export async function syncTenantDatabaseSchema(url, token) {
       `CREATE INDEX IF NOT EXISTS idx_daily_rates_purity_id ON daily_rates (purityid, id DESC);`,
       `CREATE INDEX IF NOT EXISTS idx_company_companyname ON company (companyname);`,
       `CREATE INDEX IF NOT EXISTS idx_branches_companyid ON branches (companyid);`,
+      `CREATE INDEX IF NOT EXISTS idx_stock_tags_sku ON stock_tagged_items (sku_code);`,
+      `CREATE INDEX IF NOT EXISTS idx_stock_tags_lot ON stock_tagged_items (lot_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_stock_tags_company ON stock_tagged_items (companyid);`,
+      `CREATE INDEX IF NOT EXISTS idx_stock_tags_branch ON stock_tagged_items (branchid);`,
+      `CREATE INDEX IF NOT EXISTS idx_stock_tags_status ON stock_tagged_items (status);`,
+      `CREATE INDEX IF NOT EXISTS idx_prepare_sku_lots_num ON prepare_sku_lots (lot_number);`,
+      `CREATE INDEX IF NOT EXISTS idx_designers_name ON designers (designername);`,
+      `CREATE INDEX IF NOT EXISTS idx_diamond_price_product ON diamond_pricesetting (productid);`,
     ];
 
     try {
@@ -994,6 +1129,45 @@ export async function syncTenantDatabaseSchema(url, token) {
           ('22K Standard Gold (91.6%)', 22, 91.6, 6830.0, 6925.0, 92.5, '${now}'),
           ('18K Hallmarked Gold (75.0%)', 18, 75.0, 5585.0, 5660.0, 92.5, '${now}');
         `);
+      }
+    } catch (_) { }
+
+    // Seed Default Barcode Templates (if empty)
+    try {
+      const tmplCheck = await client.execute(`SELECT COUNT(*) as cnt FROM barcode_templates;`);
+      if (Number(tmplCheck.rows[0]?.cnt || 0) === 0) {
+        const defaultButterflyElements = JSON.stringify([
+          { id: "elem_qr", type: "barcode_2d", field_key: "sku", label_prefix: "", format_template: "{sku}", x_mm: 1.5, y_mm: 1.5, width_mm: 10.0, height_mm: 10.0, font_size: 8, font_weight: "normal", alignment: "center", is_bold: false, is_visible: true },
+          { id: "elem_comp", type: "text", field_key: "company_name", label_prefix: "", format_template: "{company_name}", x_mm: 12.5, y_mm: 1.0, width_mm: 25.0, height_mm: 3.5, font_size: 7, font_weight: "bold", alignment: "left", is_bold: true, is_visible: true },
+          { id: "elem_item", type: "text", field_key: "product_name", label_prefix: "", format_template: "{product_name}", x_mm: 12.5, y_mm: 4.5, width_mm: 25.0, height_mm: 3.0, font_size: 6, font_weight: "normal", alignment: "left", is_bold: false, is_visible: true },
+          { id: "elem_purity", type: "text", field_key: "purity", label_prefix: "", format_template: "{purity}", x_mm: 12.5, y_mm: 7.5, width_mm: 25.0, height_mm: 3.0, font_size: 6, font_weight: "bold", alignment: "left", is_bold: true, is_visible: true },
+          { id: "elem_grs", type: "text", field_key: "gross_weight", label_prefix: "GRS: ", format_template: "GRS: {gross_weight}g", x_mm: 40.0, y_mm: 1.0, width_mm: 38.0, height_mm: 3.5, font_size: 6.5, font_weight: "bold", alignment: "left", is_bold: true, is_visible: true },
+          { id: "elem_net", type: "text", field_key: "net_weight", label_prefix: "NET: ", format_template: "NET: {net_weight}g", x_mm: 40.0, y_mm: 4.5, width_mm: 38.0, height_mm: 3.0, font_size: 6, font_weight: "normal", alignment: "left", is_bold: false, is_visible: true },
+          { id: "elem_stone", type: "text", field_key: "stone_info", label_prefix: "S: ", format_template: "S: {stone_pcs}/{stone_weight}g", x_mm: 40.0, y_mm: 7.5, width_mm: 38.0, height_mm: 2.5, font_size: 5.5, font_weight: "normal", alignment: "left", is_bold: false, is_visible: true },
+          { id: "elem_dmd", type: "text", field_key: "diamond_info", label_prefix: "D: ", format_template: "D: {diamond_pcs}/{diamond_weight}ct", x_mm: 40.0, y_mm: 10.0, width_mm: 38.0, height_mm: 2.5, font_size: 5.5, font_weight: "normal", alignment: "left", is_bold: false, is_visible: true },
+        ]);
+
+        const defaultRetailElements = JSON.stringify([
+          { id: "elem_comp", type: "text", field_key: "company_name", label_prefix: "", format_template: "{company_name}", x_mm: 2.0, y_mm: 1.5, width_mm: 46.0, height_mm: 3.5, font_size: 8, font_weight: "bold", alignment: "center", is_bold: true, is_visible: true },
+          { id: "elem_barcode", type: "barcode_1d", field_key: "sku", label_prefix: "", format_template: "{sku}", x_mm: 2.0, y_mm: 5.0, width_mm: 46.0, height_mm: 8.5, font_size: 7, font_weight: "normal", alignment: "center", is_bold: false, is_visible: true },
+          { id: "elem_sku_txt", type: "text", field_key: "sku", label_prefix: "SKU: ", format_template: "{sku}", x_mm: 2.0, y_mm: 14.0, width_mm: 46.0, height_mm: 3.0, font_size: 6.5, font_weight: "normal", alignment: "center", is_bold: false, is_visible: true },
+          { id: "elem_grs", type: "text", field_key: "gross_weight", label_prefix: "GRSWT: ", format_template: "GRSWT: {gross_weight}g", x_mm: 2.0, y_mm: 17.5, width_mm: 23.0, height_mm: 3.0, font_size: 6.5, font_weight: "bold", alignment: "left", is_bold: true, is_visible: true },
+          { id: "elem_purity", type: "text", field_key: "purity", label_prefix: "", format_template: "{purity}", x_mm: 25.0, y_mm: 17.5, width_mm: 23.0, height_mm: 3.0, font_size: 6.5, font_weight: "bold", alignment: "right", is_bold: true, is_visible: true },
+          { id: "elem_stones", type: "text", field_key: "stone_info", label_prefix: "S: ", format_template: "S: {stone_pcs}/{stone_weight}g", x_mm: 2.0, y_mm: 21.0, width_mm: 23.0, height_mm: 3.0, font_size: 5.5, font_weight: "normal", alignment: "left", is_bold: false, is_visible: true },
+          { id: "elem_dmd", type: "text", field_key: "diamond_info", label_prefix: "D: ", format_template: "D: {diamond_pcs}/{diamond_weight}ct", x_mm: 25.0, y_mm: 21.0, width_mm: 23.0, height_mm: 3.0, font_size: 5.5, font_weight: "normal", alignment: "right", is_bold: false, is_visible: true },
+        ]);
+
+        await client.execute({
+          sql: `INSERT INTO barcode_templates (name, width_mm, height_mm, unit, labels_per_row, gap_mm, margin_top_mm, margin_left_mm, tag_style, is_default, elements_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: ["Jewelry Butterfly Tag (80x13mm, 2-Across)", 80.0, 13.0, "mm", 2, 3.0, 1.0, 1.5, "JEWELRY_BUTTERFLY", 1, defaultButterflyElements, now, now],
+        });
+
+        await client.execute({
+          sql: `INSERT INTO barcode_templates (name, width_mm, height_mm, unit, labels_per_row, gap_mm, margin_top_mm, margin_left_mm, tag_style, is_default, elements_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: ["Standard Retail Barcode (50x25mm, 1-Across)", 50.0, 25.0, "mm", 1, 2.0, 1.5, 1.5, "RECTANGLE", 0, defaultRetailElements, now, now],
+        });
       }
     } catch (_) { }
 

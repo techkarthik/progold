@@ -136,6 +136,21 @@ import {
   updatePrepareSkuLotController,
   deletePrepareSkuLotController,
 } from "../backend/src/controllers/stockController.js";
+import {
+  getBarcodeTemplatesController,
+  createBarcodeTemplateController,
+  updateBarcodeTemplateController,
+  deleteBarcodeTemplateController,
+  setDefaultBarcodeTemplateController,
+} from "../backend/src/controllers/barcodeTemplateController.js";
+import {
+  getStockTagsController,
+  getVaLookupController,
+  generateTagsFromLotController,
+  updateStockTagController,
+  deleteStockTagController,
+  markStockTagsPrintedController,
+} from "../backend/src/controllers/stockTaggingController.js";
 import { requireAuth } from "../backend/src/middleware/authMiddleware.js";
 
 dotenv.config();
@@ -355,6 +370,21 @@ router.get("/tenant/stock/prepare-sku", requireAuth, getPrepareSkuLotsController
 router.post("/tenant/stock/prepare-sku", requireAuth, createPrepareSkuLotController);
 router.put("/tenant/stock/prepare-sku/:id", requireAuth, updatePrepareSkuLotController);
 router.delete("/tenant/stock/prepare-sku/:id", requireAuth, deletePrepareSkuLotController);
+
+// Tenant Barcode & RFID Templates CRUD Routes
+router.get("/tenant/barcode-templates", requireAuth, getBarcodeTemplatesController);
+router.post("/tenant/barcode-templates", requireAuth, createBarcodeTemplateController);
+router.put("/tenant/barcode-templates/:id", requireAuth, updateBarcodeTemplateController);
+router.delete("/tenant/barcode-templates/:id", requireAuth, deleteBarcodeTemplateController);
+router.post("/tenant/barcode-templates/:id/set-default", requireAuth, setDefaultBarcodeTemplateController);
+
+// Tenant Stock Barcode & RFID Tagging Routes (Stock Menu)
+router.get("/tenant/stock/tags", requireAuth, getStockTagsController);
+router.get("/tenant/stock/va-lookup", requireAuth, getVaLookupController);
+router.post("/tenant/stock/tags/generate-from-lot", requireAuth, generateTagsFromLotController);
+router.put("/tenant/stock/tags/:id", requireAuth, updateStockTagController);
+router.delete("/tenant/stock/tags/:id", requireAuth, deleteStockTagController);
+router.post("/tenant/stock/tags/mark-printed", requireAuth, markStockTagsPrintedController);
 
 // Tenant System Controls CRUD Routes (4th Menu under Settings)
 router.get("/tenant/system-controls", requireAuth, getSystemControlsController);
