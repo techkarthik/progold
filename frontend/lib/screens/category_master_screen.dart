@@ -48,6 +48,12 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
   final _cgstPerController = TextEditingController(text: '1.50');
   final _igstPerController = TextEditingController(text: '3.00');
 
+  // Focus Nodes for Enter key navigation
+  final _nameFocusNode = FocusNode();
+  final _sgstFocusNode = FocusNode();
+  final _cgstFocusNode = FocusNode();
+  final _igstFocusNode = FocusNode();
+
   // Sales & Purchase Account Heads (Where sales and purchases post - stored by accode)
   String? _selectedSalesAccode;
   String? _selectedPurchaseAccode;
@@ -71,6 +77,12 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
     _sgstPerController.dispose();
     _cgstPerController.dispose();
     _igstPerController.dispose();
+
+    _nameFocusNode.dispose();
+    _sgstFocusNode.dispose();
+    _cgstFocusNode.dispose();
+    _igstFocusNode.dispose();
+
     super.dispose();
   }
 
@@ -684,9 +696,12 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: _nameController,
+                        focusNode: _nameFocusNode,
                         onChanged: (_) => setState(() {}),
                         style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
                         decoration: _inputDecoration("e.g. Rings, Bangles, Chains, Gold Coins"),
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_sgstFocusNode),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) return "Name required";
                           return null;
@@ -820,7 +835,10 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             const SizedBox(height: 6),
                             TextFormField(
                               controller: _sgstPerController,
+                              focusNode: _sgstFocusNode,
                               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textInputAction: TextInputAction.next,
+                              onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_cgstFocusNode),
                               onChanged: (_) => setState(() {}),
                               style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
                               decoration: _inputDecoration("1.50"),
@@ -837,7 +855,10 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             const SizedBox(height: 6),
                             TextFormField(
                               controller: _cgstPerController,
+                              focusNode: _cgstFocusNode,
                               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textInputAction: TextInputAction.next,
+                              onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_igstFocusNode),
                               onChanged: (_) => setState(() {}),
                               style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
                               decoration: _inputDecoration("1.50"),
@@ -854,7 +875,10 @@ class _CategoryMasterScreenState extends State<CategoryMasterScreen> {
                             const SizedBox(height: 6),
                             TextFormField(
                               controller: _igstPerController,
+                              focusNode: _igstFocusNode,
                               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textInputAction: TextInputAction.done,
+                              onFieldSubmitted: (_) => _saveCategoryForm(),
                               style: const TextStyle(color: GlassTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w700),
                               decoration: _inputDecoration("3.00"),
                             ),

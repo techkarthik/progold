@@ -643,8 +643,10 @@ class TagStoneItem {
   String unit; // 'G' (Gram), 'C' (Carat), 'cent'
   int pcs;
   double weight;
-  double rate;
-  double amount;
+  double purRate; // Purchase Rate (Rs/unit)
+  double purAmount; // Purchase Amount (Rs)
+  double rate; // Sales Rate (Rs/unit)
+  double amount; // Sales Amount (Rs)
 
   TagStoneItem({
     this.productId,
@@ -654,6 +656,8 @@ class TagStoneItem {
     this.unit = 'G',
     this.pcs = 0,
     this.weight = 0.0,
+    this.purRate = 0.0,
+    this.purAmount = 0.0,
     this.rate = 0.0,
     this.amount = 0.0,
   });
@@ -674,6 +678,10 @@ class TagStoneItem {
       'unit': unit,
       'pcs': pcs,
       'weight': weight,
+      'pur_rate': purRate,
+      'pur_amount': purAmount,
+      'purrate': purRate,
+      'puramt': purAmount,
       'rate': rate,
       'amount': amount,
       'less_weight_grams': weightInGrams,
@@ -682,8 +690,10 @@ class TagStoneItem {
 
   factory TagStoneItem.fromJson(Map<String, dynamic> json) {
     final w = double.tryParse(json['weight']?.toString() ?? json['total_stone_weight']?.toString() ?? '0') ?? 0.0;
-    final r = double.tryParse(json['rate']?.toString() ?? '0') ?? 0.0;
-    final a = double.tryParse(json['amount']?.toString() ?? json['stone_amt']?.toString() ?? '0') ?? (w * r);
+    final pr = double.tryParse(json['pur_rate']?.toString() ?? json['purrate']?.toString() ?? '0') ?? 0.0;
+    final pa = double.tryParse(json['pur_amount']?.toString() ?? json['puramt']?.toString() ?? '0') ?? (w * pr);
+    final r = double.tryParse(json['rate']?.toString() ?? json['sales_rate']?.toString() ?? '0') ?? 0.0;
+    final a = double.tryParse(json['amount']?.toString() ?? json['stone_amt']?.toString() ?? json['sales_amt']?.toString() ?? '0') ?? (w * r);
     return TagStoneItem(
       productId: json['product_id'] != null
           ? int.tryParse(json['product_id'].toString())
@@ -696,6 +706,8 @@ class TagStoneItem {
       unit: json['unit']?.toString() ?? json['stone_unit']?.toString() ?? 'G',
       pcs: int.tryParse(json['pcs']?.toString() ?? json['total_stone_pcs']?.toString() ?? '0') ?? 0,
       weight: w,
+      purRate: pr > 0 ? pr : r,
+      purAmount: pa > 0 ? pa : (pr > 0 ? w * pr : a),
       rate: r,
       amount: a,
     );
@@ -711,8 +723,10 @@ class TagDiamondItem {
   String unit; // 'C' (Carat), 'cent', 'G' (Gram)
   int pcs;
   double weight;
-  double rate;
-  double amount;
+  double purRate; // Purchase Rate (Rs/unit)
+  double purAmount; // Purchase Amount (Rs)
+  double rate; // Sales Rate (Rs/unit)
+  double amount; // Sales Amount (Rs)
 
   TagDiamondItem({
     this.productId,
@@ -722,6 +736,8 @@ class TagDiamondItem {
     this.unit = 'C',
     this.pcs = 0,
     this.weight = 0.0,
+    this.purRate = 0.0,
+    this.purAmount = 0.0,
     this.rate = 0.0,
     this.amount = 0.0,
   });
@@ -742,6 +758,10 @@ class TagDiamondItem {
       'unit': unit,
       'pcs': pcs,
       'weight': weight,
+      'pur_rate': purRate,
+      'pur_amount': purAmount,
+      'purrate': purRate,
+      'puramt': purAmount,
       'rate': rate,
       'amount': amount,
       'less_weight_grams': weightInGrams,
@@ -750,8 +770,10 @@ class TagDiamondItem {
 
   factory TagDiamondItem.fromJson(Map<String, dynamic> json) {
     final w = double.tryParse(json['weight']?.toString() ?? json['total_diamond_weight']?.toString() ?? '0') ?? 0.0;
-    final r = double.tryParse(json['rate']?.toString() ?? '0') ?? 0.0;
-    final a = double.tryParse(json['amount']?.toString() ?? json['diamond_amt']?.toString() ?? '0') ?? (w * r);
+    final pr = double.tryParse(json['pur_rate']?.toString() ?? json['purrate']?.toString() ?? '0') ?? 0.0;
+    final pa = double.tryParse(json['pur_amount']?.toString() ?? json['puramt']?.toString() ?? '0') ?? (w * pr);
+    final r = double.tryParse(json['rate']?.toString() ?? json['sales_rate']?.toString() ?? '0') ?? 0.0;
+    final a = double.tryParse(json['amount']?.toString() ?? json['diamond_amt']?.toString() ?? json['sales_amt']?.toString() ?? '0') ?? (w * r);
     return TagDiamondItem(
       productId: json['product_id'] != null
           ? int.tryParse(json['product_id'].toString())
@@ -764,6 +786,8 @@ class TagDiamondItem {
       unit: json['unit']?.toString() ?? json['diamond_unit']?.toString() ?? 'C',
       pcs: int.tryParse(json['pcs']?.toString() ?? json['total_diamond_pcs']?.toString() ?? '0') ?? 0,
       weight: w,
+      purRate: pr > 0 ? pr : r,
+      purAmount: pa > 0 ? pa : (pr > 0 ? w * pr : a),
       rate: r,
       amount: a,
     );

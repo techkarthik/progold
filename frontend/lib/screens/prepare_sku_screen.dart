@@ -35,8 +35,6 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
   bool _isSaving = false;
   bool _showForm = false;
   bool _isTableView = true;
-  bool _stoneExpanded = false;
-  bool _diamondExpanded = false;
 
   // Search & Filter State
   final TextEditingController _searchController = TextEditingController();
@@ -45,6 +43,12 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
   int? _filterDesignerId;
   int? _filterProductId;
   String _filterIsAssorted = 'ALL';
+  String _filterStatus = 'ALL'; // 'ALL', 'ACTIVE', 'DISABLED'
+
+  // Date Filtering (Default: TODAY)
+  DateTime _fromDate = DateTime.now();
+  DateTime _toDate = DateTime.now();
+  String _datePreset = 'TODAY'; // 'TODAY', 'YESTERDAY', 'WEEK', 'MONTH', 'ALL', 'CUSTOM'
 
   // Form State
   final _formKey = GlobalKey<FormState>();
@@ -62,6 +66,13 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
   final TextEditingController _totalGrossWtController = TextEditingController(text: '0.000');
   final TextEditingController _totalNetWtController = TextEditingController(text: '0.000');
   final TextEditingController _remarksController = TextEditingController();
+
+  // FocusNodes for Enter Key Navigation
+  final FocusNode _rateFocusNode = FocusNode();
+  final FocusNode _totalPcsFocusNode = FocusNode();
+  final FocusNode _grossWtFocusNode = FocusNode();
+  final FocusNode _netWtFocusNode = FocusNode();
+  final FocusNode _remarksFocusNode = FocusNode();
 
   // Multi-Item Stones and Diamonds Lists
   List<SkuLotStoneItem> _stoneItems = [];
@@ -87,10 +98,25 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     _totalGrossWtController.dispose();
     _totalNetWtController.dispose();
     _remarksController.dispose();
+
+    _rateFocusNode.dispose();
+    _totalPcsFocusNode.dispose();
+    _grossWtFocusNode.dispose();
+    _netWtFocusNode.dispose();
+    _remarksFocusNode.dispose();
+
     super.dispose();
   }
 
-  Future<void> _loadData() async {
+  String _formatDateForApi(DateTime dt) {
+    return "${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+  }
+
+  String _formatDateForDisplay(DateTime dt) {
+    return "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
+  }
+
+  Future<void> _loadData({bool reloadLotsOnly = false}) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final token = auth.authToken;
     if (token == null) return;
@@ -98,8 +124,36 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final fromStr = (_datePreset == 'ALL') ? null : _formatDateForApi(_fromDate);
+      final toStr = (_datePreset == 'ALL') ? null : _formatDateForApi(_toDate);
+      final activeStr = (_filterStatus == 'ALL') ? null : (_filterStatus == 'ACTIVE' ? '1' : '0');
+
+      if (reloadLotsOnly) {
+        final lotsData = await _api.getPrepareSkuLotsData(
+          token,
+          companyId: auth.activeCompanyId,
+          fromDate: fromStr,
+          toDate: toStr,
+          isActive: activeStr,
+        );
+        if (mounted) {
+          setState(() {
+            _lots = lotsData['lots'] as List<PrepareSkuLotRecord>? ?? [];
+            _applyFilter();
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
       final results = await Future.wait([
-        _api.getPrepareSkuLotsData(token, companyId: auth.activeCompanyId),
+        _api.getPrepareSkuLotsData(
+          token,
+          companyId: auth.activeCompanyId,
+          fromDate: fromStr,
+          toDate: toStr,
+          isActive: activeStr,
+        ),
         _api.getDesigners(token),
         _api.getProducts(token),
         _api.getSubProducts(token),
@@ -165,6 +219,66 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
         setState(() => _isLoading = false);
         _showErrorSnackBar('Error loading Prepare SKU data: $e');
       }
+    }
+  }
+
+  void _setDatePreset(String preset) {
+    final now = DateTime.now();
+    setState(() {
+      _datePreset = preset;
+      if (preset == 'TODAY') {
+        _fromDate = DateTime(now.year, now.month, now.day);
+        _toDate = DateTime(now.year, now.month, now.day);
+      } else if (preset == 'YESTERDAY') {
+        final y = now.subtract(const Duration(days: 1));
+        _fromDate = DateTime(y.year, y.month, y.day);
+        _toDate = DateTime(y.year, y.month, y.day);
+      } else if (preset == 'WEEK') {
+        _fromDate = now.subtract(const Duration(days: 7));
+        _toDate = now;
+      } else if (preset == 'MONTH') {
+        _fromDate = DateTime(now.year, now.month, 1);
+        _toDate = now;
+      } else if (preset == 'ALL') {
+        _fromDate = DateTime(2020, 1, 1);
+        _toDate = now.add(const Duration(days: 365));
+      }
+    });
+    _loadData(reloadLotsOnly: true);
+  }
+
+  Future<void> _pickFromDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fromDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null) {
+      setState(() {
+        _fromDate = picked;
+        _datePreset = 'CUSTOM';
+        if (_toDate.isBefore(_fromDate)) {
+          _toDate = _fromDate;
+        }
+      });
+      _loadData(reloadLotsOnly: true);
+    }
+  }
+
+  Future<void> _pickToDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _toDate,
+      firstDate: _fromDate,
+      lastDate: DateTime(2035),
+    );
+    if (picked != null) {
+      setState(() {
+        _toDate = picked;
+        _datePreset = 'CUSTOM';
+      });
+      _loadData(reloadLotsOnly: true);
     }
   }
 
@@ -275,7 +389,6 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
           } else if (pName.contains('22') || pName.contains('916') || (purityPer >= 91.0 && purityPer <= 92.0)) {
             foundRate = _latestRates.gold22k > 0 ? _latestRates.gold22k : 6850.0;
           } else {
-            // Proportional calculation from 24K or 22K rate
             final base24k = _latestRates.gold24k > 0 ? _latestRates.gold24k : (_latestRates.gold22k > 0 ? (_latestRates.gold22k / 0.916) : 7450.0);
             foundRate = base24k * (purityPer / 100.0);
           }
@@ -310,6 +423,10 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
         final lotComp = lot.companyid.trim().toUpperCase();
         if (lotComp.isNotEmpty && lotComp != activeComp) return false;
       }
+
+      // Status filter
+      if (_filterStatus == 'ACTIVE' && !lot.isActive) return false;
+      if (_filterStatus == 'DISABLED' && lot.isActive) return false;
 
       // Branch filter
       if (_filterBranchId != 'ALL' && lot.branchid.toUpperCase() != _filterBranchId.toUpperCase()) {
@@ -387,8 +504,6 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
       _remarksController.clear();
       _stoneItems = [];
       _diamondItems = [];
-      _stoneExpanded = false;
-      _diamondExpanded = false;
       _showForm = true;
 
       _syncPurityWithSelectedProduct();
@@ -409,7 +524,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
       _totalGrossWtController.text = record.totalGrossWeight.toStringAsFixed(3);
       _totalNetWtController.text = record.totalNetWeight.toStringAsFixed(3);
 
-      // Populate multi-stone items
+      // Populate multi-stone items with rates and purchase costs
       if (record.stoneItems.isNotEmpty) {
         _stoneItems = record.stoneItems
             .map((s) => SkuLotStoneItem(
@@ -420,6 +535,8 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                   stoneUnit: s.stoneUnit,
                   pcs: s.pcs,
                   weight: s.weight,
+                  rate: s.rate,
+                  amount: s.amount,
                 ))
             .toList();
       } else if (record.stoneProductid != null || record.totalStonePcs > 0 || record.totalStoneWeight > 0) {
@@ -432,14 +549,15 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
             stoneUnit: record.stoneUnit,
             pcs: record.totalStonePcs,
             weight: record.totalStoneWeight,
+            rate: 0.0,
+            amount: record.totalStoneAmount,
           ),
         ];
       } else {
         _stoneItems = [];
       }
-      _stoneExpanded = _stoneItems.isNotEmpty;
 
-      // Populate multi-diamond items
+      // Populate multi-diamond items with rates and purchase costs
       if (record.diamondItems.isNotEmpty) {
         _diamondItems = record.diamondItems
             .map((d) => SkuLotDiamondItem(
@@ -450,6 +568,8 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                   diamondUnit: d.diamondUnit,
                   pcs: d.pcs,
                   weight: d.weight,
+                  rate: d.rate,
+                  amount: d.amount,
                 ))
             .toList();
       } else if (record.diamondProductid != null || record.totalDiamondPcs > 0 || record.totalDiamondWeight > 0) {
@@ -462,12 +582,13 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
             diamondUnit: record.diamondUnit,
             pcs: record.totalDiamondPcs,
             weight: record.totalDiamondWeight,
+            rate: 0.0,
+            amount: record.totalDiamondAmount,
           ),
         ];
       } else {
         _diamondItems = [];
       }
-      _diamondExpanded = _diamondItems.isNotEmpty;
 
       _remarksController.text = record.remarks;
       _showForm = true;
@@ -505,8 +626,11 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     // Calculate aggregated stone and diamond sums
     final totalStonePcsSum = _stoneItems.fold<int>(0, (sum, item) => sum + item.pcs);
     final totalStoneWtSum = _stoneItems.fold<double>(0.0, (sum, item) => sum + item.weight);
+    final totalStoneAmountSum = _stoneItems.fold<double>(0.0, (sum, item) => sum + item.calculatedAmount);
+
     final totalDiamondPcsSum = _diamondItems.fold<int>(0, (sum, item) => sum + item.pcs);
     final totalDiamondWtSum = _diamondItems.fold<double>(0.0, (sum, item) => sum + item.weight);
+    final totalDiamondAmountSum = _diamondItems.fold<double>(0.0, (sum, item) => sum + item.calculatedAmount);
 
     final record = PrepareSkuLotRecord(
       lotId: _editingRecord?.lotId,
@@ -527,14 +651,17 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
       stoneUnit: _stoneItems.isNotEmpty ? _stoneItems.first.stoneUnit : 'G',
       totalStonePcs: totalStonePcsSum,
       totalStoneWeight: totalStoneWtSum,
+      totalStoneAmount: totalStoneAmountSum,
       stoneItems: _stoneItems,
       diamondProductid: _diamondItems.isNotEmpty ? _diamondItems.first.diamondProductId : null,
       diamondSubproductid: _diamondItems.isNotEmpty ? _diamondItems.first.diamondSubProductId : null,
       diamondUnit: _diamondItems.isNotEmpty ? _diamondItems.first.diamondUnit : 'C',
       totalDiamondPcs: totalDiamondPcsSum,
       totalDiamondWeight: totalDiamondWtSum,
+      totalDiamondAmount: totalDiamondAmountSum,
       diamondItems: _diamondItems,
-      status: _editingRecord?.status ?? 'PENDING',
+      isActive: _editingRecord?.isActive ?? true,
+      status: _editingRecord?.status ?? 'PENDING_SKU',
       remarks: _remarksController.text.trim(),
     );
 
@@ -551,7 +678,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
           setState(() {
             _showForm = false;
           });
-          await _loadData();
+          await _loadData(reloadLotsOnly: true);
 
           if (mounted) {
             _showLotCreatedPopup(lotNumber, lotData ?? record.copyWith(lotNumber: lotNumber));
@@ -569,7 +696,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
             _showForm = false;
             _editingRecord = null;
           });
-          await _loadData();
+          await _loadData(reloadLotsOnly: true);
           if (mounted) {
             _showSuccessSnackBar('SKU Lot ${_editingRecord?.lotNumber ?? ''} updated successfully');
           }
@@ -583,7 +710,9 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     }
   }
 
-  Future<void> _deleteRecord(PrepareSkuLotRecord record) async {
+  /// Deactivates / Disables or Reactivates a lot (Lot cannot be permanently deleted)
+  Future<void> _toggleLotActive(PrepareSkuLotRecord record) async {
+    final willDeactivate = record.isActive;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -595,17 +724,28 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: GlassTheme.accentRose.withValues(alpha: 0.12),
+                color: willDeactivate
+                    ? const Color(0xFFF59E0B).withValues(alpha: 0.12)
+                    : const Color(0xFF10B981).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.delete_forever_rounded, color: GlassTheme.accentRose, size: 24),
+              child: Icon(
+                willDeactivate ? Icons.block_rounded : Icons.check_circle_rounded,
+                color: willDeactivate ? const Color(0xFFD97706) : const Color(0xFF059669),
+                size: 24,
+              ),
             ),
             const SizedBox(width: 12),
-            const Text("Delete SKU Lot?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A))),
+            Text(
+              willDeactivate ? "Deactivate SKU Lot?" : "Reactivate SKU Lot?",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A)),
+            ),
           ],
         ),
         content: Text(
-          "Are you sure you want to delete SKU Lot '${record.lotNumber}'?\nThis action cannot be undone.",
+          willDeactivate
+              ? "Are you sure you want to deactivate SKU Lot '${record.lotNumber}'?\nThis lot will be marked as Inactive / Disabled, but historical records will be preserved."
+              : "Do you want to reactivate SKU Lot '${record.lotNumber}' for active stock tagging operations?",
           style: const TextStyle(color: Color(0xFF475569), fontSize: 14),
         ),
         actions: [
@@ -615,13 +755,13 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: GlassTheme.accentRose,
+              backgroundColor: willDeactivate ? const Color(0xFFD97706) : const Color(0xFF059669),
               foregroundColor: Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Delete Lot", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: Text(willDeactivate ? "Deactivate Lot" : "Reactivate Lot", style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -635,17 +775,17 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final res = await _api.deletePrepareSkuLot(token, record.lotId!);
+      final res = await _api.togglePrepareSkuLotActive(token, record.lotId!, !willDeactivate);
       if (res['success'] == true) {
-        _showSuccessSnackBar("SKU Lot ${record.lotNumber} deleted successfully");
-        await _loadData();
+        _showSuccessSnackBar("SKU Lot ${record.lotNumber} ${willDeactivate ? 'deactivated' : 'reactivated'} successfully");
+        await _loadData(reloadLotsOnly: true);
       } else {
         setState(() => _isLoading = false);
-        _showErrorSnackBar(res['message'] ?? "Failed to delete lot");
+        _showErrorSnackBar(res['message'] ?? "Failed to update lot status");
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      _showErrorSnackBar("Error deleting lot: $e");
+      _showErrorSnackBar("Error updating lot status: $e");
     }
   }
 
@@ -748,7 +888,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                             foregroundColor: Colors.white,
                             elevation: 0,
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
                         ),
                       ],
@@ -756,68 +896,45 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                   ),
                   const SizedBox(height: 18),
 
-                  // Quick Summary Table
+                  // Summary Details Table
                   Container(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
                       children: [
-                        _buildModalSummaryRow("Designer", lot.designername ?? "ID: ${lot.designerid}"),
-                        const Divider(height: 12, thickness: 0.8, color: Color(0xFFE2E8F0)),
-                        _buildModalSummaryRow("Product", "${lot.productname ?? 'ID: ${lot.productid}'} ${lot.subproductname != null ? '(${lot.subproductname})' : ''}"),
-                        const Divider(height: 12, thickness: 0.8, color: Color(0xFFE2E8F0)),
-                        _buildModalSummaryRow("Purity & Rate", "${lot.purityname ?? 'ID: ${lot.purityid}'} @ ₹${lot.rate.toStringAsFixed(2)}/g"),
-                        const Divider(height: 12, thickness: 0.8, color: Color(0xFFE2E8F0)),
-                        _buildModalSummaryRow("Quantity & Weights", "${lot.totalPcs} pcs | Grs: ${lot.totalGrossWeight.toStringAsFixed(3)}g | Net: ${lot.totalNetWeight.toStringAsFixed(3)}g"),
-                        if (lot.totalStonePcs > 0 || lot.totalDiamondPcs > 0) ...[
-                          const Divider(height: 12, thickness: 0.8, color: Color(0xFFE2E8F0)),
-                          _buildModalSummaryRow("Stones", "${lot.totalStonePcs} pcs (${lot.totalStoneWeight.toStringAsFixed(3)} ${lot.stoneUnit})"),
-                          const Divider(height: 12, thickness: 0.8, color: Color(0xFFE2E8F0)),
-                          _buildModalSummaryRow("Diamonds", "${lot.totalDiamondPcs} pcs (${lot.totalDiamondWeight.toStringAsFixed(3)} ${lot.diamondUnit})"),
+                        _buildPopupSummaryRow("Product", "${lot.productname ?? 'Product'} (${lot.subproductname ?? '-'})"),
+                        const Divider(height: 12, color: Color(0xFFE2E8F0)),
+                        _buildPopupSummaryRow("Purity & Rate", "${lot.purityname ?? 'Purity'} • ₹${lot.rate.toStringAsFixed(2)}/g"),
+                        const Divider(height: 12, color: Color(0xFFE2E8F0)),
+                        _buildPopupSummaryRow("Pieces & Gross Wt", "${lot.totalPcs} pcs • ${lot.totalGrossWeight.toStringAsFixed(3)} g"),
+                        const Divider(height: 12, color: Color(0xFFE2E8F0)),
+                        _buildPopupSummaryRow("Net Weight", "${lot.totalNetWeight.toStringAsFixed(3)} g", highlight: true),
+                        if (lot.totalStoneAmount > 0 || lot.totalDiamondAmount > 0) ...[
+                          const Divider(height: 12, color: Color(0xFFE2E8F0)),
+                          _buildPopupSummaryRow("Stone / Diamond Cost", "₹${(lot.totalStoneAmount + lot.totalDiamondAmount).toStringAsFixed(2)}"),
                         ],
                       ],
                     ),
                   ),
                   const SizedBox(height: 24),
 
-                  // Action buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _openCreateForm();
-                          },
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text("Prepare Another"),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF0F172A),
-                            side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
+                  // Close Action Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: GlassTheme.primaryNeon,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(Icons.done_all_rounded, size: 18),
-                          label: const Text("View Lots List"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: GlassTheme.primaryNeon,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ),
-                    ],
+                      child: const Text("Done & Continue", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
                   ),
                 ],
               ),
@@ -828,37 +945,69 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     );
   }
 
-  Widget _buildModalSummaryRow(String label, String value) {
+  Widget _buildPopupSummaryRow(String label, String value, {bool highlight = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-            overflow: TextOverflow.ellipsis,
+        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
+            color: highlight ? const Color(0xFF0284C7) : const Color(0xFF0F172A),
           ),
         ),
       ],
     );
   }
 
+  /// ================= STONES & DIAMONDS MASTER POPUP WINDOW =================
+  /// Triggered after Gross Weight entry or when clicking the "Stones & Diamonds Grid" button
+  Future<void> _openStonesDiamondsDialog() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _StonesDiamondsDialog(
+        initialStones: _stoneItems,
+        initialDiamonds: _diamondItems,
+        grossWeight: double.tryParse(_totalGrossWtController.text.trim()) ?? 0.0,
+        allProducts: _allProducts,
+        allSubProducts: _allSubProducts,
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _stoneItems = (result['stones'] as List<SkuLotStoneItem>?) ?? [];
+        _diamondItems = (result['diamonds'] as List<SkuLotDiamondItem>?) ?? [];
+        _autoCalculateNetWeight();
+      });
+      FocusScope.of(context).requestFocus(_remarksFocusNode);
+    }
+  }
+
+  InputDecoration _inputDecoration(String label, {String? hint, Widget? prefixIcon, EdgeInsetsGeometry? contentPadding}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: prefixIcon,
+      isDense: true,
+      contentPadding: contentPadding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      filled: true,
+      fillColor: const Color(0xFFF8FAFC),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: GlassTheme.primaryNeon, width: 1.5)),
+    );
+  }
+
   void _showSuccessSnackBar(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-            const SizedBox(width: 10),
-            Expanded(child: Text(msg)),
-          ],
-        ),
-        backgroundColor: GlassTheme.accentEmerald,
+        content: Row(children: [const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20), const SizedBox(width: 8), Expanded(child: Text(msg))]),
+        backgroundColor: const Color(0xFF059669),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -866,106 +1015,74 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
   void _showErrorSnackBar(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline_rounded, color: Colors.white, size: 18),
-            const SizedBox(width: 10),
-            Expanded(child: Text(msg)),
-          ],
-        ),
+        content: Row(children: [const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20), const SizedBox(width: 8), Expanded(child: Text(msg))]),
         backgroundColor: GlassTheme.accentRose,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String label, {String? hint, Widget? prefixIcon, Widget? suffixIcon, Widget? suffix, EdgeInsetsGeometry? contentPadding}) {
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      isDense: true,
-      prefixIcon: prefixIcon,
-      suffixIcon: suffixIcon,
-      suffix: suffix,
-      labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
-      hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-      filled: true,
-      fillColor: const Color(0xFFF8FAFC),
-      contentPadding: contentPadding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-      focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)), borderSide: BorderSide(color: GlassTheme.primaryNeon, width: 1.5)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final totalLotsCount = _lots.length;
-    final totalPcsSum = _lots.fold<int>(0, (sum, item) => sum + item.totalPcs);
-    final totalGrsWtSum = _lots.fold<double>(0.0, (sum, item) => sum + item.totalGrossWeight);
-    final totalNetWtSum = _lots.fold<double>(0.0, (sum, item) => sum + item.totalNetWeight);
+    final totalLots = _filteredLots.length;
+    final totalPcs = _filteredLots.fold<int>(0, (sum, lot) => sum + lot.totalPcs);
+    final totalGrsWt = _filteredLots.fold<double>(0.0, (sum, lot) => sum + lot.totalGrossWeight);
+    final totalNetWt = _filteredLots.fold<double>(0.0, (sum, lot) => sum + lot.totalNetWeight);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header Bar
-          _buildHeaderBar(),
-          const SizedBox(height: 20),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header & Quick Action
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildHeader(),
+                  _buildHeaderActionButtons(),
+                ],
+              ),
+              const SizedBox(height: 20),
 
-          // Statistics Overview Cards
-          _buildStatCards(totalLotsCount, totalPcsSum, totalGrsWtSum, totalNetWtSum),
-          const SizedBox(height: 24),
+              // Summary Stat Cards
+              _buildStatCards(totalLots, totalPcs, totalGrsWt, totalNetWt),
+              const SizedBox(height: 20),
 
-          // Collapsible In-Page Form
-          if (_showForm) ...[
-            _buildFormCard(),
-            const SizedBox(height: 24),
-          ],
+              // Entry Form (Expandable)
+              if (_showForm) ...[
+                _buildFormCard(),
+                const SizedBox(height: 24),
+              ],
 
-          // Search & Filter Toolbar
-          _buildToolbar(),
-          const SizedBox(height: 16),
+              // Filter & Search Toolbar (with Date Range Filters)
+              _buildToolbar(),
+              const SizedBox(height: 16),
 
-          // Main Lots Data View (Table or Cards)
-          if (_isLoading)
-            const Center(child: Padding(padding: EdgeInsets.all(48.0), child: CircularProgressIndicator()))
-          else if (_filteredLots.isEmpty)
-            _buildEmptyState()
-          else if (_isTableView)
-            _buildLotsTableView()
-          else
-            _buildLotsCardView(),
-        ],
+              // Data Table / Cards View
+              if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (_filteredLots.isEmpty)
+                _buildEmptyState()
+              else if (_isTableView)
+                _buildLotsTableView()
+              else
+                _buildLotsCardView(),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildHeaderBar() {
-    return LayoutBuilder(builder: (context, constraints) {
-      final isCompact = constraints.maxWidth < 650;
-      return isCompact
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeaderTitleSection(),
-                const SizedBox(height: 12),
-                _buildHeaderActionButtons(),
-              ],
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(child: _buildHeaderTitleSection()),
-                _buildHeaderActionButtons(),
-              ],
-            );
-    });
-  }
-
-  Widget _buildHeaderTitleSection() {
+  Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1009,7 +1126,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
       children: [
         IconButton(
           icon: const Icon(Icons.refresh_rounded, color: Color(0xFF64748B)),
-          onPressed: _loadData,
+          onPressed: () => _loadData(reloadLotsOnly: true),
           tooltip: "Refresh Data",
         ),
         const SizedBox(width: 8),
@@ -1088,23 +1205,23 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
   }
 
   Widget _buildFormCard() {
-    // Filter subproducts for selected product
     final matchingSubProducts = _allSubProducts.where((sp) {
       if (_selectedProductId == null) return true;
       return sp.productid == _selectedProductId;
     }).toList();
 
-    // Filter purities by selected product's metal
     final matchingOrnamentPurities = _getMatchingPuritiesForSelectedProduct();
     final matchingPurityId = (_selectedPurityId != null && matchingOrnamentPurities.any((p) => p.purityid == _selectedPurityId))
         ? _selectedPurityId
         : (matchingOrnamentPurities.isNotEmpty ? matchingOrnamentPurities.first.purityid : null);
 
-    // Filter stone products where diastone = 'S'
-    final stoneProducts = _allProducts.where((p) => p.diastone.toUpperCase().trim() == 'S').toList();
+    final stonePcsCount = _stoneItems.fold<int>(0, (sum, i) => sum + i.pcs);
+    final stoneWtSum = _stoneItems.fold<double>(0.0, (sum, i) => sum + i.weightInGrams);
+    final stoneAmtSum = _stoneItems.fold<double>(0.0, (sum, i) => sum + i.calculatedAmount);
 
-    // Filter diamond products where diastone = 'D'
-    final diamondProducts = _allProducts.where((p) => p.diastone.toUpperCase().trim() == 'D').toList();
+    final diamondPcsCount = _diamondItems.fold<int>(0, (sum, i) => sum + i.pcs);
+    final diamondWtSum = _diamondItems.fold<double>(0.0, (sum, i) => sum + i.weightInGrams);
+    final diamondAmtSum = _diamondItems.fold<double>(0.0, (sum, i) => sum + i.calculatedAmount);
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -1230,11 +1347,9 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                     onChanged: (val) {
                       setState(() {
                         _selectedProductId = val;
-                        // Reset subproduct if no longer matching
                         if (_selectedSubProductId != null && !_allSubProducts.any((sp) => sp.subproductid == _selectedSubProductId && sp.productid == val)) {
                           _selectedSubProductId = null;
                         }
-                        // Filter and auto-sync purity matching product's metal
                         _syncPurityWithSelectedProduct();
                       });
                     },
@@ -1252,10 +1367,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                     items: [
                       const DropdownMenuItem<int?>(value: null, child: Text("-- All / None --", style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)))),
                       ...matchingSubProducts.map((sp) {
-                        return DropdownMenuItem<int?>(
-                          value: sp.subproductid,
-                          child: Text(sp.subproductname, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
-                        );
+                        return DropdownMenuItem<int?>(value: sp.subproductid, child: Text(sp.subproductname, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis));
                       }),
                     ],
                     onChanged: (val) => setState(() => _selectedSubProductId = val),
@@ -1265,9 +1377,9 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Section 2: Purity & Rate & Assorted (Filtered by Product Metal)
+            // Section 2: Purity & Rates
             const Text(
-              "2. PURITY, RATE & ASSORTED STATUS",
+              "2. PURITY, RATE & CONFIGURATION",
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF94A3B8), letterSpacing: 1.1),
             ),
             const SizedBox(height: 12),
@@ -1276,38 +1388,36 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
               spacing: 16,
               runSpacing: 16,
               children: [
-                // Purity Dropdown (Filtered strictly by selected product's metal)
+                // Ornament Purity Dropdown
                 SizedBox(
                   width: 260,
                   child: DropdownButtonFormField<int>(
                     isExpanded: true,
                     value: matchingPurityId,
-                    decoration: _inputDecoration(
-                      "Ornament Purity *",
-                      prefixIcon: const Icon(Icons.verified_rounded, size: 20),
-                    ),
+                    decoration: _inputDecoration("Ornament Purity *", prefixIcon: const Icon(Icons.workspace_premium_rounded, size: 20)),
                     items: matchingOrnamentPurities.map((p) {
                       return DropdownMenuItem(
                         value: p.purityid,
-                        child: Text("${p.purityname} (${p.purity.toStringAsFixed(1)}%)", style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                        child: Text("${p.purityname} (${p.purityshortname}) - ${p.purity}%", style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                       );
                     }).toList(),
                     onChanged: (val) {
                       setState(() {
                         _selectedPurityId = val;
-                        // Dynamically update rate when purity changes
                         _updatePurityRate(val, force: true);
                       });
+                      FocusScope.of(context).requestFocus(_rateFocusNode);
                     },
                     validator: (v) => v == null ? "Purity is required" : null,
                   ),
                 ),
 
-                // Purity Rate
+                // Purity Rate (₹ / g)
                 SizedBox(
                   width: 260,
                   child: TextFormField(
                     controller: _rateController,
+                    focusNode: _rateFocusNode,
                     decoration: _inputDecoration(
                       "Purity Rate (₹ / g) *",
                       prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 20),
@@ -1315,6 +1425,8 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_totalPcsFocusNode),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return "Rate is required";
                       final d = double.tryParse(v.trim());
@@ -1342,7 +1454,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Section 3: Quantity & Weights
+            // Section 3: Quantity & Weights (With Enter Navigation & Stones Trigger)
             const Text(
               "3. QUANTITY & WEIGHTS",
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF94A3B8), letterSpacing: 1.1),
@@ -1355,12 +1467,15 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
               children: [
                 // Total Pcs
                 SizedBox(
-                  width: 180,
+                  width: 160,
                   child: TextFormField(
                     controller: _totalPcsController,
+                    focusNode: _totalPcsFocusNode,
                     decoration: _inputDecoration("Total Pcs *", prefixIcon: const Icon(Icons.tag_rounded, size: 20)),
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_grossWtFocusNode),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return "Pcs required";
                       final n = int.tryParse(v.trim());
@@ -1370,11 +1485,12 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                   ),
                 ),
 
-                // Total Gross Weight
+                // Total Gross Weight (Pressing Enter or completing entry triggers Stones & Diamonds modal)
                 SizedBox(
                   width: 220,
                   child: TextFormField(
                     controller: _totalGrossWtController,
+                    focusNode: _grossWtFocusNode,
                     decoration: _inputDecoration(
                       "Total Gross Wt (g) *",
                       prefixIcon: const Icon(Icons.scale_rounded, size: 20),
@@ -1382,7 +1498,17 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
+                    textInputAction: TextInputAction.next,
                     onChanged: (_) => _autoCalculateNetWeight(),
+                    onFieldSubmitted: (val) {
+                      _autoCalculateNetWeight();
+                      final grs = double.tryParse(val.trim()) ?? 0.0;
+                      if (grs > 0) {
+                        _openStonesDiamondsDialog();
+                      } else {
+                        FocusScope.of(context).requestFocus(_netWtFocusNode);
+                      }
+                    },
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return "Gross weight required";
                       final d = double.tryParse(v.trim());
@@ -1397,6 +1523,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                   width: 220,
                   child: TextFormField(
                     controller: _totalNetWtController,
+                    focusNode: _netWtFocusNode,
                     decoration: _inputDecoration(
                       "Total Net Wt (g) *",
                       prefixIcon: const Icon(Icons.fitness_center_rounded, size: 20),
@@ -1404,6 +1531,8 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_remarksFocusNode),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return "Net weight required";
                       final d = double.tryParse(v.trim());
@@ -1416,25 +1545,110 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
-            // Section 4: Dynamic Multi-Item Stone Details
-            _buildMultiStoneSection(stoneProducts),
-            const SizedBox(height: 16),
-
-            // Section 5: Dynamic Multi-Item Diamond Details
-            _buildMultiDiamondSection(diamondProducts),
+            // Section 4: Stones & Diamonds Interactive Summary & Modal Trigger Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF059669).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.diamond_rounded, color: Color(0xFF059669), size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                "STONES & DIAMONDS ATTACHMENT",
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: 0.8),
+                              ),
+                              Text(
+                                "Stones: ${stonePcsCount}p (${stoneWtSum.toStringAsFixed(3)}g - ₹${stoneAmtSum.toStringAsFixed(2)}) | Diamonds: ${diamondPcsCount}p (${diamondWtSum.toStringAsFixed(3)}g - ₹${diamondAmtSum.toStringAsFixed(2)})",
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: _openStonesDiamondsDialog,
+                        icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                        label: Text(
+                          (_stoneItems.isNotEmpty || _diamondItems.isNotEmpty)
+                              ? "Edit Stones & Diamonds Grid (${_stoneItems.length + _diamondItems.length})"
+                              : "💎 Add Stones & Diamonds (Grid)",
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: (_stoneItems.isNotEmpty || _diamondItems.isNotEmpty) ? const Color(0xFF059669) : const Color(0xFF0284C7),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_stoneItems.isNotEmpty || _diamondItems.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        ..._stoneItems.map((s) => Chip(
+                              backgroundColor: const Color(0xFFECFDF5),
+                              avatar: const Icon(Icons.grain_rounded, size: 16, color: Color(0xFF059669)),
+                              label: Text(
+                                "Stn: ${s.pcs}p • ${s.weight.toStringAsFixed(3)}${s.stoneUnit} • ₹${s.calculatedAmount.toStringAsFixed(2)}",
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF059669)),
+                              ),
+                            )),
+                        ..._diamondItems.map((d) => Chip(
+                              backgroundColor: const Color(0xFFF0F9FF),
+                              avatar: const Icon(Icons.diamond_rounded, size: 16, color: Color(0xFF0284C7)),
+                              label: Text(
+                                "Dia: ${d.pcs}p • ${d.weight.toStringAsFixed(3)}${d.diamondUnit} • ₹${d.calculatedAmount.toStringAsFixed(2)}",
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)),
+                              ),
+                            )),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
             const SizedBox(height: 20),
 
             // Remarks
             TextFormField(
               controller: _remarksController,
+              focusNode: _remarksFocusNode,
               decoration: _inputDecoration(
                 "Remarks / Lot Notes (Optional)",
                 prefixIcon: const Icon(Icons.notes_rounded, size: 20),
                 hint: "Add specific instructions, packet details, or supplier info...",
               ),
               maxLines: 2,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _saveRecord(),
             ),
             const SizedBox(height: 24),
 
@@ -1475,468 +1689,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     );
   }
 
-  // ================= MULTI-STONE ITEMS SECTION =================
-  Widget _buildMultiStoneSection(List<ProductRecord> stoneProducts) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => _stoneExpanded = !_stoneExpanded),
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF059669).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.grain_rounded, color: Color(0xFF059669), size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text("STONE DETAILS (DIASTONE = 'S')", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF059669), letterSpacing: 0.8)),
-                            if (_stoneItems.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(color: const Color(0xFF059669), borderRadius: BorderRadius.circular(10)),
-                                child: Text("${_stoneItems.length} items", style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const Text("Add multiple stone line items with Unit (Gram 'G' / Carat 'C') and weight deductions", style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    _stoneExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                    color: const Color(0xFF64748B),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_stoneExpanded) ...[
-            const Divider(height: 1, color: Color(0xFFE2E8F0)),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_stoneItems.isEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      alignment: Alignment.center,
-                      child: const Text("No stone items added yet. Click '+ Add Stone Item' below if this ornament contains stones.", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
-                    ),
-                  ..._stoneItems.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final item = entry.value;
-                    final matchingStoneSubProducts = _allSubProducts.where((sp) {
-                      if (item.stoneProductId == null) return true;
-                      return sp.productid == item.stoneProductId;
-                    }).toList();
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          // Item index label
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(6)),
-                            child: Text("Stone #${index + 1}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
-                          ),
-
-                          // Stone Product
-                          SizedBox(
-                            width: 200,
-                            child: DropdownButtonFormField<int?>(
-                              isExpanded: true,
-                              value: item.stoneProductId,
-                              decoration: _inputDecoration("Stone Product *"),
-                              items: stoneProducts.map((p) {
-                                return DropdownMenuItem<int?>(value: p.productid, child: Text(p.productname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
-                              }).toList(),
-                              onChanged: (val) {
-                                setState(() {
-                                  item.stoneProductId = val;
-                                  if (item.stoneSubProductId != null && !matchingStoneSubProducts.any((sp) => sp.subproductid == item.stoneSubProductId && sp.productid == val)) {
-                                    item.stoneSubProductId = null;
-                                  }
-                                });
-                              },
-                              validator: (v) => v == null ? "Required" : null,
-                            ),
-                          ),
-
-                          // Stone Sub-Product
-                          SizedBox(
-                            width: 180,
-                            child: DropdownButtonFormField<int?>(
-                              isExpanded: true,
-                              value: item.stoneSubProductId,
-                              decoration: _inputDecoration("Sub-Product"),
-                              items: [
-                                const DropdownMenuItem<int?>(value: null, child: Text("-- All / None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis)),
-                                ...matchingStoneSubProducts.map((sp) {
-                                  return DropdownMenuItem<int?>(value: sp.subproductid, child: Text(sp.subproductname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
-                                }),
-                              ],
-                              onChanged: (val) => setState(() => item.stoneSubProductId = val),
-                            ),
-                          ),
-
-                          // Stone Unit (G / C)
-                          SizedBox(
-                            width: 120,
-                            child: DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              value: item.stoneUnit.toUpperCase() == 'C' ? 'C' : 'G',
-                              decoration: _inputDecoration("Unit *"),
-                              items: const [
-                                DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                                DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669)), overflow: TextOverflow.ellipsis)),
-                              ],
-                              onChanged: (val) {
-                                setState(() {
-                                  item.stoneUnit = val ?? 'G';
-                                  _autoCalculateNetWeight();
-                                });
-                              },
-                            ),
-                          ),
-
-                          // Pcs
-                          SizedBox(
-                            width: 100,
-                            child: TextFormField(
-                              initialValue: item.pcs.toString(),
-                              decoration: _inputDecoration("Pcs"),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              onChanged: (v) {
-                                item.pcs = int.tryParse(v.trim()) ?? 0;
-                              },
-                            ),
-                          ),
-
-                          // Weight
-                          SizedBox(
-                            width: 130,
-                            child: TextFormField(
-                              initialValue: item.weight.toStringAsFixed(3),
-                              decoration: _inputDecoration("Weight"),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
-                              onChanged: (v) {
-                                item.weight = double.tryParse(v.trim()) ?? 0.0;
-                                _autoCalculateNetWeight();
-                              },
-                            ),
-                          ),
-
-                          // Remove Row
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 20),
-                            tooltip: "Remove Stone Item",
-                            onPressed: () {
-                              setState(() {
-                                _stoneItems.removeAt(index);
-                                _autoCalculateNetWeight();
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-
-                  // Add Stone Button
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        final defaultProd = stoneProducts.isNotEmpty ? stoneProducts.first.productid : null;
-                        _stoneItems.add(SkuLotStoneItem(
-                          stoneProductId: defaultProd,
-                          stoneUnit: 'G',
-                          pcs: 1,
-                          weight: 0.0,
-                        ));
-                      });
-                    },
-                    icon: const Icon(Icons.add_rounded, size: 16),
-                    label: const Text("+ Add Stone Item"),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF059669),
-                      side: const BorderSide(color: Color(0xFF059669)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // ================= MULTI-DIAMOND ITEMS SECTION =================
-  Widget _buildMultiDiamondSection(List<ProductRecord> diamondProducts) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => _diamondExpanded = !_diamondExpanded),
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.diamond_rounded, color: Color(0xFF0284C7), size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text("DIAMOND DETAILS (DIASTONE = 'D')", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0284C7), letterSpacing: 0.8)),
-                            if (_diamondItems.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(color: const Color(0xFF0284C7), borderRadius: BorderRadius.circular(10)),
-                                child: Text("${_diamondItems.length} items", style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const Text("Add multiple diamond line items with Unit (Carat 'C' / Gram 'G') and weight deductions", style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    _diamondExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                    color: const Color(0xFF64748B),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_diamondExpanded) ...[
-            const Divider(height: 1, color: Color(0xFFE2E8F0)),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_diamondItems.isEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      alignment: Alignment.center,
-                      child: const Text("No diamond items added yet. Click '+ Add Diamond Item' below if this ornament contains diamonds.", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
-                    ),
-                  ..._diamondItems.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final item = entry.value;
-                    final matchingDiamondSubProducts = _allSubProducts.where((sp) {
-                      if (item.diamondProductId == null) return true;
-                      return sp.productid == item.diamondProductId;
-                    }).toList();
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          // Item index label
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(color: const Color(0xFFF0F9FF), borderRadius: BorderRadius.circular(6)),
-                            child: Text("Diamond #${index + 1}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
-                          ),
-
-                          // Diamond Product
-                          SizedBox(
-                            width: 200,
-                            child: DropdownButtonFormField<int?>(
-                              isExpanded: true,
-                              value: item.diamondProductId,
-                              decoration: _inputDecoration("Diamond Product *"),
-                              items: diamondProducts.map((p) {
-                                return DropdownMenuItem<int?>(value: p.productid, child: Text(p.productname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
-                              }).toList(),
-                              onChanged: (val) {
-                                setState(() {
-                                  item.diamondProductId = val;
-                                  if (item.diamondSubProductId != null && !matchingDiamondSubProducts.any((sp) => sp.subproductid == item.diamondSubProductId && sp.productid == val)) {
-                                    item.diamondSubProductId = null;
-                                  }
-                                });
-                              },
-                              validator: (v) => v == null ? "Required" : null,
-                            ),
-                          ),
-
-                          // Diamond Sub-Product
-                          SizedBox(
-                            width: 180,
-                            child: DropdownButtonFormField<int?>(
-                              isExpanded: true,
-                              value: item.diamondSubProductId,
-                              decoration: _inputDecoration("Sub-Product"),
-                              items: [
-                                const DropdownMenuItem<int?>(value: null, child: Text("-- All / None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis)),
-                                ...matchingDiamondSubProducts.map((sp) {
-                                  return DropdownMenuItem<int?>(value: sp.subproductid, child: Text(sp.subproductname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis));
-                                }),
-                              ],
-                              onChanged: (val) => setState(() => item.diamondSubProductId = val),
-                            ),
-                          ),
-
-                          // Diamond Unit (C / G)
-                          SizedBox(
-                            width: 120,
-                            child: DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              value: item.diamondUnit.toUpperCase() == 'G' ? 'G' : 'C',
-                              decoration: _inputDecoration("Unit *"),
-                              items: const [
-                                DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)), overflow: TextOverflow.ellipsis)),
-                                DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                              ],
-                              onChanged: (val) {
-                                setState(() {
-                                  item.diamondUnit = val ?? 'C';
-                                  _autoCalculateNetWeight();
-                                });
-                              },
-                            ),
-                          ),
-
-                          // Pcs
-                          SizedBox(
-                            width: 100,
-                            child: TextFormField(
-                              initialValue: item.pcs.toString(),
-                              decoration: _inputDecoration("Pcs"),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              onChanged: (v) {
-                                item.pcs = int.tryParse(v.trim()) ?? 0;
-                              },
-                            ),
-                          ),
-
-                          // Weight
-                          SizedBox(
-                            width: 130,
-                            child: TextFormField(
-                              initialValue: item.weight.toStringAsFixed(3),
-                              decoration: _inputDecoration("Weight"),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
-                              onChanged: (v) {
-                                item.weight = double.tryParse(v.trim()) ?? 0.0;
-                                _autoCalculateNetWeight();
-                              },
-                            ),
-                          ),
-
-                          // Remove Row
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded, color: GlassTheme.accentRose, size: 20),
-                            tooltip: "Remove Diamond Item",
-                            onPressed: () {
-                              setState(() {
-                                _diamondItems.removeAt(index);
-                                _autoCalculateNetWeight();
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-
-                  // Add Diamond Button
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        final defaultProd = diamondProducts.isNotEmpty ? diamondProducts.first.productid : null;
-                        _diamondItems.add(SkuLotDiamondItem(
-                          diamondProductId: defaultProd,
-                          diamondUnit: 'C',
-                          pcs: 1,
-                          weight: 0.0,
-                        ));
-                      });
-                    },
-                    icon: const Icon(Icons.add_rounded, size: 16),
-                    label: const Text("+ Add Diamond Item"),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF0284C7),
-                      side: const BorderSide(color: Color(0xFF0284C7)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
+  // ================= TOOLBAR WITH COMPREHENSIVE DATE & STATUS FILTERS =================
   Widget _buildToolbar() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1945,109 +1698,221 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Search Input
-          SizedBox(
-            width: 240,
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: "Search Lot #, Designer, Product...",
-                isDense: true,
-                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF94A3B8)),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 18),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-              ),
-            ),
-          ),
-
-          // Branch Filter
-          SizedBox(
-            width: 200,
-            child: DropdownButtonFormField<String>(
-              isExpanded: true,
-              value: _filterBranchId,
-              decoration: _inputDecoration("Branch Filter", contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-              items: [
-                const DropdownMenuItem(value: 'ALL', child: Text("All Branches", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                ..._allBranches.map((b) => DropdownMenuItem(value: b.branchId, child: Text(b.branchName, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis))),
-              ],
-              onChanged: (val) {
-                setState(() {
-                  _filterBranchId = val ?? 'ALL';
-                  _applyFilter();
-                });
-              },
-            ),
-          ),
-
-          // Designer Filter
-          SizedBox(
-            width: 200,
-            child: DropdownButtonFormField<int?>(
-              isExpanded: true,
-              value: _filterDesignerId,
-              decoration: _inputDecoration("Designer Filter", contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-              items: [
-                const DropdownMenuItem<int?>(value: null, child: Text("All Designers", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                ..._allDesigners.map((d) => DropdownMenuItem<int?>(value: d.designerid, child: Text(d.designername, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis))),
-              ],
-              onChanged: (val) {
-                setState(() {
-                  _filterDesignerId = val;
-                  _applyFilter();
-                });
-              },
-            ),
-          ),
-
-          // Is Assorted Filter
-          SizedBox(
-            width: 190,
-            child: DropdownButtonFormField<String>(
-              isExpanded: true,
-              value: _filterIsAssorted,
-              decoration: _inputDecoration("Assorted Filter", contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-              items: const [
-                DropdownMenuItem(value: 'ALL', child: Text("All Lots", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                DropdownMenuItem(value: 'NO', child: Text("Single SKU (NO)", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                DropdownMenuItem(value: 'YES', child: Text("Assorted (YES)", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-              ],
-              onChanged: (val) {
-                setState(() {
-                  _filterIsAssorted = val ?? 'ALL';
-                  _applyFilter();
-                });
-              },
-            ),
-          ),
-
-          // View Switcher (Table vs Card)
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          // Row 1: Date Range Filters & Presets
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              IconButton(
-                icon: Icon(Icons.table_rows_rounded, color: _isTableView ? GlassTheme.primaryNeon : const Color(0xFF94A3B8)),
-                tooltip: "Table View",
-                onPressed: () => setState(() => _isTableView = true),
+              // Date Presets
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF64748B)),
+                    const SizedBox(width: 6),
+                    DropdownButton<String>(
+                      value: _datePreset,
+                      underline: const SizedBox(),
+                      isDense: true,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      items: const [
+                        DropdownMenuItem(value: 'TODAY', child: Text("Today (Default)")),
+                        DropdownMenuItem(value: 'YESTERDAY', child: Text("Yesterday")),
+                        DropdownMenuItem(value: 'WEEK', child: Text("Last 7 Days")),
+                        DropdownMenuItem(value: 'MONTH', child: Text("This Month")),
+                        DropdownMenuItem(value: 'ALL', child: Text("All Historical Lots")),
+                        DropdownMenuItem(value: 'CUSTOM', child: Text("Custom Range")),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) _setDatePreset(val);
+                      },
+                    ),
+                  ],
+                ),
               ),
-              IconButton(
-                icon: Icon(Icons.grid_view_rounded, color: !_isTableView ? GlassTheme.primaryNeon : const Color(0xFF94A3B8)),
-                tooltip: "Card Grid View",
-                onPressed: () => setState(() => _isTableView = false),
+
+              // From Date Picker Button
+              OutlinedButton.icon(
+                onPressed: _pickFromDate,
+                icon: const Icon(Icons.calendar_today_rounded, size: 14),
+                label: Text("From: ${_formatDateForDisplay(_fromDate)}", style: const TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0F172A),
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+
+              // To Date Picker Button
+              OutlinedButton.icon(
+                onPressed: _pickToDate,
+                icon: const Icon(Icons.event_rounded, size: 14),
+                label: Text("To: ${_formatDateForDisplay(_toDate)}", style: const TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0F172A),
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+
+              // Status Filter (Active / Disabled / All)
+              SizedBox(
+                width: 170,
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: _filterStatus,
+                  decoration: _inputDecoration("Status Filter", contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: Text("All Statuses", style: TextStyle(fontSize: 12))),
+                    DropdownMenuItem(value: 'ACTIVE', child: Text("Active Lots Only", style: TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.bold))),
+                    DropdownMenuItem(value: 'DISABLED', child: Text("Disabled / Inactive", style: TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.bold))),
+                  ],
+                  onChanged: (val) {
+                    setState(() {
+                      _filterStatus = val ?? 'ALL';
+                    });
+                    _loadData(reloadLotsOnly: true);
+                  },
+                ),
+              ),
+
+              // Search Button
+              ElevatedButton.icon(
+                onPressed: () => _loadData(reloadLotsOnly: true),
+                icon: const Icon(Icons.filter_alt_rounded, size: 15),
+                label: const Text("Apply Filter", style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          const SizedBox(height: 12),
+
+          // Row 2: Search Input & Master Filter Dropdowns
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // Search Input
+              SizedBox(
+                width: 240,
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: "Search Lot #, Designer, Product...",
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF94A3B8)),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded, size: 18),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                ),
+              ),
+
+              // Branch Filter
+              SizedBox(
+                width: 180,
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: _filterBranchId,
+                  decoration: _inputDecoration("Branch", contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                  items: [
+                    const DropdownMenuItem(value: 'ALL', child: Text("All Branches", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    ..._allBranches.map((b) => DropdownMenuItem(value: b.branchId, child: Text(b.branchName, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis))),
+                  ],
+                  onChanged: (val) {
+                    setState(() {
+                      _filterBranchId = val ?? 'ALL';
+                      _applyFilter();
+                    });
+                  },
+                ),
+              ),
+
+              // Designer Filter
+              SizedBox(
+                width: 180,
+                child: DropdownButtonFormField<int?>(
+                  isExpanded: true,
+                  value: _filterDesignerId,
+                  decoration: _inputDecoration("Designer", contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                  items: [
+                    const DropdownMenuItem<int?>(value: null, child: Text("All Designers", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    ..._allDesigners.map((d) => DropdownMenuItem<int?>(value: d.designerid, child: Text(d.designername, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis))),
+                  ],
+                  onChanged: (val) {
+                    setState(() {
+                      _filterDesignerId = val;
+                      _applyFilter();
+                    });
+                  },
+                ),
+              ),
+
+              // Is Assorted Filter
+              SizedBox(
+                width: 170,
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: _filterIsAssorted,
+                  decoration: _inputDecoration("Assorted", contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: Text("All Lots", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'NO', child: Text("Single SKU (NO)", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'YES', child: Text("Assorted (YES)", style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                  ],
+                  onChanged: (val) {
+                    setState(() {
+                      _filterIsAssorted = val ?? 'ALL';
+                      _applyFilter();
+                    });
+                  },
+                ),
+              ),
+
+              // View Switcher (Table vs Card)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.table_rows_rounded, color: _isTableView ? GlassTheme.primaryNeon : const Color(0xFF94A3B8)),
+                    tooltip: "Table View",
+                    onPressed: () => setState(() => _isTableView = true),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.grid_view_rounded, color: !_isTableView ? GlassTheme.primaryNeon : const Color(0xFF94A3B8)),
+                    tooltip: "Card Grid View",
+                    onPressed: () => setState(() => _isTableView = false),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2077,21 +1942,44 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
             child: const Icon(Icons.inventory_2_outlined, color: Color(0xFF94A3B8), size: 40),
           ),
           const SizedBox(height: 16),
-          const Text("No Prepare SKU Lots Found", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          Text(
+            _datePreset == 'TODAY'
+                ? "No SKU Lots Created Today (${_formatDateForDisplay(_fromDate)})"
+                : "No Prepare SKU Lots Found in Selected Date Range",
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 6),
-          const Text("Create your first SKU preparation lot or adjust your search filters.", style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+          const Text("Create your first SKU preparation lot or select 'All Historical Lots' in the date filter above.", style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
           const SizedBox(height: 18),
-          ElevatedButton.icon(
-            onPressed: _openCreateForm,
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text("+ New SKU Lot"),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: GlassTheme.primaryNeon,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _setDatePreset('ALL'),
+                icon: const Icon(Icons.history_rounded, size: 16),
+                label: const Text("View All Historical Lots"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0F172A),
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _openCreateForm,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text("+ New SKU Lot"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: GlassTheme.primaryNeon,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -2112,15 +2000,16 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
           headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
           headingTextStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
           dataTextStyle: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-          columnSpacing: 24,
+          columnSpacing: 20,
           horizontalMargin: 20,
           columns: const [
+            DataColumn(label: Text("STATUS")),
             DataColumn(label: Text("LOT NUMBER")),
+            DataColumn(label: Text("DATE")),
             DataColumn(label: Text("BRANCH")),
             DataColumn(label: Text("DESIGNER")),
             DataColumn(label: Text("PRODUCT & SUBPRODUCT")),
             DataColumn(label: Text("PURITY & RATE")),
-            DataColumn(label: Text("ASSORTED")),
             DataColumn(label: Text("PCS")),
             DataColumn(label: Text("GROSS WT")),
             DataColumn(label: Text("NET WT")),
@@ -2129,15 +2018,39 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
           ],
           rows: _filteredLots.map((lot) {
             final stoneSummary = lot.stoneItems.isNotEmpty
-                ? "${lot.stoneItems.length} items (${lot.totalStoneWeight.toStringAsFixed(2)}g)"
+                ? "${lot.stoneItems.length} items (${lot.totalStoneWeight.toStringAsFixed(2)}g • ₹${lot.totalStoneAmount.toStringAsFixed(0)})"
                 : (lot.totalStonePcs > 0 ? "${lot.totalStonePcs}p (${lot.totalStoneWeight.toStringAsFixed(2)}${lot.stoneUnit})" : "-");
 
             final diamondSummary = lot.diamondItems.isNotEmpty
-                ? "${lot.diamondItems.length} items (${lot.totalDiamondWeight.toStringAsFixed(2)}ct)"
+                ? "${lot.diamondItems.length} items (${lot.totalDiamondWeight.toStringAsFixed(2)}ct • ₹${lot.totalDiamondAmount.toStringAsFixed(0)})"
                 : (lot.totalDiamondPcs > 0 ? "${lot.totalDiamondPcs}p (${lot.totalDiamondWeight.toStringAsFixed(2)}${lot.diamondUnit})" : "-");
+
+            final dateFormatted = (lot.createdAt != null && lot.createdAt!.length >= 10)
+                ? lot.createdAt!.substring(0, 10)
+                : '-';
 
             return DataRow(
               cells: [
+                // Status Badge (Active / Disabled)
+                DataCell(
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: lot.isActive ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: lot.isActive ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
+                    ),
+                    child: Text(
+                      lot.isActive ? "ACTIVE" : "DISABLED",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: lot.isActive ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                      ),
+                    ),
+                  ),
+                ),
+
                 // Lot Number with copy
                 DataCell(
                   Row(
@@ -2155,7 +2068,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 4),
                       IconButton(
                         icon: const Icon(Icons.copy_rounded, size: 14, color: Color(0xFF94A3B8)),
                         tooltip: "Copy Lot Number",
@@ -2171,6 +2084,9 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                     ],
                   ),
                 ),
+
+                // Date
+                DataCell(Text(dateFormatted, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)))),
 
                 // Branch
                 DataCell(Text(lot.branchname ?? lot.branchid, style: const TextStyle(fontSize: 12))),
@@ -2213,25 +2129,6 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                   ),
                 ),
 
-                // Is Assorted
-                DataCell(
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: (lot.isAssorted == 'YES') ? const Color(0xFFFEF2F2) : const Color(0xFFF0FDF4),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      lot.isAssorted,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: (lot.isAssorted == 'YES') ? const Color(0xFFDC2626) : const Color(0xFF16A34A),
-                      ),
-                    ),
-                  ),
-                ),
-
                 // Pcs
                 DataCell(Text("${lot.totalPcs} pcs", style: const TextStyle(fontWeight: FontWeight.bold))),
 
@@ -2249,7 +2146,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                   ),
                 ),
 
-                // Actions
+                // Actions (Edit & Deactivate/Reactivate)
                 DataCell(
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -2260,9 +2157,13 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                         onPressed: () => _openEditForm(lot),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
-                        tooltip: "Delete Lot",
-                        onPressed: () => _deleteRecord(lot),
+                        icon: Icon(
+                          lot.isActive ? Icons.block_rounded : Icons.check_circle_outline_rounded,
+                          size: 18,
+                          color: lot.isActive ? const Color(0xFFD97706) : const Color(0xFF059669),
+                        ),
+                        tooltip: lot.isActive ? "Deactivate / Disable Lot" : "Reactivate Lot",
+                        onPressed: () => _toggleLotActive(lot),
                       ),
                     ],
                   ),
@@ -2285,7 +2186,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
           crossAxisCount: crossAxisCount,
           crossAxisSpacing: 16,
           mainAxisSpacing: 16,
-          mainAxisExtent: 340,
+          mainAxisExtent: 360,
         ),
         itemCount: _filteredLots.length,
         itemBuilder: (context, index) {
@@ -2295,7 +2196,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: lot.isActive ? const Color(0xFFE2E8F0) : const Color(0xFFFCA5A5)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.02),
@@ -2329,15 +2230,15 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: (lot.isAssorted == 'YES') ? const Color(0xFFFEF2F2) : const Color(0xFFF0FDF4),
+                            color: lot.isActive ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            lot.isAssorted == 'YES' ? 'ASSORTED' : 'SINGLE',
+                            lot.isActive ? 'ACTIVE' : 'DISABLED',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: (lot.isAssorted == 'YES') ? const Color(0xFFDC2626) : const Color(0xFF16A34A),
+                              color: lot.isActive ? const Color(0xFF059669) : const Color(0xFFDC2626),
                             ),
                           ),
                         ),
@@ -2407,7 +2308,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      "Stn: ${lot.stoneItems.isNotEmpty ? '${lot.stoneItems.length} items' : '${lot.totalStonePcs}p'}${lot.diamondItems.isNotEmpty ? ' | Dia: ${lot.diamondItems.length} items' : (lot.totalDiamondPcs > 0 ? ' | Dia: ${lot.totalDiamondPcs}p' : '')}",
+                      "Stn: ${lot.stoneItems.isNotEmpty ? '${lot.stoneItems.length} items (₹${lot.totalStoneAmount.toStringAsFixed(0)})' : '${lot.totalStonePcs}p'}${lot.diamondItems.isNotEmpty ? ' | Dia: ${lot.diamondItems.length} items (₹${lot.totalDiamondAmount.toStringAsFixed(0)})' : (lot.totalDiamondPcs > 0 ? ' | Dia: ${lot.totalDiamondPcs}p' : '')}",
                       style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2419,9 +2320,13 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
                           onPressed: () => _openEditForm(lot),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
-                          tooltip: "Delete Lot",
-                          onPressed: () => _deleteRecord(lot),
+                          icon: Icon(
+                            lot.isActive ? Icons.block_rounded : Icons.check_circle_outline_rounded,
+                            size: 18,
+                            color: lot.isActive ? const Color(0xFFD97706) : const Color(0xFF059669),
+                          ),
+                          tooltip: lot.isActive ? "Deactivate / Disable Lot" : "Reactivate Lot",
+                          onPressed: () => _toggleLotActive(lot),
                         ),
                       ],
                     ),
@@ -2435,3 +2340,1210 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
     });
   }
 }
+
+/// =========================================================================
+/// STONES & DIAMONDS MASTER POPUP DIALOG WIDGET
+/// =========================================================================
+class _StonesDiamondsDialog extends StatefulWidget {
+  final List<SkuLotStoneItem> initialStones;
+  final List<SkuLotDiamondItem> initialDiamonds;
+  final double grossWeight;
+  final List<ProductRecord> allProducts;
+  final List<SubProductRecord> allSubProducts;
+
+  const _StonesDiamondsDialog({
+    super.key,
+    required this.initialStones,
+    required this.initialDiamonds,
+    required this.grossWeight,
+    required this.allProducts,
+    required this.allSubProducts,
+  });
+
+  @override
+  State<_StonesDiamondsDialog> createState() => _StonesDiamondsDialogState();
+}
+
+class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  late List<SkuLotStoneItem> _stones;
+  late List<SkuLotDiamondItem> _diamonds;
+
+  List<ProductRecord> _stoneProducts = [];
+  List<ProductRecord> _diamondProducts = [];
+
+  // Stone Entry Form State
+  int? _selectedStoneProductId;
+  int? _selectedStoneSubProductId;
+  String _selectedStoneUnit = 'G';
+  final _stonePcsController = TextEditingController(text: '1');
+  final _stoneWeightController = TextEditingController();
+  final _stoneRateController = TextEditingController();
+  final _stoneAmountController = TextEditingController();
+
+  final _stonePcsFocus = FocusNode();
+  final _stoneWeightFocus = FocusNode();
+  final _stoneRateFocus = FocusNode();
+  final _stoneAmountFocus = FocusNode();
+  int? _editingStoneIndex;
+
+  // Diamond Entry Form State
+  int? _selectedDiaProductId;
+  int? _selectedDiaSubProductId;
+  String _selectedDiaUnit = 'C';
+  final _diaPcsController = TextEditingController(text: '1');
+  final _diaWeightController = TextEditingController();
+  final _diaRateController = TextEditingController();
+  final _diaAmountController = TextEditingController();
+
+  final _diaPcsFocus = FocusNode();
+  final _diaWeightFocus = FocusNode();
+  final _diaRateFocus = FocusNode();
+  final _diaAmountFocus = FocusNode();
+  int? _editingDiaIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+
+    // Deep copy initial lists
+    _stones = widget.initialStones
+        .map((s) => SkuLotStoneItem(
+              stoneProductId: s.stoneProductId,
+              stoneProductName: s.stoneProductName,
+              stoneSubProductId: s.stoneSubProductId,
+              stoneSubProductName: s.stoneSubProductName,
+              stoneUnit: s.stoneUnit,
+              pcs: s.pcs,
+              weight: s.weight,
+              rate: s.rate,
+              amount: s.amount,
+            ))
+        .toList();
+
+    _diamonds = widget.initialDiamonds
+        .map((d) => SkuLotDiamondItem(
+              diamondProductId: d.diamondProductId,
+              diamondProductName: d.diamondProductName,
+              diamondSubProductId: d.diamondSubProductId,
+              diamondSubProductName: d.diamondSubProductName,
+              diamondUnit: d.diamondUnit,
+              pcs: d.pcs,
+              weight: d.weight,
+              rate: d.rate,
+              amount: d.amount,
+            ))
+        .toList();
+
+    _stoneProducts = widget.allProducts.where((p) => p.diastone.toUpperCase().trim() == 'S').toList();
+    _diamondProducts = widget.allProducts.where((p) => p.diastone.toUpperCase().trim() == 'D').toList();
+
+    if (_stoneProducts.isNotEmpty) {
+      _selectedStoneProductId = _stoneProducts.first.productid;
+    }
+    if (_diamondProducts.isNotEmpty) {
+      _selectedDiaProductId = _diamondProducts.first.productid;
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+
+    _stonePcsController.dispose();
+    _stoneWeightController.dispose();
+    _stoneRateController.dispose();
+    _stoneAmountController.dispose();
+    _stonePcsFocus.dispose();
+    _stoneWeightFocus.dispose();
+    _stoneRateFocus.dispose();
+    _stoneAmountFocus.dispose();
+
+    _diaPcsController.dispose();
+    _diaWeightController.dispose();
+    _diaRateController.dispose();
+    _diaAmountController.dispose();
+    _diaPcsFocus.dispose();
+    _diaWeightFocus.dispose();
+    _diaRateFocus.dispose();
+    _diaAmountFocus.dispose();
+
+    super.dispose();
+  }
+
+  void _onStoneWeightOrRateChanged() {
+    final wt = double.tryParse(_stoneWeightController.text.trim()) ?? 0.0;
+    final rate = double.tryParse(_stoneRateController.text.trim()) ?? 0.0;
+    if (wt > 0 && rate > 0) {
+      final total = wt * rate;
+      _stoneAmountController.text = total.toStringAsFixed(2);
+    }
+  }
+
+  void _onDiaWeightOrRateChanged() {
+    final wt = double.tryParse(_diaWeightController.text.trim()) ?? 0.0;
+    final rate = double.tryParse(_diaRateController.text.trim()) ?? 0.0;
+    if (wt > 0 && rate > 0) {
+      final total = wt * rate;
+      _diaAmountController.text = total.toStringAsFixed(2);
+    }
+  }
+
+  void _addOrUpdateStone() {
+    final wt = double.tryParse(_stoneWeightController.text.trim()) ?? 0.0;
+    if (_selectedStoneProductId == null) {
+      _showModalError("Please select a Stone Product");
+      return;
+    }
+    if (wt <= 0) {
+      _showModalError("Please enter a valid Stone Weight > 0");
+      _stoneWeightFocus.requestFocus();
+      return;
+    }
+
+    final pcs = int.tryParse(_stonePcsController.text.trim()) ?? 1;
+    final rate = double.tryParse(_stoneRateController.text.trim()) ?? 0.0;
+    final enteredAmt = double.tryParse(_stoneAmountController.text.trim()) ?? 0.0;
+    final amount = enteredAmt > 0 ? enteredAmt : (wt * rate);
+
+    final prod = _stoneProducts.firstWhere((p) => p.productid == _selectedStoneProductId, orElse: () => _stoneProducts.first);
+    final matchingSubs = widget.allSubProducts.where((sp) => sp.subproductid == _selectedStoneSubProductId).toList();
+    final subName = matchingSubs.isNotEmpty ? matchingSubs.first.subproductname : null;
+
+    final item = SkuLotStoneItem(
+      stoneProductId: _selectedStoneProductId,
+      stoneProductName: prod.productname,
+      stoneSubProductId: _selectedStoneSubProductId,
+      stoneSubProductName: subName,
+      stoneUnit: _selectedStoneUnit,
+      pcs: pcs > 0 ? pcs : 1,
+      weight: wt,
+      rate: rate,
+      amount: amount,
+    );
+
+    setState(() {
+      if (_editingStoneIndex != null && _editingStoneIndex! < _stones.length) {
+        _stones[_editingStoneIndex!] = item;
+        _editingStoneIndex = null;
+      } else {
+        _stones.add(item);
+      }
+      // Reset input fields for the next row
+      _stonePcsController.text = '1';
+      _stoneWeightController.clear();
+      _stoneRateController.clear();
+      _stoneAmountController.clear();
+    });
+
+    // Reset focus back to Pcs so user can immediately type Row 2, Row 3!
+    _stonePcsFocus.requestFocus();
+  }
+
+  void _editStone(int index) {
+    final item = _stones[index];
+    setState(() {
+      _editingStoneIndex = index;
+      _selectedStoneProductId = item.stoneProductId;
+      _selectedStoneSubProductId = item.stoneSubProductId;
+      _selectedStoneUnit = item.stoneUnit.toUpperCase() == 'C' ? 'C' : 'G';
+      _stonePcsController.text = item.pcs.toString();
+      _stoneWeightController.text = item.weight > 0 ? item.weight.toStringAsFixed(3) : '';
+      _stoneRateController.text = item.rate > 0 ? item.rate.toStringAsFixed(2) : '';
+      _stoneAmountController.text = item.calculatedAmount > 0 ? item.calculatedAmount.toStringAsFixed(2) : '';
+    });
+    _stonePcsFocus.requestFocus();
+  }
+
+  void _cancelStoneEdit() {
+    setState(() {
+      _editingStoneIndex = null;
+      _stonePcsController.text = '1';
+      _stoneWeightController.clear();
+      _stoneRateController.clear();
+      _stoneAmountController.clear();
+    });
+  }
+
+  void _deleteStone(int index) {
+    setState(() {
+      _stones.removeAt(index);
+      if (_editingStoneIndex == index) {
+        _editingStoneIndex = null;
+        _stonePcsController.text = '1';
+        _stoneWeightController.clear();
+        _stoneRateController.clear();
+        _stoneAmountController.clear();
+      } else if (_editingStoneIndex != null && _editingStoneIndex! > index) {
+        _editingStoneIndex = _editingStoneIndex! - 1;
+      }
+    });
+  }
+
+  void _addOrUpdateDiamond() {
+    final wt = double.tryParse(_diaWeightController.text.trim()) ?? 0.0;
+    if (_selectedDiaProductId == null) {
+      _showModalError("Please select a Diamond Product");
+      return;
+    }
+    if (wt <= 0) {
+      _showModalError("Please enter a valid Diamond Carats/Weight > 0");
+      _diaWeightFocus.requestFocus();
+      return;
+    }
+
+    final pcs = int.tryParse(_diaPcsController.text.trim()) ?? 1;
+    final rate = double.tryParse(_diaRateController.text.trim()) ?? 0.0;
+    final enteredAmt = double.tryParse(_diaAmountController.text.trim()) ?? 0.0;
+    final amount = enteredAmt > 0 ? enteredAmt : (wt * rate);
+
+    final prod = _diamondProducts.firstWhere((p) => p.productid == _selectedDiaProductId, orElse: () => _diamondProducts.first);
+    final matchingSubs = widget.allSubProducts.where((sp) => sp.subproductid == _selectedDiaSubProductId).toList();
+    final subName = matchingSubs.isNotEmpty ? matchingSubs.first.subproductname : null;
+
+    final item = SkuLotDiamondItem(
+      diamondProductId: _selectedDiaProductId,
+      diamondProductName: prod.productname,
+      diamondSubProductId: _selectedDiaSubProductId,
+      diamondSubProductName: subName,
+      diamondUnit: _selectedDiaUnit,
+      pcs: pcs > 0 ? pcs : 1,
+      weight: wt,
+      rate: rate,
+      amount: amount,
+    );
+
+    setState(() {
+      if (_editingDiaIndex != null && _editingDiaIndex! < _diamonds.length) {
+        _diamonds[_editingDiaIndex!] = item;
+        _editingDiaIndex = null;
+      } else {
+        _diamonds.add(item);
+      }
+      // Reset input fields for the next row
+      _diaPcsController.text = '1';
+      _diaWeightController.clear();
+      _diaRateController.clear();
+      _diaAmountController.clear();
+    });
+
+    // Reset focus back to Pcs for next row entry!
+    _diaPcsFocus.requestFocus();
+  }
+
+  void _editDiamond(int index) {
+    final item = _diamonds[index];
+    setState(() {
+      _editingDiaIndex = index;
+      _selectedDiaProductId = item.diamondProductId;
+      _selectedDiaSubProductId = item.diamondSubProductId;
+      _selectedDiaUnit = item.diamondUnit.toUpperCase() == 'G' ? 'G' : 'C';
+      _diaPcsController.text = item.pcs.toString();
+      _diaWeightController.text = item.weight > 0 ? item.weight.toStringAsFixed(3) : '';
+      _diaRateController.text = item.rate > 0 ? item.rate.toStringAsFixed(2) : '';
+      _diaAmountController.text = item.calculatedAmount > 0 ? item.calculatedAmount.toStringAsFixed(2) : '';
+    });
+    _diaPcsFocus.requestFocus();
+  }
+
+  void _cancelDiaEdit() {
+    setState(() {
+      _editingDiaIndex = null;
+      _diaPcsController.text = '1';
+      _diaWeightController.clear();
+      _diaRateController.clear();
+      _diaAmountController.clear();
+    });
+  }
+
+  void _deleteDiamond(int index) {
+    setState(() {
+      _diamonds.removeAt(index);
+      if (_editingDiaIndex == index) {
+        _editingDiaIndex = null;
+        _diaPcsController.text = '1';
+        _diaWeightController.clear();
+        _diaRateController.clear();
+        _diaAmountController.clear();
+      } else if (_editingDiaIndex != null && _editingDiaIndex! > index) {
+        _editingDiaIndex = _editingDiaIndex! - 1;
+      }
+    });
+  }
+
+  void _showModalError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(children: [const Icon(Icons.error_outline, color: Colors.white, size: 18), const SizedBox(width: 8), Expanded(child: Text(msg))]),
+        backgroundColor: const Color(0xFFEF4444),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  InputDecoration _modalInputDecoration(String label, {String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: GlassTheme.primaryNeon, width: 1.5)),
+    );
+  }
+
+  Widget _buildStatPill(String label, String value, Color color, IconData icon, {bool isLarge = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: isLarge ? 18 : 15, color: color),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color, letterSpacing: 0.6)),
+              Text(value, style: TextStyle(fontSize: isLarge ? 13 : 11, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A))),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final grsWt = widget.grossWeight;
+
+    // Compute stones sums
+    final stonePcs = _stones.fold<int>(0, (sum, i) => sum + i.pcs);
+    final stoneWtGrams = _stones.fold<double>(0.0, (sum, i) => sum + i.weightInGrams);
+    final stoneTotalCost = _stones.fold<double>(0.0, (sum, i) => sum + i.calculatedAmount);
+
+    // Compute diamonds sums
+    final diaPcs = _diamonds.fold<int>(0, (sum, i) => sum + i.pcs);
+    final diaWtGrams = _diamonds.fold<double>(0.0, (sum, i) => sum + i.weightInGrams);
+    final diaTotalCarats = _diamonds.fold<double>(0.0, (sum, i) => sum + (i.diamondUnit.toUpperCase() == 'C' ? i.weight : (i.weight * 5.0)));
+    final diaTotalCost = _diamonds.fold<double>(0.0, (sum, i) => sum + i.calculatedAmount);
+
+    final calculatedNet = (grsWt - stoneWtGrams - diaWtGrams) > 0 ? (grsWt - stoneWtGrams - diaWtGrams) : 0.0;
+    final combinedPurchaseCost = stoneTotalCost + diaTotalCost;
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 1120, maxHeight: 760),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 36,
+              offset: const Offset(0, 16),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Modal Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              decoration: const BoxDecoration(
+                color: Color(0xFF0F172A),
+                borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF059669).withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.diamond_rounded, color: Color(0xFF34D399), size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Stones & Diamonds Master Grid",
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            "Add multiple stone/diamond rows. Enter key moves to next field and adds to grid seamlessly.",
+                            style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                    onPressed: () => Navigator.pop(context),
+                    tooltip: "Close Window",
+                  ),
+                ],
+              ),
+            ),
+
+            // Live Stat Pills Banner
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              color: const Color(0xFFF8FAFC),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildStatPill("GROSS WT", "${grsWt.toStringAsFixed(3)} g", const Color(0xFFD97706), Icons.scale_rounded),
+                  _buildStatPill("STONES WT", "${stoneWtGrams.toStringAsFixed(3)} g ($stonePcs pcs)", const Color(0xFF059669), Icons.grain_rounded),
+                  _buildStatPill("DIAMONDS WT", "${diaTotalCarats.toStringAsFixed(2)} ct (${diaWtGrams.toStringAsFixed(3)}g / $diaPcs pcs)", const Color(0xFF0284C7), Icons.diamond_rounded),
+                  _buildStatPill("CALCULATED NET WT", "${calculatedNet.toStringAsFixed(3)} g", const Color(0xFF4F46E5), Icons.fitness_center_rounded, isLarge: true),
+                  _buildStatPill("TOTAL PURCHASE COST", "₹${combinedPurchaseCost.toStringAsFixed(2)}", const Color(0xFF10B981), Icons.currency_rupee_rounded, isLarge: true),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+
+            // Tab Bar
+            Container(
+              color: Colors.white,
+              child: TabBar(
+                controller: _tabController,
+                labelColor: GlassTheme.primaryNeon,
+                unselectedLabelColor: const Color(0xFF64748B),
+                indicatorColor: GlassTheme.primaryNeon,
+                indicatorWeight: 3,
+                tabs: [
+                  Tab(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.grain_rounded, size: 18, color: Color(0xFF059669)),
+                        const SizedBox(width: 8),
+                        Text("Stones (DIASTONE = 'S') [${_stones.length}]", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.diamond_rounded, size: 18, color: Color(0xFF0284C7)),
+                        const SizedBox(width: 8),
+                        Text("Diamonds (DIASTONE = 'D') [${_diamonds.length}]", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Tab Views
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildStonesTabContent(),
+                  _buildDiamondsTabContent(),
+                ],
+              ),
+            ),
+
+            // Modal Footer
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "${_stones.length} Stone row(s), ${_diamonds.length} Diamond row(s) configured",
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                  ),
+                  Row(
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text("Cancel"),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context, {
+                            'stones': _stones,
+                            'diamonds': _diamonds,
+                          });
+                        },
+                        icon: const Icon(Icons.check_circle_rounded, size: 18),
+                        label: const Text("Apply & Calculate Net Weight"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: GlassTheme.primaryNeon,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ================= STONES TAB CONTENT =================
+  Widget _buildStonesTabContent() {
+    final matchingSub = widget.allSubProducts.where((sp) {
+      if (_selectedStoneProductId == null) return true;
+      return sp.productid == _selectedStoneProductId;
+    }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Stone Input Form Card (2 Rows)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _editingStoneIndex != null ? const Color(0xFF059669) : const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(_editingStoneIndex != null ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
+                        size: 16, color: const Color(0xFF059669)),
+                    const SizedBox(width: 6),
+                    Text(
+                      _editingStoneIndex != null ? "Editing Stone Row #${_editingStoneIndex! + 1}" : "Add Stone Entry to Grid",
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                    const Spacer(),
+                    const Text("Fill fields and press Enter on Amount to add to grid", style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Row 1: Product, Sub-Product, Unit
+                Row(
+                  children: [
+                    // Product Dropdown
+                    Expanded(
+                      flex: 4,
+                      child: DropdownButtonFormField<int?>(
+                        isExpanded: true,
+                        value: _selectedStoneProductId,
+                        decoration: _modalInputDecoration("Stone Product *"),
+                        items: _stoneProducts.map((p) {
+                          return DropdownMenuItem<int?>(
+                            value: p.productid,
+                            child: Text(p.productname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedStoneProductId = val;
+                            if (_selectedStoneSubProductId != null && !matchingSub.any((sp) => sp.subproductid == _selectedStoneSubProductId && sp.productid == val)) {
+                              _selectedStoneSubProductId = null;
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Sub-Product Dropdown
+                    Expanded(
+                      flex: 3,
+                      child: DropdownButtonFormField<int?>(
+                        isExpanded: true,
+                        value: _selectedStoneSubProductId,
+                        decoration: _modalInputDecoration("Sub-Product"),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text("-- None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))),
+                          ...matchingSub.map((sp) => DropdownMenuItem<int?>(
+                                value: sp.subproductid,
+                                child: Text(sp.subproductname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                              )),
+                        ],
+                        onChanged: (val) => setState(() => _selectedStoneSubProductId = val),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Unit Dropdown (G / C)
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedStoneUnit,
+                        decoration: _modalInputDecoration("Unit *"),
+                        items: const [
+                          DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                          DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669)))),
+                        ],
+                        onChanged: (val) => setState(() => _selectedStoneUnit = val ?? 'G'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Row 2: Pcs, Weight, Rate, Purchase Amount, Action Buttons
+                Row(
+                  children: [
+                    // Pcs
+                    SizedBox(
+                      width: 90,
+                      child: TextFormField(
+                        controller: _stonePcsController,
+                        focusNode: _stonePcsFocus,
+                        decoration: _modalInputDecoration("Pcs *"),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) => _stoneWeightFocus.requestFocus(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Weight
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _stoneWeightController,
+                        focusNode: _stoneWeightFocus,
+                        decoration: _modalInputDecoration("Weight *", hint: "0.000"),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
+                        textInputAction: TextInputAction.next,
+                        onChanged: (_) => _onStoneWeightOrRateChanged(),
+                        onFieldSubmitted: (_) => _stoneRateFocus.requestFocus(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Rate (₹)
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _stoneRateController,
+                        focusNode: _stoneRateFocus,
+                        decoration: _modalInputDecoration("Rate (₹)"),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                        textInputAction: TextInputAction.next,
+                        onChanged: (_) => _onStoneWeightOrRateChanged(),
+                        onFieldSubmitted: (_) {
+                          _onStoneWeightOrRateChanged();
+                          _stoneAmountFocus.requestFocus();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Purchase Amount (₹)
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _stoneAmountController,
+                        focusNode: _stoneAmountFocus,
+                        decoration: _modalInputDecoration("Purchase Amt (₹)"),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _addOrUpdateStone(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Add / Update Button
+                    ElevatedButton.icon(
+                      onPressed: _addOrUpdateStone,
+                      icon: Icon(_editingStoneIndex != null ? Icons.check_rounded : Icons.add_rounded, size: 16),
+                      label: Text(_editingStoneIndex != null ? "Update Row" : "+ Add to Grid"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF059669),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+
+                    if (_editingStoneIndex != null) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: _cancelStoneEdit,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text("Cancel"),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Stones Grid Table
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: _stones.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.grain_rounded, size: 40, color: Color(0xFFCBD5E1)),
+                          const SizedBox(height: 8),
+                          const Text("No stone items added to grid yet.", style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                          const SizedBox(height: 4),
+                          const Text("Fill the form above and press Enter to add the first stone row.", style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8))),
+                        ],
+                      ),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SingleChildScrollView(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            headingRowHeight: 40,
+                            dataRowMinHeight: 42,
+                            dataRowMaxHeight: 46,
+                            headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+                            columns: const [
+                              DataColumn(label: Text("#", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Product Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Sub-Product", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Unit", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Pcs", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Weight", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Rate (₹)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Purchase Amount (₹)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                            ],
+                            rows: List.generate(_stones.length, (index) {
+                              final item = _stones[index];
+                              final isEditing = _editingStoneIndex == index;
+
+                              return DataRow(
+                                color: isEditing ? WidgetStateProperty.all(const Color(0xFFECFDF5)) : null,
+                                cells: [
+                                  DataCell(
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                      decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(6)),
+                                      child: Text("#${index + 1}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
+                                    ),
+                                  ),
+                                  DataCell(Text(item.stoneProductName ?? "Product #${item.stoneProductId}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                                  DataCell(Text(item.stoneSubProductName ?? "-", style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
+                                  DataCell(
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4)),
+                                      child: Text(item.stoneUnit.toUpperCase() == 'C' ? "Carat (C)" : "Gram (G)", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                    ),
+                                  ),
+                                  DataCell(Text("${item.pcs}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+                                  DataCell(Text("${item.weight.toStringAsFixed(3)} ${item.stoneUnit}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
+                                  DataCell(Text(item.rate > 0 ? "₹${item.rate.toStringAsFixed(2)}" : "-", style: const TextStyle(fontSize: 12))),
+                                  DataCell(Text("₹${item.calculatedAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF059669)))),
+                                  DataCell(
+                                    Focus(
+                                      canRequestFocus: false,
+                                      skipTraversal: true,
+                                      descendantsAreFocusable: false,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.edit_outlined, size: 17, color: Color(0xFF0284C7)),
+                                            tooltip: "Edit Item",
+                                            onPressed: () => _editStone(index),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.delete_outline_rounded, size: 17, color: Color(0xFFEF4444)),
+                                            tooltip: "Remove Item",
+                                            onPressed: () => _deleteStone(index),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================= DIAMONDS TAB CONTENT =================
+  Widget _buildDiamondsTabContent() {
+    final matchingSub = widget.allSubProducts.where((sp) {
+      if (_selectedDiaProductId == null) return true;
+      return sp.productid == _selectedDiaProductId;
+    }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Diamond Input Form Card (2 Rows)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _editingDiaIndex != null ? const Color(0xFF0284C7) : const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(_editingDiaIndex != null ? Icons.edit_note_rounded : Icons.diamond_outlined,
+                        size: 16, color: const Color(0xFF0284C7)),
+                    const SizedBox(width: 6),
+                    Text(
+                      _editingDiaIndex != null ? "Editing Diamond Row #${_editingDiaIndex! + 1}" : "Add Diamond Entry to Grid",
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                    const Spacer(),
+                    const Text("Fill fields and press Enter on Purchase Cost to add to grid", style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Row 1: Product, Sub-Product, Unit
+                Row(
+                  children: [
+                    // Product Dropdown
+                    Expanded(
+                      flex: 4,
+                      child: DropdownButtonFormField<int?>(
+                        isExpanded: true,
+                        value: _selectedDiaProductId,
+                        decoration: _modalInputDecoration("Diamond Product *"),
+                        items: _diamondProducts.map((p) {
+                          return DropdownMenuItem<int?>(
+                            value: p.productid,
+                            child: Text(p.productname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedDiaProductId = val;
+                            if (_selectedDiaSubProductId != null && !matchingSub.any((sp) => sp.subproductid == _selectedDiaSubProductId && sp.productid == val)) {
+                              _selectedDiaSubProductId = null;
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Sub-Product Dropdown
+                    Expanded(
+                      flex: 3,
+                      child: DropdownButtonFormField<int?>(
+                        isExpanded: true,
+                        value: _selectedDiaSubProductId,
+                        decoration: _modalInputDecoration("Sub-Product"),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text("-- None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))),
+                          ...matchingSub.map((sp) => DropdownMenuItem<int?>(
+                                value: sp.subproductid,
+                                child: Text(sp.subproductname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                              )),
+                        ],
+                        onChanged: (val) => setState(() => _selectedDiaSubProductId = val),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Unit Dropdown (C / G)
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedDiaUnit,
+                        decoration: _modalInputDecoration("Unit *"),
+                        items: const [
+                          DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)))),
+                          DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                        ],
+                        onChanged: (val) => setState(() => _selectedDiaUnit = val ?? 'C'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Row 2: Pcs, Weight, Rate, Purchase Cost, Action Buttons
+                Row(
+                  children: [
+                    // Pcs
+                    SizedBox(
+                      width: 90,
+                      child: TextFormField(
+                        controller: _diaPcsController,
+                        focusNode: _diaPcsFocus,
+                        decoration: _modalInputDecoration("Pcs *"),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) => _diaWeightFocus.requestFocus(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Weight (Carats / Wt)
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _diaWeightController,
+                        focusNode: _diaWeightFocus,
+                        decoration: _modalInputDecoration("Carats / Wt *", hint: "0.000"),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
+                        textInputAction: TextInputAction.next,
+                        onChanged: (_) => _onDiaWeightOrRateChanged(),
+                        onFieldSubmitted: (_) => _diaRateFocus.requestFocus(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Rate (₹ / Carat)
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _diaRateController,
+                        focusNode: _diaRateFocus,
+                        decoration: _modalInputDecoration("Per Carat Rate (₹)"),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                        textInputAction: TextInputAction.next,
+                        onChanged: (_) => _onDiaWeightOrRateChanged(),
+                        onFieldSubmitted: (_) {
+                          _onDiaWeightOrRateChanged();
+                          _diaAmountFocus.requestFocus();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Purchase Cost (₹)
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _diaAmountController,
+                        focusNode: _diaAmountFocus,
+                        decoration: _modalInputDecoration("Purchase Cost (₹)"),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _addOrUpdateDiamond(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Add / Update Button
+                    ElevatedButton.icon(
+                      onPressed: _addOrUpdateDiamond,
+                      icon: Icon(_editingDiaIndex != null ? Icons.check_rounded : Icons.add_rounded, size: 16),
+                      label: Text(_editingDiaIndex != null ? "Update Row" : "+ Add to Grid"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0284C7),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+
+                    if (_editingDiaIndex != null) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: _cancelDiaEdit,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text("Cancel"),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Diamonds Grid Table
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: _diamonds.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.diamond_rounded, size: 40, color: Color(0xFFCBD5E1)),
+                          const SizedBox(height: 8),
+                          const Text("No diamond items added to grid yet.", style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                          const SizedBox(height: 4),
+                          const Text("Fill the form above and press Enter to add the first diamond row.", style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8))),
+                        ],
+                      ),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SingleChildScrollView(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            headingRowHeight: 40,
+                            dataRowMinHeight: 42,
+                            dataRowMaxHeight: 46,
+                            headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+                            columns: const [
+                              DataColumn(label: Text("#", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Product Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Sub-Product", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Unit", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Pcs", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Carats / Wt", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Gram Eq.", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Rate (₹/ct)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Purchase Cost (₹)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataColumn(label: Text("Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                            ],
+                            rows: List.generate(_diamonds.length, (index) {
+                              final item = _diamonds[index];
+                              final isEditing = _editingDiaIndex == index;
+
+                              return DataRow(
+                                color: isEditing ? WidgetStateProperty.all(const Color(0xFFF0F9FF)) : null,
+                                cells: [
+                                  DataCell(
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                      decoration: BoxDecoration(color: const Color(0xFFF0F9FF), borderRadius: BorderRadius.circular(6)),
+                                      child: Text("#${index + 1}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
+                                    ),
+                                  ),
+                                  DataCell(Text(item.diamondProductName ?? "Product #${item.diamondProductId}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                                  DataCell(Text(item.diamondSubProductName ?? "-", style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
+                                  DataCell(
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4)),
+                                      child: Text(item.diamondUnit.toUpperCase() == 'G' ? "Gram (G)" : "Carat (C)", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                    ),
+                                  ),
+                                  DataCell(Text("${item.pcs}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+                                  DataCell(Text("${item.weight.toStringAsFixed(3)} ${item.diamondUnit}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
+                                  DataCell(Text("${item.weightInGrams.toStringAsFixed(3)} g", style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
+                                  DataCell(Text(item.rate > 0 ? "₹${item.rate.toStringAsFixed(2)}" : "-", style: const TextStyle(fontSize: 12))),
+                                  DataCell(Text("₹${item.calculatedAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)))),
+                                  DataCell(
+                                    Focus(
+                                      canRequestFocus: false,
+                                      skipTraversal: true,
+                                      descendantsAreFocusable: false,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.edit_outlined, size: 17, color: Color(0xFF0284C7)),
+                                            tooltip: "Edit Item",
+                                            onPressed: () => _editDiamond(index),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.delete_outline_rounded, size: 17, color: Color(0xFFEF4444)),
+                                            tooltip: "Remove Item",
+                                            onPressed: () => _deleteDiamond(index),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

@@ -360,6 +360,9 @@ export async function generateTagsFromLotController(req, res) {
       lot_id,
       tag_items = [], // Array of individual tag breakdowns
       // Single piece tag properties or batch defaults
+      branchid = null,
+      productid = null,
+      subproductid = null,
       pcs = 1,
       gross_weight,
       net_weight,
@@ -411,6 +414,10 @@ export async function generateTagsFromLotController(req, res) {
     const lot = lotRes.rows[0];
     const lotNumber = lot.lot_number;
 
+    const targetBranchId = (branchid && String(branchid).trim()) ? String(branchid).trim().toUpperCase() : lot.branchid;
+    const targetProductId = (productid && parseInt(productid, 10)) ? parseInt(productid, 10) : lot.productid;
+    const targetSubProductId = (subproductid !== undefined) ? (subproductid ? parseInt(subproductid, 10) : null) : lot.subproductid;
+
     let itemsToInsert = [];
 
     if (Array.isArray(tag_items) && tag_items.length > 0) {
@@ -458,10 +465,10 @@ export async function generateTagsFromLotController(req, res) {
           lot_id: lotId,
           lot_number: lotNumber,
           companyid: lot.companyid,
-          branchid: lot.branchid,
+          branchid: (item.branchid && String(item.branchid).trim()) ? String(item.branchid).trim().toUpperCase() : targetBranchId,
           designerid: lot.designerid,
-          productid: lot.productid,
-          subproductid: lot.subproductid,
+          productid: item.productid ? parseInt(item.productid, 10) : targetProductId,
+          subproductid: item.subproductid !== undefined ? (item.subproductid ? parseInt(item.subproductid, 10) : null) : targetSubProductId,
           styleid: item.styleid ? parseInt(item.styleid, 10) : (styleid ? parseInt(styleid, 10) : null),
           stylename: item.stylename || stylename || "",
           sizeid: item.sizeid ? parseInt(item.sizeid, 10) : (sizeid ? parseInt(sizeid, 10) : null),
@@ -536,10 +543,10 @@ export async function generateTagsFromLotController(req, res) {
         lot_id: lotId,
         lot_number: lotNumber,
         companyid: lot.companyid,
-        branchid: lot.branchid,
+        branchid: targetBranchId,
         designerid: lot.designerid,
-        productid: lot.productid,
-        subproductid: lot.subproductid,
+        productid: targetProductId,
+        subproductid: targetSubProductId,
         styleid: styleid ? parseInt(styleid, 10) : null,
         stylename: stylename || "",
         sizeid: sizeid ? parseInt(sizeid, 10) : null,
@@ -609,10 +616,10 @@ export async function generateTagsFromLotController(req, res) {
           lot_id: lotId,
           lot_number: lotNumber,
           companyid: lot.companyid,
-          branchid: lot.branchid,
+          branchid: targetBranchId,
           designerid: lot.designerid,
-          productid: lot.productid,
-          subproductid: lot.subproductid,
+          productid: targetProductId,
+          subproductid: targetSubProductId,
           styleid: styleid ? parseInt(styleid, 10) : null,
           stylename: stylename || "",
           sizeid: sizeid ? parseInt(sizeid, 10) : null,

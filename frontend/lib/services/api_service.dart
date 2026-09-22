@@ -1481,6 +1481,10 @@ class ApiService {
     int? designerId,
     int? productId,
     int? purityId,
+    String? fromDate,
+    String? toDate,
+    String? isActive,
+    String? status,
   }) async {
     try {
       final queryParams = <String, String>{};
@@ -1489,6 +1493,10 @@ class ApiService {
       if (designerId != null && designerId > 0) queryParams['designerid'] = designerId.toString();
       if (productId != null && productId > 0) queryParams['productid'] = productId.toString();
       if (purityId != null && purityId > 0) queryParams['purityid'] = purityId.toString();
+      if (fromDate != null && fromDate.trim().isNotEmpty) queryParams['from_date'] = fromDate.trim();
+      if (toDate != null && toDate.trim().isNotEmpty) queryParams['to_date'] = toDate.trim();
+      if (isActive != null && isActive.trim().isNotEmpty) queryParams['is_active'] = isActive.trim();
+      if (status != null && status.trim().isNotEmpty) queryParams['status'] = status.trim();
 
       final uri = Uri.parse('$baseUrl/tenant/stock/prepare-sku').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
       final res = await http.get(uri, headers: _headers(token));
@@ -1517,6 +1525,10 @@ class ApiService {
     int? designerId,
     int? productId,
     int? purityId,
+    String? fromDate,
+    String? toDate,
+    String? isActive,
+    String? status,
   }) async {
     final data = await getPrepareSkuLotsData(
       token,
@@ -1525,6 +1537,10 @@ class ApiService {
       designerId: designerId,
       productId: productId,
       purityId: purityId,
+      fromDate: fromDate,
+      toDate: toDate,
+      isActive: isActive,
+      status: status,
     );
     return data['lots'] as List<PrepareSkuLotRecord>? ?? [];
   }
@@ -1565,9 +1581,32 @@ class ApiService {
     }
   }
 
+  /// Soft deactivates/disables a Prepare SKU Lot
   Future<Map<String, dynamic>> deletePrepareSkuLot(String token, int id) async {
     try {
       final res = await http.delete(Uri.parse('$baseUrl/tenant/stock/prepare-sku/$id'), headers: _headers(token));
+      if (res.body.isNotEmpty) {
+        try {
+          return jsonDecode(res.body);
+        } catch (_) {}
+      }
+      return {'success': res.statusCode == 200, 'message': 'HTTP ${res.statusCode}: ${res.reasonPhrase}'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Toggles activation/deactivation of a Prepare SKU Lot
+  Future<Map<String, dynamic>> togglePrepareSkuLotActive(String token, int id, bool isActive) async {
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/tenant/stock/prepare-sku/$id'),
+        headers: _headers(token),
+        body: jsonEncode({
+          'is_active': isActive,
+          'status': isActive ? 'ACTIVE' : 'DISABLED',
+        }),
+      );
       if (res.body.isNotEmpty) {
         try {
           return jsonDecode(res.body);

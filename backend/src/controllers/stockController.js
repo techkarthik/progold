@@ -29,6 +29,7 @@ async function ensureStockTables(client, tenantUrl = "") {
         stone_unit TEXT DEFAULT 'G',
         total_stone_pcs INTEGER DEFAULT 0,
         total_stone_weight REAL DEFAULT 0.0,
+        total_stone_amount REAL DEFAULT 0.0,
         stone_items_json TEXT DEFAULT '[]',
         
         -- Diamond Details (Optional / multi-items)
@@ -37,8 +38,10 @@ async function ensureStockTables(client, tenantUrl = "") {
         diamond_unit TEXT DEFAULT 'C',
         total_diamond_pcs INTEGER DEFAULT 0,
         total_diamond_weight REAL DEFAULT 0.0,
+        total_diamond_amount REAL DEFAULT 0.0,
         diamond_items_json TEXT DEFAULT '[]',
         
+        is_active INTEGER NOT NULL DEFAULT 1,
         status TEXT NOT NULL DEFAULT 'PENDING_SKU',
         remarks TEXT DEFAULT '',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -51,6 +54,9 @@ async function ensureStockTables(client, tenantUrl = "") {
     try { await client.execute(`ALTER TABLE prepare_sku_lots ADD COLUMN diamond_unit TEXT DEFAULT 'C';`); } catch (_) {}
     try { await client.execute(`ALTER TABLE prepare_sku_lots ADD COLUMN stone_items_json TEXT DEFAULT '[]';`); } catch (_) {}
     try { await client.execute(`ALTER TABLE prepare_sku_lots ADD COLUMN diamond_items_json TEXT DEFAULT '[]';`); } catch (_) {}
+    try { await client.execute(`ALTER TABLE prepare_sku_lots ADD COLUMN total_stone_amount REAL DEFAULT 0.0;`); } catch (_) {}
+    try { await client.execute(`ALTER TABLE prepare_sku_lots ADD COLUMN total_diamond_amount REAL DEFAULT 0.0;`); } catch (_) {}
+    try { await client.execute(`ALTER TABLE prepare_sku_lots ADD COLUMN is_active INTEGER DEFAULT 1;`); } catch (_) {}
 
     await client.execute(`
       CREATE TABLE IF NOT EXISTS prepare_sku_lot_stones (
@@ -61,10 +67,14 @@ async function ensureStockTables(client, tenantUrl = "") {
         stone_unit TEXT DEFAULT 'G',
         pcs INTEGER DEFAULT 0,
         weight REAL DEFAULT 0.0,
+        rate REAL DEFAULT 0.0,
+        amount REAL DEFAULT 0.0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (lot_id) REFERENCES prepare_sku_lots(lot_id) ON DELETE CASCADE
       );
     `);
+    try { await client.execute(`ALTER TABLE prepare_sku_lot_stones ADD COLUMN rate REAL DEFAULT 0.0;`); } catch (_) {}
+    try { await client.execute(`ALTER TABLE prepare_sku_lot_stones ADD COLUMN amount REAL DEFAULT 0.0;`); } catch (_) {}
 
     await client.execute(`
       CREATE TABLE IF NOT EXISTS prepare_sku_lot_diamonds (
@@ -75,10 +85,14 @@ async function ensureStockTables(client, tenantUrl = "") {
         diamond_unit TEXT DEFAULT 'C',
         pcs INTEGER DEFAULT 0,
         weight REAL DEFAULT 0.0,
+        rate REAL DEFAULT 0.0,
+        amount REAL DEFAULT 0.0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (lot_id) REFERENCES prepare_sku_lots(lot_id) ON DELETE CASCADE
       );
     `);
+    try { await client.execute(`ALTER TABLE prepare_sku_lot_diamonds ADD COLUMN rate REAL DEFAULT 0.0;`); } catch (_) {}
+    try { await client.execute(`ALTER TABLE prepare_sku_lot_diamonds ADD COLUMN amount REAL DEFAULT 0.0;`); } catch (_) {}
 
     await client.execute(`
       CREATE INDEX IF NOT EXISTS idx_prepare_sku_company ON prepare_sku_lots (companyid);
@@ -88,6 +102,9 @@ async function ensureStockTables(client, tenantUrl = "") {
     `);
     await client.execute(`
       CREATE INDEX IF NOT EXISTS idx_prepare_sku_lot_no ON prepare_sku_lots (lot_number);
+    `);
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_prepare_sku_created ON prepare_sku_lots (created_at);
     `);
   });
 }
@@ -139,7 +156,7 @@ async function generateNextLotNumber(client) {
 
 /**
  * GET /api/tenant/stock/prepare-sku
- * Retrieves prepare_sku_lots with joined names, optionally filtered by companyid.
+ * Retrieves prepare_sku_lots with joined names, filtered by companyid, date range, branch, active status.
  */
 export async function getPrepareSkuLotsController(req, res) {
   try {
@@ -147,7 +164,7 @@ export async function getPrepareSkuLotsController(req, res) {
     const client = createTenantClient(turso_url, turso_token);
     await ensureStockTables(client);
 
-    const { companyid } = req.query;
+    const { companyid, branchid, designerid, productid, purityid, from_date, fromDate, to_date, toDate, is_active, status } = req.query;
 
     let query = `
       SELECT 
@@ -183,10 +200,61 @@ export async function getPrepareSkuLotsController(req, res) {
       LEFT JOIN subproducts diamond_sp ON l.diamond_subproductid = diamond_sp.subproductid
     `;
 
+    const whereClauses = [];
     const args = [];
+
     if (companyid && String(companyid).trim() !== "") {
-      query += ` WHERE l.companyid = ?`;
+      whereClauses.push(`l.companyid = ?`);
       args.push(String(companyid).trim());
+    }
+
+    if (branchid && String(branchid).trim() !== "" && String(branchid).trim().toUpperCase() !== "ALL") {
+      whereClauses.push(`l.branchid = ?`);
+      args.push(String(branchid).trim());
+    }
+
+    if (designerid && parseInt(designerid, 10) > 0) {
+      whereClauses.push(`l.designerid = ?`);
+      args.push(parseInt(designerid, 10));
+    }
+
+    if (productid && parseInt(productid, 10) > 0) {
+      whereClauses.push(`l.productid = ?`);
+      args.push(parseInt(productid, 10));
+    }
+
+    if (purityid && parseInt(purityid, 10) > 0) {
+      whereClauses.push(`l.purityid = ?`);
+      args.push(parseInt(purityid, 10));
+    }
+
+    // Date range filter
+    const startDate = (from_date || fromDate || '').toString().trim();
+    const endDate = (to_date || toDate || '').toString().trim();
+
+    if (startDate) {
+      whereClauses.push(`date(l.created_at) >= date(?)`);
+      args.push(startDate.slice(0, 10));
+    }
+
+    if (endDate) {
+      whereClauses.push(`date(l.created_at) <= date(?)`);
+      args.push(endDate.slice(0, 10));
+    }
+
+    // Active status filter
+    const activeParam = (is_active !== undefined ? is_active : status);
+    if (activeParam !== undefined && activeParam !== null && String(activeParam).trim() !== "" && String(activeParam).toUpperCase() !== "ALL") {
+      const val = String(activeParam).toUpperCase().trim();
+      if (val === "1" || val === "TRUE" || val === "ACTIVE") {
+        whereClauses.push(`(l.is_active = 1 AND l.status != 'DISABLED')`);
+      } else if (val === "0" || val === "FALSE" || val === "DISABLED" || val === "INACTIVE") {
+        whereClauses.push(`(l.is_active = 0 OR l.status = 'DISABLED')`);
+      }
+    }
+
+    if (whereClauses.length > 0) {
+      query += ` WHERE ` + whereClauses.join(" AND ");
     }
 
     query += ` ORDER BY l.lot_id DESC;`;
@@ -208,6 +276,8 @@ export async function getPrepareSkuLotsController(req, res) {
         }
       } catch (_) {}
 
+      const isActiveBool = (row.is_active !== 0 && String(row.status || '').toUpperCase() !== 'DISABLED');
+
       return {
         lot_id: row.lot_id,
         lot_number: row.lot_number,
@@ -227,14 +297,17 @@ export async function getPrepareSkuLotsController(req, res) {
         stone_unit: row.stone_unit || 'G',
         total_stone_pcs: Number(row.total_stone_pcs || 0),
         total_stone_weight: Number(row.total_stone_weight || 0.0),
+        total_stone_amount: Number(row.total_stone_amount || 0.0),
         stone_items: stoneItems,
         diamond_productid: row.diamond_productid,
         diamond_subproductid: row.diamond_subproductid,
         diamond_unit: row.diamond_unit || 'C',
         total_diamond_pcs: Number(row.total_diamond_pcs || 0),
         total_diamond_weight: Number(row.total_diamond_weight || 0.0),
+        total_diamond_amount: Number(row.total_diamond_amount || 0.0),
         diamond_items: diamondItems,
-        status: row.status || 'PENDING_SKU',
+        is_active: isActiveBool,
+        status: row.status || (isActiveBool ? 'PENDING_SKU' : 'DISABLED'),
         remarks: row.remarks || '',
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -341,6 +414,7 @@ export async function createPrepareSkuLotController(req, res) {
     // Compute aggregated stone/diamond totals from items if provided
     let finalStonePcs = parseInt(total_stone_pcs, 10) || 0;
     let finalStoneWt = parseFloat(total_stone_weight) || 0.0;
+    let finalStoneAmount = parseFloat(req.body.total_stone_amount) || 0.0;
     let finalStoneProductId = stone_productid ? parseInt(stone_productid, 10) : null;
     let finalStoneSubProductId = stone_subproductid ? parseInt(stone_subproductid, 10) : null;
     let finalStoneUnit = (String(stone_unit || 'G').toUpperCase() === 'C') ? 'C' : 'G';
@@ -348,6 +422,13 @@ export async function createPrepareSkuLotController(req, res) {
     if (Array.isArray(stone_items) && stone_items.length > 0) {
       finalStonePcs = stone_items.reduce((sum, item) => sum + (parseInt(item.pcs, 10) || 0), 0);
       finalStoneWt = stone_items.reduce((sum, item) => sum + (parseFloat(item.weight) || 0.0), 0.0);
+      finalStoneAmount = stone_items.reduce((sum, item) => {
+        const amt = parseFloat(item.amount);
+        if (!isNaN(amt) && amt > 0) return sum + amt;
+        const w = parseFloat(item.weight) || 0.0;
+        const r = parseFloat(item.rate) || 0.0;
+        return sum + (w * r);
+      }, 0.0);
       finalStoneProductId = stone_items[0].stone_productid || finalStoneProductId;
       finalStoneSubProductId = stone_items[0].stone_subproductid || finalStoneSubProductId;
       finalStoneUnit = stone_items[0].stone_unit || finalStoneUnit;
@@ -355,6 +436,7 @@ export async function createPrepareSkuLotController(req, res) {
 
     let finalDiamondPcs = parseInt(total_diamond_pcs, 10) || 0;
     let finalDiamondWt = parseFloat(total_diamond_weight) || 0.0;
+    let finalDiamondAmount = parseFloat(req.body.total_diamond_amount) || 0.0;
     let finalDiamondProductId = diamond_productid ? parseInt(diamond_productid, 10) : null;
     let finalDiamondSubProductId = diamond_subproductid ? parseInt(diamond_subproductid, 10) : null;
     let finalDiamondUnit = (String(diamond_unit || 'C').toUpperCase() === 'G') ? 'G' : 'C';
@@ -362,6 +444,13 @@ export async function createPrepareSkuLotController(req, res) {
     if (Array.isArray(diamond_items) && diamond_items.length > 0) {
       finalDiamondPcs = diamond_items.reduce((sum, item) => sum + (parseInt(item.pcs, 10) || 0), 0);
       finalDiamondWt = diamond_items.reduce((sum, item) => sum + (parseFloat(item.weight) || 0.0), 0.0);
+      finalDiamondAmount = diamond_items.reduce((sum, item) => {
+        const amt = parseFloat(item.amount);
+        if (!isNaN(amt) && amt > 0) return sum + amt;
+        const w = parseFloat(item.weight) || 0.0;
+        const r = parseFloat(item.rate) || 0.0;
+        return sum + (w * r);
+      }, 0.0);
       finalDiamondProductId = diamond_items[0].diamond_productid || finalDiamondProductId;
       finalDiamondSubProductId = diamond_items[0].diamond_subproductid || finalDiamondSubProductId;
       finalDiamondUnit = diamond_items[0].diamond_unit || finalDiamondUnit;
@@ -390,19 +479,22 @@ export async function createPrepareSkuLotController(req, res) {
           stone_unit,
           total_stone_pcs,
           total_stone_weight,
+          total_stone_amount,
           stone_items_json,
           diamond_productid,
           diamond_subproductid,
           diamond_unit,
           total_diamond_pcs,
           total_diamond_weight,
+          total_diamond_amount,
           diamond_items_json,
           remarks,
+          is_active,
           status,
           created_at,
           updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_SKU', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'PENDING_SKU', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         );
       `,
       args: [
@@ -423,12 +515,14 @@ export async function createPrepareSkuLotController(req, res) {
         finalStoneUnit,
         finalStonePcs,
         finalStoneWt,
+        finalStoneAmount,
         JSON.stringify(stone_items || []),
         finalDiamondProductId,
         finalDiamondSubProductId,
         finalDiamondUnit,
         finalDiamondPcs,
         finalDiamondWt,
+        finalDiamondAmount,
         JSON.stringify(diamond_items || []),
         remarks ? String(remarks).trim() : '',
       ],
@@ -440,15 +534,20 @@ export async function createPrepareSkuLotController(req, res) {
     if (Array.isArray(stone_items) && stone_items.length > 0) {
       for (const item of stone_items) {
         if (item.stone_productid) {
+          const itemWt = parseFloat(item.weight) || 0.0;
+          const itemRate = parseFloat(item.rate) || 0.0;
+          const itemAmt = parseFloat(item.amount) || (itemWt * itemRate);
           await client.execute({
-            sql: `INSERT INTO prepare_sku_lot_stones (lot_id, stone_productid, stone_subproductid, stone_unit, pcs, weight) VALUES (?, ?, ?, ?, ?, ?);`,
+            sql: `INSERT INTO prepare_sku_lot_stones (lot_id, stone_productid, stone_subproductid, stone_unit, pcs, weight, rate, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
             args: [
               newLotId,
               parseInt(item.stone_productid, 10),
               item.stone_subproductid ? parseInt(item.stone_subproductid, 10) : null,
               item.stone_unit || 'G',
               parseInt(item.pcs, 10) || 0,
-              parseFloat(item.weight) || 0.0,
+              itemWt,
+              itemRate,
+              itemAmt,
             ],
           });
         }
@@ -459,15 +558,20 @@ export async function createPrepareSkuLotController(req, res) {
     if (Array.isArray(diamond_items) && diamond_items.length > 0) {
       for (const item of diamond_items) {
         if (item.diamond_productid) {
+          const itemWt = parseFloat(item.weight) || 0.0;
+          const itemRate = parseFloat(item.rate) || 0.0;
+          const itemAmt = parseFloat(item.amount) || (itemWt * itemRate);
           await client.execute({
-            sql: `INSERT INTO prepare_sku_lot_diamonds (lot_id, diamond_productid, diamond_subproductid, diamond_unit, pcs, weight) VALUES (?, ?, ?, ?, ?, ?);`,
+            sql: `INSERT INTO prepare_sku_lot_diamonds (lot_id, diamond_productid, diamond_subproductid, diamond_unit, pcs, weight, rate, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
             args: [
               newLotId,
               parseInt(item.diamond_productid, 10),
               item.diamond_subproductid ? parseInt(item.diamond_subproductid, 10) : null,
               item.diamond_unit || 'C',
               parseInt(item.pcs, 10) || 0,
-              parseFloat(item.weight) || 0.0,
+              itemWt,
+              itemRate,
+              itemAmt,
             ],
           });
         }
@@ -514,14 +618,17 @@ export async function updatePrepareSkuLotController(req, res) {
       stone_unit = 'G',
       total_stone_pcs,
       total_stone_weight,
+      total_stone_amount,
       stone_items = [],
       diamond_productid,
       diamond_subproductid,
       diamond_unit = 'C',
       total_diamond_pcs,
       total_diamond_weight,
+      total_diamond_amount,
       diamond_items = [],
       remarks,
+      is_active,
       status,
     } = req.body;
 
@@ -536,6 +643,7 @@ export async function updatePrepareSkuLotController(req, res) {
 
     let finalStonePcs = parseInt(total_stone_pcs, 10) || 0;
     let finalStoneWt = parseFloat(total_stone_weight) || 0.0;
+    let finalStoneAmount = parseFloat(total_stone_amount) || 0.0;
     let finalStoneProductId = stone_productid ? parseInt(stone_productid, 10) : null;
     let finalStoneSubProductId = stone_subproductid ? parseInt(stone_subproductid, 10) : null;
     let finalStoneUnit = (String(stone_unit || 'G').toUpperCase() === 'C') ? 'C' : 'G';
@@ -543,6 +651,13 @@ export async function updatePrepareSkuLotController(req, res) {
     if (Array.isArray(stone_items) && stone_items.length > 0) {
       finalStonePcs = stone_items.reduce((sum, item) => sum + (parseInt(item.pcs, 10) || 0), 0);
       finalStoneWt = stone_items.reduce((sum, item) => sum + (parseFloat(item.weight) || 0.0), 0.0);
+      finalStoneAmount = stone_items.reduce((sum, item) => {
+        const amt = parseFloat(item.amount);
+        if (!isNaN(amt) && amt > 0) return sum + amt;
+        const w = parseFloat(item.weight) || 0.0;
+        const r = parseFloat(item.rate) || 0.0;
+        return sum + (w * r);
+      }, 0.0);
       finalStoneProductId = stone_items[0].stone_productid || finalStoneProductId;
       finalStoneSubProductId = stone_items[0].stone_subproductid || finalStoneSubProductId;
       finalStoneUnit = stone_items[0].stone_unit || finalStoneUnit;
@@ -550,6 +665,7 @@ export async function updatePrepareSkuLotController(req, res) {
 
     let finalDiamondPcs = parseInt(total_diamond_pcs, 10) || 0;
     let finalDiamondWt = parseFloat(total_diamond_weight) || 0.0;
+    let finalDiamondAmount = parseFloat(total_diamond_amount) || 0.0;
     let finalDiamondProductId = diamond_productid ? parseInt(diamond_productid, 10) : null;
     let finalDiamondSubProductId = diamond_subproductid ? parseInt(diamond_subproductid, 10) : null;
     let finalDiamondUnit = (String(diamond_unit || 'C').toUpperCase() === 'G') ? 'G' : 'C';
@@ -557,9 +673,21 @@ export async function updatePrepareSkuLotController(req, res) {
     if (Array.isArray(diamond_items) && diamond_items.length > 0) {
       finalDiamondPcs = diamond_items.reduce((sum, item) => sum + (parseInt(item.pcs, 10) || 0), 0);
       finalDiamondWt = diamond_items.reduce((sum, item) => sum + (parseFloat(item.weight) || 0.0), 0.0);
+      finalDiamondAmount = diamond_items.reduce((sum, item) => {
+        const amt = parseFloat(item.amount);
+        if (!isNaN(amt) && amt > 0) return sum + amt;
+        const w = parseFloat(item.weight) || 0.0;
+        const r = parseFloat(item.rate) || 0.0;
+        return sum + (w * r);
+      }, 0.0);
       finalDiamondProductId = diamond_items[0].diamond_productid || finalDiamondProductId;
       finalDiamondSubProductId = diamond_items[0].diamond_subproductid || finalDiamondSubProductId;
       finalDiamondUnit = diamond_items[0].diamond_unit || finalDiamondUnit;
+    }
+
+    let updatedIsActive = null;
+    if (is_active !== undefined && is_active !== null) {
+      updatedIsActive = (is_active === true || is_active === 1 || String(is_active).toUpperCase() === 'ACTIVE') ? 1 : 0;
     }
 
     const result = await client.execute({
@@ -581,14 +709,17 @@ export async function updatePrepareSkuLotController(req, res) {
           stone_unit = ?,
           total_stone_pcs = ?,
           total_stone_weight = ?,
+          total_stone_amount = ?,
           stone_items_json = ?,
           diamond_productid = ?,
           diamond_subproductid = ?,
           diamond_unit = ?,
           total_diamond_pcs = ?,
           total_diamond_weight = ?,
+          total_diamond_amount = ?,
           diamond_items_json = ?,
           remarks = COALESCE(?, remarks),
+          is_active = COALESCE(?, is_active),
           status = COALESCE(?, status),
           updated_at = CURRENT_TIMESTAMP
         WHERE lot_id = ?;
@@ -610,14 +741,17 @@ export async function updatePrepareSkuLotController(req, res) {
         finalStoneUnit,
         finalStonePcs,
         finalStoneWt,
+        finalStoneAmount,
         JSON.stringify(stone_items || []),
         finalDiamondProductId,
         finalDiamondSubProductId,
         finalDiamondUnit,
         finalDiamondPcs,
         finalDiamondWt,
+        finalDiamondAmount,
         JSON.stringify(diamond_items || []),
         remarks !== undefined ? String(remarks).trim() : null,
+        updatedIsActive,
         status ? String(status).trim() : null,
         lotId,
       ],
@@ -632,15 +766,20 @@ export async function updatePrepareSkuLotController(req, res) {
       await client.execute({ sql: `DELETE FROM prepare_sku_lot_stones WHERE lot_id = ?;`, args: [lotId] });
       for (const item of stone_items) {
         if (item.stone_productid) {
+          const itemWt = parseFloat(item.weight) || 0.0;
+          const itemRate = parseFloat(item.rate) || 0.0;
+          const itemAmt = parseFloat(item.amount) || (itemWt * itemRate);
           await client.execute({
-            sql: `INSERT INTO prepare_sku_lot_stones (lot_id, stone_productid, stone_subproductid, stone_unit, pcs, weight) VALUES (?, ?, ?, ?, ?, ?);`,
+            sql: `INSERT INTO prepare_sku_lot_stones (lot_id, stone_productid, stone_subproductid, stone_unit, pcs, weight, rate, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
             args: [
               lotId,
               parseInt(item.stone_productid, 10),
               item.stone_subproductid ? parseInt(item.stone_subproductid, 10) : null,
               item.stone_unit || 'G',
               parseInt(item.pcs, 10) || 0,
-              parseFloat(item.weight) || 0.0,
+              itemWt,
+              itemRate,
+              itemAmt,
             ],
           });
         }
@@ -652,15 +791,20 @@ export async function updatePrepareSkuLotController(req, res) {
       await client.execute({ sql: `DELETE FROM prepare_sku_lot_diamonds WHERE lot_id = ?;`, args: [lotId] });
       for (const item of diamond_items) {
         if (item.diamond_productid) {
+          const itemWt = parseFloat(item.weight) || 0.0;
+          const itemRate = parseFloat(item.rate) || 0.0;
+          const itemAmt = parseFloat(item.amount) || (itemWt * itemRate);
           await client.execute({
-            sql: `INSERT INTO prepare_sku_lot_diamonds (lot_id, diamond_productid, diamond_subproductid, diamond_unit, pcs, weight) VALUES (?, ?, ?, ?, ?, ?);`,
+            sql: `INSERT INTO prepare_sku_lot_diamonds (lot_id, diamond_productid, diamond_subproductid, diamond_unit, pcs, weight, rate, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
             args: [
               lotId,
               parseInt(item.diamond_productid, 10),
               item.diamond_subproductid ? parseInt(item.diamond_subproductid, 10) : null,
               item.diamond_unit || 'C',
               parseInt(item.pcs, 10) || 0,
-              parseFloat(item.weight) || 0.0,
+              itemWt,
+              itemRate,
+              itemAmt,
             ],
           });
         }
@@ -676,7 +820,7 @@ export async function updatePrepareSkuLotController(req, res) {
 
 /**
  * DELETE /api/tenant/stock/prepare-sku/:id
- * Deletes a prepare_sku_lot.
+ * Soft deactivates/disables a prepare_sku_lot (cannot be permanently deleted).
  */
 export async function deletePrepareSkuLotController(req, res) {
   try {
@@ -690,10 +834,9 @@ export async function deletePrepareSkuLotController(req, res) {
       return res.status(400).json({ success: false, message: "Invalid Lot ID." });
     }
 
-    await client.execute({ sql: `DELETE FROM prepare_sku_lot_stones WHERE lot_id = ?;`, args: [lotId] });
-    await client.execute({ sql: `DELETE FROM prepare_sku_lot_diamonds WHERE lot_id = ?;`, args: [lotId] });
+    // Soft deactivation: set is_active = 0, status = 'DISABLED'
     const result = await client.execute({
-      sql: `DELETE FROM prepare_sku_lots WHERE lot_id = ?;`,
+      sql: `UPDATE prepare_sku_lots SET is_active = 0, status = 'DISABLED', updated_at = CURRENT_TIMESTAMP WHERE lot_id = ?;`,
       args: [lotId],
     });
 
@@ -701,9 +844,9 @@ export async function deletePrepareSkuLotController(req, res) {
       return res.status(404).json({ success: false, message: "SKU Lot not found." });
     }
 
-    return res.json({ success: true, message: "SKU Lot deleted successfully." });
+    return res.json({ success: true, message: "SKU Lot deactivated/disabled successfully." });
   } catch (error) {
     console.error("Error deletePrepareSkuLotController:", error);
-    return res.status(500).json({ success: false, message: error?.message || "Failed to delete SKU lot." });
+    return res.status(500).json({ success: false, message: error?.message || "Failed to deactivate SKU lot." });
   }
 }
