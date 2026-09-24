@@ -2342,7 +2342,7 @@ class _PrepareSkuScreenState extends State<PrepareSkuScreen> {
 }
 
 /// =========================================================================
-/// STONES & DIAMONDS MASTER POPUP DIALOG WIDGET
+/// UNIFIED STONES & DIAMONDS MASTER POPUP DIALOG (SINGLE WINDOW ENTRY)
 /// =========================================================================
 class _StonesDiamondsDialog extends StatefulWidget {
   final List<SkuLotStoneItem> initialStones;
@@ -2364,48 +2364,53 @@ class _StonesDiamondsDialog extends StatefulWidget {
   State<_StonesDiamondsDialog> createState() => _StonesDiamondsDialogState();
 }
 
-class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> {
   late List<SkuLotStoneItem> _stones;
   late List<SkuLotDiamondItem> _diamonds;
 
-  List<ProductRecord> _stoneProducts = [];
-  List<ProductRecord> _diamondProducts = [];
+  List<ProductRecord> _combinedProducts = [];
 
-  // Stone Entry Form State
-  int? _selectedStoneProductId;
-  int? _selectedStoneSubProductId;
-  String _selectedStoneUnit = 'G';
-  final _stonePcsController = TextEditingController(text: '1');
-  final _stoneWeightController = TextEditingController();
-  final _stoneRateController = TextEditingController();
-  final _stoneAmountController = TextEditingController();
+  // Quick Entry Form Controls
+  int? _quickProductId;
+  int? _quickSubProductId;
+  String _quickUnit = 'G';
+  final _quickPcsCtrl = TextEditingController(text: '1');
+  final _quickWtCtrl = TextEditingController();
+  final _quickRateCtrl = TextEditingController();
+  final _quickAmtCtrl = TextEditingController();
 
-  final _stonePcsFocus = FocusNode();
-  final _stoneWeightFocus = FocusNode();
-  final _stoneRateFocus = FocusNode();
-  final _stoneAmountFocus = FocusNode();
-  int? _editingStoneIndex;
+  final FocusNode _quickProdFocus = FocusNode();
+  final FocusNode _quickSubProdFocus = FocusNode();
+  final FocusNode _quickUnitFocus = FocusNode();
+  final FocusNode _quickPcsFocus = FocusNode();
+  final FocusNode _quickWtFocus = FocusNode();
+  final FocusNode _quickRateFocus = FocusNode();
+  final FocusNode _quickAmtFocus = FocusNode();
+  final FocusNode _quickAddFocus = FocusNode();
 
-  // Diamond Entry Form State
-  int? _selectedDiaProductId;
-  int? _selectedDiaSubProductId;
-  String _selectedDiaUnit = 'C';
-  final _diaPcsController = TextEditingController(text: '1');
-  final _diaWeightController = TextEditingController();
-  final _diaRateController = TextEditingController();
-  final _diaAmountController = TextEditingController();
+  // Editing state
+  bool _isEditing = false;
+  bool _editingIsDiamond = false;
+  int? _editingIndex;
+  String? _noticeMsg;
 
-  final _diaPcsFocus = FocusNode();
-  final _diaWeightFocus = FocusNode();
-  final _diaRateFocus = FocusNode();
-  final _diaAmountFocus = FocusNode();
-  int? _editingDiaIndex;
+  bool _isDiamondProduct(ProductRecord? p) {
+    if (p == null) return false;
+    final m = (p.metalid ?? '').toUpperCase().trim();
+    final d = p.diastone.toUpperCase().trim();
+    return m == 'D' || m == 'DIAMOND' || d == 'D' || d == 'DIAMOND';
+  }
+
+  bool _isStoneProduct(ProductRecord? p) {
+    if (p == null) return false;
+    final m = (p.metalid ?? '').toUpperCase().trim();
+    final d = p.diastone.toUpperCase().trim();
+    return m == 'T' || m == 'STONE' || m == 'S' || d == 'S' || d == 'STONE' || d == 'SYNTHETIC' || d == 'P' || d == 'PRECIOUS';
+  }
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
 
     // Deep copy initial lists
     _stones = widget.initialStones
@@ -2436,238 +2441,187 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
             ))
         .toList();
 
-    _stoneProducts = widget.allProducts.where((p) => p.diastone.toUpperCase().trim() == 'S').toList();
-    _diamondProducts = widget.allProducts.where((p) => p.diastone.toUpperCase().trim() == 'D').toList();
-
-    if (_stoneProducts.isNotEmpty) {
-      _selectedStoneProductId = _stoneProducts.first.productid;
+    // Filter combined stone and diamond products
+    _combinedProducts = widget.allProducts.where((p) => _isDiamondProduct(p) || _isStoneProduct(p)).toList();
+    if (_combinedProducts.isEmpty) {
+      _combinedProducts = widget.allProducts;
     }
-    if (_diamondProducts.isNotEmpty) {
-      _selectedDiaProductId = _diamondProducts.first.productid;
+
+    if (_combinedProducts.isNotEmpty) {
+      _quickProductId = _combinedProducts.first.productid;
+      _quickUnit = _isDiamondProduct(_combinedProducts.first) ? 'C' : 'G';
     }
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _quickPcsCtrl.dispose();
+    _quickWtCtrl.dispose();
+    _quickRateCtrl.dispose();
+    _quickAmtCtrl.dispose();
 
-    _stonePcsController.dispose();
-    _stoneWeightController.dispose();
-    _stoneRateController.dispose();
-    _stoneAmountController.dispose();
-    _stonePcsFocus.dispose();
-    _stoneWeightFocus.dispose();
-    _stoneRateFocus.dispose();
-    _stoneAmountFocus.dispose();
-
-    _diaPcsController.dispose();
-    _diaWeightController.dispose();
-    _diaRateController.dispose();
-    _diaAmountController.dispose();
-    _diaPcsFocus.dispose();
-    _diaWeightFocus.dispose();
-    _diaRateFocus.dispose();
-    _diaAmountFocus.dispose();
+    _quickProdFocus.dispose();
+    _quickSubProdFocus.dispose();
+    _quickUnitFocus.dispose();
+    _quickPcsFocus.dispose();
+    _quickWtFocus.dispose();
+    _quickRateFocus.dispose();
+    _quickAmtFocus.dispose();
+    _quickAddFocus.dispose();
 
     super.dispose();
   }
 
-  void _onStoneWeightOrRateChanged() {
-    final wt = double.tryParse(_stoneWeightController.text.trim()) ?? 0.0;
-    final rate = double.tryParse(_stoneRateController.text.trim()) ?? 0.0;
+  void _onWeightOrRateChanged() {
+    final wt = double.tryParse(_quickWtCtrl.text.trim()) ?? 0.0;
+    final rate = double.tryParse(_quickRateCtrl.text.trim()) ?? 0.0;
     if (wt > 0 && rate > 0) {
       final total = wt * rate;
-      _stoneAmountController.text = total.toStringAsFixed(2);
+      _quickAmtCtrl.text = total.toStringAsFixed(2);
     }
   }
 
-  void _onDiaWeightOrRateChanged() {
-    final wt = double.tryParse(_diaWeightController.text.trim()) ?? 0.0;
-    final rate = double.tryParse(_diaRateController.text.trim()) ?? 0.0;
-    if (wt > 0 && rate > 0) {
-      final total = wt * rate;
-      _diaAmountController.text = total.toStringAsFixed(2);
-    }
-  }
-
-  void _addOrUpdateStone() {
-    final wt = double.tryParse(_stoneWeightController.text.trim()) ?? 0.0;
-    if (_selectedStoneProductId == null) {
-      _showModalError("Please select a Stone Product");
+  void _addOrUpdateItem() {
+    final wt = double.tryParse(_quickWtCtrl.text.trim()) ?? 0.0;
+    if (_quickProductId == null) {
+      _showModalError("Please select a Stone / Diamond Product");
+      _quickProdFocus.requestFocus();
       return;
     }
     if (wt <= 0) {
-      _showModalError("Please enter a valid Stone Weight > 0");
-      _stoneWeightFocus.requestFocus();
+      _showModalError("Please enter a valid Weight / Carats > 0");
+      _quickWtFocus.requestFocus();
       return;
     }
 
-    final pcs = int.tryParse(_stonePcsController.text.trim()) ?? 1;
-    final rate = double.tryParse(_stoneRateController.text.trim()) ?? 0.0;
-    final enteredAmt = double.tryParse(_stoneAmountController.text.trim()) ?? 0.0;
+    final pcs = int.tryParse(_quickPcsCtrl.text.trim()) ?? 1;
+    final rate = double.tryParse(_quickRateCtrl.text.trim()) ?? 0.0;
+    final enteredAmt = double.tryParse(_quickAmtCtrl.text.trim()) ?? 0.0;
     final amount = enteredAmt > 0 ? enteredAmt : (wt * rate);
 
-    final prod = _stoneProducts.firstWhere((p) => p.productid == _selectedStoneProductId, orElse: () => _stoneProducts.first);
-    final matchingSubs = widget.allSubProducts.where((sp) => sp.subproductid == _selectedStoneSubProductId).toList();
+    final prod = _combinedProducts.firstWhere((p) => p.productid == _quickProductId, orElse: () => _combinedProducts.first);
+    final isDia = _isDiamondProduct(prod);
+
+    final matchingSubs = widget.allSubProducts.where((sp) => sp.subproductid == _quickSubProductId).toList();
     final subName = matchingSubs.isNotEmpty ? matchingSubs.first.subproductname : null;
 
-    final item = SkuLotStoneItem(
-      stoneProductId: _selectedStoneProductId,
-      stoneProductName: prod.productname,
-      stoneSubProductId: _selectedStoneSubProductId,
-      stoneSubProductName: subName,
-      stoneUnit: _selectedStoneUnit,
-      pcs: pcs > 0 ? pcs : 1,
-      weight: wt,
-      rate: rate,
-      amount: amount,
-    );
-
     setState(() {
-      if (_editingStoneIndex != null && _editingStoneIndex! < _stones.length) {
-        _stones[_editingStoneIndex!] = item;
-        _editingStoneIndex = null;
-      } else {
-        _stones.add(item);
+      if (_isEditing && _editingIndex != null) {
+        if (_editingIsDiamond) {
+          if (_editingIndex! < _diamonds.length) {
+            _diamonds.removeAt(_editingIndex!);
+          }
+        } else {
+          if (_editingIndex! < _stones.length) {
+            _stones.removeAt(_editingIndex!);
+          }
+        }
       }
-      // Reset input fields for the next row
-      _stonePcsController.text = '1';
-      _stoneWeightController.clear();
-      _stoneRateController.clear();
-      _stoneAmountController.clear();
+
+      if (isDia) {
+        _diamonds.add(SkuLotDiamondItem(
+          diamondProductId: _quickProductId,
+          diamondProductName: prod.productname,
+          diamondSubProductId: _quickSubProductId,
+          diamondSubProductName: subName,
+          diamondUnit: _quickUnit,
+          pcs: pcs > 0 ? pcs : 1,
+          weight: wt,
+          rate: rate,
+          amount: amount,
+        ));
+      } else {
+        _stones.add(SkuLotStoneItem(
+          stoneProductId: _quickProductId,
+          stoneProductName: prod.productname,
+          stoneSubProductId: _quickSubProductId,
+          stoneSubProductName: subName,
+          stoneUnit: _quickUnit,
+          pcs: pcs > 0 ? pcs : 1,
+          weight: wt,
+          rate: rate,
+          amount: amount,
+        ));
+      }
+
+      _isEditing = false;
+      _editingIndex = null;
+      _quickPcsCtrl.text = '1';
+      _quickWtCtrl.clear();
+      _quickRateCtrl.clear();
+      _quickAmtCtrl.clear();
+      _noticeMsg = "✓ ${isDia ? '✨ Diamond' : '💎 Stone'} item added! Total: ₹${amount.toStringAsFixed(2)}";
     });
 
-    // Reset focus back to Pcs so user can immediately type Row 2, Row 3!
-    _stonePcsFocus.requestFocus();
+    // Re-focus immediately on Product Dropdown for rapid consecutive data entry
+    _quickProdFocus.requestFocus();
   }
 
-  void _editStone(int index) {
+  void _editStoneItem(int index) {
     final item = _stones[index];
     setState(() {
-      _editingStoneIndex = index;
-      _selectedStoneProductId = item.stoneProductId;
-      _selectedStoneSubProductId = item.stoneSubProductId;
-      _selectedStoneUnit = item.stoneUnit.toUpperCase() == 'C' ? 'C' : 'G';
-      _stonePcsController.text = item.pcs.toString();
-      _stoneWeightController.text = item.weight > 0 ? item.weight.toStringAsFixed(3) : '';
-      _stoneRateController.text = item.rate > 0 ? item.rate.toStringAsFixed(2) : '';
-      _stoneAmountController.text = item.calculatedAmount > 0 ? item.calculatedAmount.toStringAsFixed(2) : '';
+      _isEditing = true;
+      _editingIsDiamond = false;
+      _editingIndex = index;
+
+      _quickProductId = item.stoneProductId;
+      _quickSubProductId = item.stoneSubProductId;
+      _quickUnit = item.stoneUnit.toUpperCase() == 'C' ? 'C' : 'G';
+      _quickPcsCtrl.text = item.pcs.toString();
+      _quickWtCtrl.text = item.weight > 0 ? item.weight.toStringAsFixed(3) : '';
+      _quickRateCtrl.text = item.rate > 0 ? item.rate.toStringAsFixed(2) : '';
+      _quickAmtCtrl.text = item.calculatedAmount > 0 ? item.calculatedAmount.toStringAsFixed(2) : '';
+      _noticeMsg = "Editing Stone #${index + 1}";
     });
-    _stonePcsFocus.requestFocus();
+    _quickWtFocus.requestFocus();
   }
 
-  void _cancelStoneEdit() {
-    setState(() {
-      _editingStoneIndex = null;
-      _stonePcsController.text = '1';
-      _stoneWeightController.clear();
-      _stoneRateController.clear();
-      _stoneAmountController.clear();
-    });
-  }
-
-  void _deleteStone(int index) {
-    setState(() {
-      _stones.removeAt(index);
-      if (_editingStoneIndex == index) {
-        _editingStoneIndex = null;
-        _stonePcsController.text = '1';
-        _stoneWeightController.clear();
-        _stoneRateController.clear();
-        _stoneAmountController.clear();
-      } else if (_editingStoneIndex != null && _editingStoneIndex! > index) {
-        _editingStoneIndex = _editingStoneIndex! - 1;
-      }
-    });
-  }
-
-  void _addOrUpdateDiamond() {
-    final wt = double.tryParse(_diaWeightController.text.trim()) ?? 0.0;
-    if (_selectedDiaProductId == null) {
-      _showModalError("Please select a Diamond Product");
-      return;
-    }
-    if (wt <= 0) {
-      _showModalError("Please enter a valid Diamond Carats/Weight > 0");
-      _diaWeightFocus.requestFocus();
-      return;
-    }
-
-    final pcs = int.tryParse(_diaPcsController.text.trim()) ?? 1;
-    final rate = double.tryParse(_diaRateController.text.trim()) ?? 0.0;
-    final enteredAmt = double.tryParse(_diaAmountController.text.trim()) ?? 0.0;
-    final amount = enteredAmt > 0 ? enteredAmt : (wt * rate);
-
-    final prod = _diamondProducts.firstWhere((p) => p.productid == _selectedDiaProductId, orElse: () => _diamondProducts.first);
-    final matchingSubs = widget.allSubProducts.where((sp) => sp.subproductid == _selectedDiaSubProductId).toList();
-    final subName = matchingSubs.isNotEmpty ? matchingSubs.first.subproductname : null;
-
-    final item = SkuLotDiamondItem(
-      diamondProductId: _selectedDiaProductId,
-      diamondProductName: prod.productname,
-      diamondSubProductId: _selectedDiaSubProductId,
-      diamondSubProductName: subName,
-      diamondUnit: _selectedDiaUnit,
-      pcs: pcs > 0 ? pcs : 1,
-      weight: wt,
-      rate: rate,
-      amount: amount,
-    );
-
-    setState(() {
-      if (_editingDiaIndex != null && _editingDiaIndex! < _diamonds.length) {
-        _diamonds[_editingDiaIndex!] = item;
-        _editingDiaIndex = null;
-      } else {
-        _diamonds.add(item);
-      }
-      // Reset input fields for the next row
-      _diaPcsController.text = '1';
-      _diaWeightController.clear();
-      _diaRateController.clear();
-      _diaAmountController.clear();
-    });
-
-    // Reset focus back to Pcs for next row entry!
-    _diaPcsFocus.requestFocus();
-  }
-
-  void _editDiamond(int index) {
+  void _editDiamondItem(int index) {
     final item = _diamonds[index];
     setState(() {
-      _editingDiaIndex = index;
-      _selectedDiaProductId = item.diamondProductId;
-      _selectedDiaSubProductId = item.diamondSubProductId;
-      _selectedDiaUnit = item.diamondUnit.toUpperCase() == 'G' ? 'G' : 'C';
-      _diaPcsController.text = item.pcs.toString();
-      _diaWeightController.text = item.weight > 0 ? item.weight.toStringAsFixed(3) : '';
-      _diaRateController.text = item.rate > 0 ? item.rate.toStringAsFixed(2) : '';
-      _diaAmountController.text = item.calculatedAmount > 0 ? item.calculatedAmount.toStringAsFixed(2) : '';
+      _isEditing = true;
+      _editingIsDiamond = true;
+      _editingIndex = index;
+
+      _quickProductId = item.diamondProductId;
+      _quickSubProductId = item.diamondSubProductId;
+      _quickUnit = item.diamondUnit.toUpperCase() == 'G' ? 'G' : 'C';
+      _quickPcsCtrl.text = item.pcs.toString();
+      _quickWtCtrl.text = item.weight > 0 ? item.weight.toStringAsFixed(3) : '';
+      _quickRateCtrl.text = item.rate > 0 ? item.rate.toStringAsFixed(2) : '';
+      _quickAmtCtrl.text = item.calculatedAmount > 0 ? item.calculatedAmount.toStringAsFixed(2) : '';
+      _noticeMsg = "Editing Diamond #${index + 1}";
     });
-    _diaPcsFocus.requestFocus();
+    _quickWtFocus.requestFocus();
   }
 
-  void _cancelDiaEdit() {
+  void _cancelEdit() {
     setState(() {
-      _editingDiaIndex = null;
-      _diaPcsController.text = '1';
-      _diaWeightController.clear();
-      _diaRateController.clear();
-      _diaAmountController.clear();
+      _isEditing = false;
+      _editingIndex = null;
+      _quickPcsCtrl.text = '1';
+      _quickWtCtrl.clear();
+      _quickRateCtrl.clear();
+      _quickAmtCtrl.clear();
+      _noticeMsg = null;
+    });
+    _quickProdFocus.requestFocus();
+  }
+
+  void _deleteStoneItem(int index) {
+    setState(() {
+      _stones.removeAt(index);
+      if (_isEditing && !_editingIsDiamond && _editingIndex == index) {
+        _cancelEdit();
+      }
     });
   }
 
-  void _deleteDiamond(int index) {
+  void _deleteDiamondItem(int index) {
     setState(() {
       _diamonds.removeAt(index);
-      if (_editingDiaIndex == index) {
-        _editingDiaIndex = null;
-        _diaPcsController.text = '1';
-        _diaWeightController.clear();
-        _diaRateController.clear();
-        _diaAmountController.clear();
-      } else if (_editingDiaIndex != null && _editingDiaIndex! > index) {
-        _editingDiaIndex = _editingDiaIndex! - 1;
+      if (_isEditing && _editingIsDiamond && _editingIndex == index) {
+        _cancelEdit();
       }
     });
   }
@@ -2688,7 +2642,7 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
       labelText: label,
       hintText: hint,
       isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       filled: true,
       fillColor: Colors.white,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
@@ -2738,17 +2692,39 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
     final diaTotalCarats = _diamonds.fold<double>(0.0, (sum, i) => sum + (i.diamondUnit.toUpperCase() == 'C' ? i.weight : (i.weight * 5.0)));
     final diaTotalCost = _diamonds.fold<double>(0.0, (sum, i) => sum + i.calculatedAmount);
 
-    final calculatedNet = (grsWt - stoneWtGrams - diaWtGrams) > 0 ? (grsWt - stoneWtGrams - diaWtGrams) : 0.0;
+    final totalLessGrams = stoneWtGrams + diaWtGrams;
+    final calculatedNet = (grsWt - totalLessGrams).clamp(0.0, 999999.0);
     final combinedPurchaseCost = stoneTotalCost + diaTotalCost;
+    final totalRowsCount = _stones.length + _diamonds.length;
+
+    final matchingSubs = widget.allSubProducts.where((sp) {
+      if (_quickProductId == null) return true;
+      return sp.productid == _quickProductId;
+    }).toList();
+
+    // Auto-focus on Product Dropdown when dialog opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_quickProdFocus.canRequestFocus &&
+          !_quickProdFocus.hasFocus &&
+          !_quickSubProdFocus.hasFocus &&
+          !_quickUnitFocus.hasFocus &&
+          !_quickPcsFocus.hasFocus &&
+          !_quickWtFocus.hasFocus &&
+          !_quickRateFocus.hasFocus &&
+          !_quickAmtFocus.hasFocus &&
+          !_isEditing) {
+        _quickProdFocus.requestFocus();
+      }
+    });
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 1120, maxHeight: 760),
+        constraints: const BoxConstraints(maxWidth: 1180, maxHeight: 780),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.22),
@@ -2761,10 +2737,10 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
           children: [
             // Modal Header
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
               decoration: const BoxDecoration(
                 color: Color(0xFF0F172A),
-                borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+                borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2772,25 +2748,25 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(7),
                         decoration: BoxDecoration(
                           color: const Color(0xFF059669).withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.diamond_rounded, color: Color(0xFF34D399), size: 22),
+                        child: const Icon(Icons.diamond_rounded, color: Color(0xFF34D399), size: 20),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: 12),
                       const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "Stones & Diamonds Master Grid",
-                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+                            "Lot Stones & Diamonds Entry (Single Window)",
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                           ),
                           SizedBox(height: 2),
                           Text(
-                            "Add multiple stone/diamond rows. Enter key moves to next field and adds to grid seamlessly.",
-                            style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+                            "Select Stone (S) or Diamond (D) in a single dropdown. Press Enter to navigate through fields and add to grid.",
+                            style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
                           ),
                         ],
                       ),
@@ -2807,82 +2783,455 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
 
             // Live Stat Pills Banner
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
               color: const Color(0xFFF8FAFC),
               child: Wrap(
-                spacing: 12,
-                runSpacing: 8,
+                spacing: 10,
+                runSpacing: 6,
                 alignment: WrapAlignment.spaceBetween,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   _buildStatPill("GROSS WT", "${grsWt.toStringAsFixed(3)} g", const Color(0xFFD97706), Icons.scale_rounded),
-                  _buildStatPill("STONES WT", "${stoneWtGrams.toStringAsFixed(3)} g ($stonePcs pcs)", const Color(0xFF059669), Icons.grain_rounded),
-                  _buildStatPill("DIAMONDS WT", "${diaTotalCarats.toStringAsFixed(2)} ct (${diaWtGrams.toStringAsFixed(3)}g / $diaPcs pcs)", const Color(0xFF0284C7), Icons.diamond_rounded),
-                  _buildStatPill("CALCULATED NET WT", "${calculatedNet.toStringAsFixed(3)} g", const Color(0xFF4F46E5), Icons.fitness_center_rounded, isLarge: true),
-                  _buildStatPill("TOTAL PURCHASE COST", "₹${combinedPurchaseCost.toStringAsFixed(2)}", const Color(0xFF10B981), Icons.currency_rupee_rounded, isLarge: true),
+                  _buildStatPill("STONES LESS WT", "${stoneWtGrams.toStringAsFixed(3)} g ($stonePcs pcs)", const Color(0xFF059669), Icons.grain_rounded),
+                  _buildStatPill("DIAMONDS LESS WT", "${diaWtGrams.toStringAsFixed(3)} g (${diaTotalCarats.toStringAsFixed(2)} ct / $diaPcs pcs)", const Color(0xFF0284C7), Icons.diamond_rounded),
+                  _buildStatPill("NET GOLD WT", "${calculatedNet.toStringAsFixed(3)} g", const Color(0xFF4F46E5), Icons.fitness_center_rounded, isLarge: true),
+                  _buildStatPill("TOTAL PUR COST", "₹${combinedPurchaseCost.toStringAsFixed(2)}", const Color(0xFF10B981), Icons.currency_rupee_rounded, isLarge: true),
                 ],
               ),
             ),
             const Divider(height: 1, color: Color(0xFFE2E8F0)),
 
-            // Tab Bar
-            Container(
-              color: Colors.white,
-              child: TabBar(
-                controller: _tabController,
-                labelColor: GlassTheme.primaryNeon,
-                unselectedLabelColor: const Color(0xFF64748B),
-                indicatorColor: GlassTheme.primaryNeon,
-                indicatorWeight: 3,
-                tabs: [
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.grain_rounded, size: 18, color: Color(0xFF059669)),
-                        const SizedBox(width: 8),
-                        Text("Stones (DIASTONE = 'S') [${_stones.length}]", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.diamond_rounded, size: 18, color: Color(0xFF0284C7)),
-                        const SizedBox(width: 8),
-                        Text("Diamonds (DIASTONE = 'D') [${_diamonds.length}]", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Tab Views
+            // Single Quick Entry Form & Unified Table
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildStonesTabContent(),
-                  _buildDiamondsTabContent(),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // SINGLE QUICK ENTRY BAR
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _isEditing ? const Color(0xFFFEF3C7) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _isEditing ? const Color(0xFFF59E0B) : const Color(0xFFCBD5E1),
+                          width: _isEditing ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _isEditing ? Icons.edit_note_rounded : Icons.playlist_add_rounded,
+                                size: 18,
+                                color: _isEditing ? const Color(0xFFB45309) : const Color(0xFF0284C7),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isEditing ? "Edit Item Row (${_editingIsDiamond ? 'Diamond' : 'Stone'})" : "Add Stone / Diamond Item",
+                                style: TextStyle(
+                                  color: _isEditing ? const Color(0xFF92400E) : const Color(0xFF0F172A),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  "Enter-Key Fast Navigation",
+                                  style: TextStyle(color: Color(0xFF0284C7), fontSize: 9.5, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const Spacer(),
+                              if (_noticeMsg != null)
+                                Text(
+                                  _noticeMsg!,
+                                  style: TextStyle(
+                                    color: _noticeMsg!.startsWith('✓') ? const Color(0xFF059669) : const Color(0xFFB45309),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Controls Row
+                          Row(
+                            children: [
+                              // 1. Unified Product Selector (Stone & Diamond)
+                              Expanded(
+                                flex: 4,
+                                child: DropdownButtonFormField<int?>(
+                                  initialValue: _quickProductId,
+                                  focusNode: _quickProdFocus,
+                                  isExpanded: true,
+                                  decoration: _modalInputDecoration('Item / Product (D/S) *'),
+                                  items: _combinedProducts.map((p) {
+                                    final isDia = _isDiamondProduct(p);
+                                    final isStn = _isStoneProduct(p);
+                                    final prefix = isDia ? '✨ [Dia]' : (isStn ? '💎 [Stn]' : '[Item]');
+                                    return DropdownMenuItem<int?>(
+                                      value: p.productid,
+                                      child: Text(
+                                        "$prefix ${p.productname}",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: isDia ? FontWeight.bold : FontWeight.w500,
+                                          color: isDia ? const Color(0xFF0284C7) : const Color(0xFF0F172A),
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _quickProductId = val;
+                                      if (val != null) {
+                                        final match = _combinedProducts.where((p) => p.productid == val).toList();
+                                        if (match.isNotEmpty) {
+                                          _quickUnit = _isDiamondProduct(match.first) ? 'C' : 'G';
+                                        }
+                                      }
+                                      _quickSubProductId = null;
+                                    });
+                                    _quickSubProdFocus.requestFocus();
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // 2. Sub-Product Selector
+                              Expanded(
+                                flex: 3,
+                                child: DropdownButtonFormField<int?>(
+                                  initialValue: _quickSubProductId,
+                                  focusNode: _quickSubProdFocus,
+                                  isExpanded: true,
+                                  decoration: _modalInputDecoration('Sub-Product (Optional)'),
+                                  items: [
+                                    const DropdownMenuItem<int?>(value: null, child: Text("None / Default", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))),
+                                    ...matchingSubs.map((sp) => DropdownMenuItem<int?>(
+                                          value: sp.subproductid,
+                                          child: Text(sp.subproductname, style: const TextStyle(fontSize: 12)),
+                                        )),
+                                  ],
+                                  onChanged: (val) {
+                                    setState(() => _quickSubProductId = val);
+                                    _quickUnitFocus.requestFocus();
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // 3. Unit Selector
+                              SizedBox(
+                                width: 95,
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: _quickUnit,
+                                  focusNode: _quickUnitFocus,
+                                  decoration: _modalInputDecoration('Unit'),
+                                  items: const [
+                                    DropdownMenuItem(value: 'G', child: Text('Gram (G)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold))),
+                                    DropdownMenuItem(value: 'C', child: Text('Carat (C)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)))),
+                                  ],
+                                  onChanged: (val) {
+                                    setState(() => _quickUnit = val ?? 'G');
+                                    _quickPcsFocus.requestFocus();
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // 4. Pieces (Pcs)
+                              SizedBox(
+                                width: 70,
+                                child: TextFormField(
+                                  controller: _quickPcsCtrl,
+                                  focusNode: _quickPcsFocus,
+                                  keyboardType: TextInputType.number,
+                                  textInputAction: TextInputAction.next,
+                                  onFieldSubmitted: (_) => _quickWtFocus.requestFocus(),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  decoration: _modalInputDecoration('Pcs *'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // 5. Weight / Carats
+                              SizedBox(
+                                width: 95,
+                                child: TextFormField(
+                                  controller: _quickWtCtrl,
+                                  focusNode: _quickWtFocus,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  textInputAction: TextInputAction.next,
+                                  onChanged: (_) => _onWeightOrRateChanged(),
+                                  onFieldSubmitted: (_) => _quickRateFocus.requestFocus(),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                  decoration: _modalInputDecoration('Weight *', hint: '0.000'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // 6. Purchase Rate
+                              SizedBox(
+                                width: 95,
+                                child: TextFormField(
+                                  controller: _quickRateCtrl,
+                                  focusNode: _quickRateFocus,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  textInputAction: TextInputAction.next,
+                                  onChanged: (_) => _onWeightOrRateChanged(),
+                                  onFieldSubmitted: (_) => _quickAmtFocus.requestFocus(),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                  decoration: _modalInputDecoration('Pur Rate ₹', hint: '0.00'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // 7. Amount
+                              SizedBox(
+                                width: 105,
+                                child: TextFormField(
+                                  controller: _quickAmtCtrl,
+                                  focusNode: _quickAmtFocus,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  textInputAction: TextInputAction.done,
+                                  onFieldSubmitted: (_) => _addOrUpdateItem(),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                                  decoration: _modalInputDecoration('Amount ₹', hint: '0.00'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // Action Button
+                              ElevatedButton.icon(
+                                focusNode: _quickAddFocus,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _isEditing ? const Color(0xFFD97706) : const Color(0xFF0284C7),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                icon: Icon(_isEditing ? Icons.check_circle : Icons.add_circle, size: 16),
+                                label: Text(_isEditing ? "Update" : "Add", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                onPressed: _addOrUpdateItem,
+                              ),
+                              if (_isEditing) ...[
+                                const SizedBox(width: 6),
+                                IconButton(
+                                  tooltip: "Cancel Edit",
+                                  icon: const Icon(Icons.close, color: Color(0xFF64748B), size: 18),
+                                  onPressed: _cancelEdit,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // UNIFIED DATA GRID TABLE
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: totalRowsCount == 0
+                            ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.diamond_outlined, size: 42, color: const Color(0xFF94A3B8).withValues(alpha: 0.5)),
+                                    const SizedBox(height: 8),
+                                    const Text("No Stone or Diamond items added yet.", style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13)),
+                                    const SizedBox(height: 4),
+                                    const Text("Select a product in the entry bar above and press Enter to add items.", style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+                                  ],
+                                ),
+                              )
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.vertical,
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: DataTable(
+                                      headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+                                      dataRowMinHeight: 38,
+                                      dataRowMaxHeight: 44,
+                                      horizontalMargin: 14,
+                                      columnSpacing: 16,
+                                      columns: const [
+                                        DataColumn(label: Text("#", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Type", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Product Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Sub-Product", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Unit", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Pcs", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Weight", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Less Wt (g)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Rate (₹)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Total Amount (₹)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                        DataColumn(label: Text("Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                                      ],
+                                      rows: [
+                                        // Stones Rows
+                                        ..._stones.asMap().entries.map((entry) {
+                                          final idx = entry.key;
+                                          final item = entry.value;
+                                          return DataRow(
+                                            color: WidgetStateProperty.resolveWith<Color?>((states) {
+                                              if (_isEditing && !_editingIsDiamond && _editingIndex == idx) {
+                                                return const Color(0xFFFEF3C7);
+                                              }
+                                              return null;
+                                            }),
+                                            cells: [
+                                              DataCell(Text("${idx + 1}", style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)))),
+                                              DataCell(
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(color: const Color(0xFF059669).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
+                                                  child: const Text("💎 Stone", style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
+                                                ),
+                                              ),
+                                              DataCell(Text(item.stoneProductName ?? "Stone", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
+                                              DataCell(Text(item.stoneSubProductName ?? "-", style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)))),
+                                              DataCell(
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4)),
+                                                  child: Text(item.stoneUnit.toUpperCase() == 'C' ? "Carat (C)" : "Gram (G)", style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                                ),
+                                              ),
+                                              DataCell(Text("${item.pcs}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+                                              DataCell(Text("${item.weight.toStringAsFixed(3)} ${item.stoneUnit}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
+                                              DataCell(Text("${item.weightInGrams.toStringAsFixed(3)} g", style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)))),
+                                              DataCell(Text(item.rate > 0 ? "₹${item.rate.toStringAsFixed(2)}" : "-", style: const TextStyle(fontSize: 11.5))),
+                                              DataCell(Text("₹${item.calculatedAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF059669)))),
+                                              DataCell(
+                                                Focus(
+                                                  canRequestFocus: false,
+                                                  skipTraversal: true,
+                                                  descendantsAreFocusable: false,
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      IconButton(
+                                                        icon: const Icon(Icons.edit_outlined, size: 16, color: Color(0xFF0284C7)),
+                                                        tooltip: "Edit Stone",
+                                                        onPressed: () => _editStoneItem(idx),
+                                                      ),
+                                                      IconButton(
+                                                        icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF4444)),
+                                                        tooltip: "Remove Stone",
+                                                        onPressed: () => _deleteStoneItem(idx),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }),
+
+                                        // Diamonds Rows
+                                        ..._diamonds.asMap().entries.map((entry) {
+                                          final idx = entry.key;
+                                          final item = entry.value;
+                                          return DataRow(
+                                            color: WidgetStateProperty.resolveWith<Color?>((states) {
+                                              if (_isEditing && _editingIsDiamond && _editingIndex == idx) {
+                                                return const Color(0xFFFEF3C7);
+                                              }
+                                              return null;
+                                            }),
+                                            cells: [
+                                              DataCell(Text("${_stones.length + idx + 1}", style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)))),
+                                              DataCell(
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
+                                                  child: const Text("✨ Diamond", style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
+                                                ),
+                                              ),
+                                              DataCell(Text(item.diamondProductName ?? "Diamond", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
+                                              DataCell(Text(item.diamondSubProductName ?? "-", style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)))),
+                                              DataCell(
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4)),
+                                                  child: Text(item.diamondUnit.toUpperCase() == 'G' ? "Gram (G)" : "Carat (C)", style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                                ),
+                                              ),
+                                              DataCell(Text("${item.pcs}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+                                              DataCell(Text("${item.weight.toStringAsFixed(3)} ${item.diamondUnit}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
+                                              DataCell(Text("${item.weightInGrams.toStringAsFixed(3)} g", style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)))),
+                                              DataCell(Text(item.rate > 0 ? "₹${item.rate.toStringAsFixed(2)}" : "-", style: const TextStyle(fontSize: 11.5))),
+                                              DataCell(Text("₹${item.calculatedAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)))),
+                                              DataCell(
+                                                Focus(
+                                                  canRequestFocus: false,
+                                                  skipTraversal: true,
+                                                  descendantsAreFocusable: false,
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      IconButton(
+                                                        icon: const Icon(Icons.edit_outlined, size: 16, color: Color(0xFF0284C7)),
+                                                        tooltip: "Edit Diamond",
+                                                        onPressed: () => _editDiamondItem(idx),
+                                                      ),
+                                                      IconButton(
+                                                        icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF4444)),
+                                                        tooltip: "Remove Diamond",
+                                                        onPressed: () => _deleteDiamondItem(idx),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
 
             // Modal Footer
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
               decoration: const BoxDecoration(
                 color: Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                borderRadius: BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
                 border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    "${_stones.length} Stone row(s), ${_diamonds.length} Diamond row(s) configured",
+                    "Total: ${_stones.length} Stone item(s), ${_diamonds.length} Diamond item(s) configured",
                     style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
                   ),
                   Row(
@@ -2892,12 +3241,29 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF64748B),
                           side: const BorderSide(color: Color(0xFFCBD5E1)),
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                         child: const Text("Cancel"),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            _stones.clear();
+                            _diamonds.clear();
+                            _cancelEdit();
+                          });
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFEF4444),
+                          side: const BorderSide(color: Color(0xFFFCA5A5)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text("Clear All"),
+                      ),
+                      const SizedBox(width: 10),
                       ElevatedButton.icon(
                         onPressed: () {
                           Navigator.pop(context, {
@@ -2905,13 +3271,13 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
                             'diamonds': _diamonds,
                           });
                         },
-                        icon: const Icon(Icons.check_circle_rounded, size: 18),
-                        label: const Text("Apply & Calculate Net Weight"),
+                        icon: const Icon(Icons.check_circle_rounded, size: 17),
+                        label: const Text("Apply & Calculate Net Weight (Enter)", style: TextStyle(fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: GlassTheme.primaryNeon,
                           foregroundColor: Colors.white,
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
@@ -2922,626 +3288,6 @@ class _StonesDiamondsDialogState extends State<_StonesDiamondsDialog> with Singl
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ================= STONES TAB CONTENT =================
-  Widget _buildStonesTabContent() {
-    final matchingSub = widget.allSubProducts.where((sp) {
-      if (_selectedStoneProductId == null) return true;
-      return sp.productid == _selectedStoneProductId;
-    }).toList();
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Stone Input Form Card (2 Rows)
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _editingStoneIndex != null ? const Color(0xFF059669) : const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(_editingStoneIndex != null ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
-                        size: 16, color: const Color(0xFF059669)),
-                    const SizedBox(width: 6),
-                    Text(
-                      _editingStoneIndex != null ? "Editing Stone Row #${_editingStoneIndex! + 1}" : "Add Stone Entry to Grid",
-                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                    ),
-                    const Spacer(),
-                    const Text("Fill fields and press Enter on Amount to add to grid", style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // Row 1: Product, Sub-Product, Unit
-                Row(
-                  children: [
-                    // Product Dropdown
-                    Expanded(
-                      flex: 4,
-                      child: DropdownButtonFormField<int?>(
-                        isExpanded: true,
-                        value: _selectedStoneProductId,
-                        decoration: _modalInputDecoration("Stone Product *"),
-                        items: _stoneProducts.map((p) {
-                          return DropdownMenuItem<int?>(
-                            value: p.productid,
-                            child: Text(p.productname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedStoneProductId = val;
-                            if (_selectedStoneSubProductId != null && !matchingSub.any((sp) => sp.subproductid == _selectedStoneSubProductId && sp.productid == val)) {
-                              _selectedStoneSubProductId = null;
-                            }
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Sub-Product Dropdown
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<int?>(
-                        isExpanded: true,
-                        value: _selectedStoneSubProductId,
-                        decoration: _modalInputDecoration("Sub-Product"),
-                        items: [
-                          const DropdownMenuItem<int?>(value: null, child: Text("-- None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))),
-                          ...matchingSub.map((sp) => DropdownMenuItem<int?>(
-                                value: sp.subproductid,
-                                child: Text(sp.subproductname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
-                              )),
-                        ],
-                        onChanged: (val) => setState(() => _selectedStoneSubProductId = val),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Unit Dropdown (G / C)
-                    Expanded(
-                      flex: 2,
-                      child: DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: _selectedStoneUnit,
-                        decoration: _modalInputDecoration("Unit *"),
-                        items: const [
-                          DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-                          DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669)))),
-                        ],
-                        onChanged: (val) => setState(() => _selectedStoneUnit = val ?? 'G'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // Row 2: Pcs, Weight, Rate, Purchase Amount, Action Buttons
-                Row(
-                  children: [
-                    // Pcs
-                    SizedBox(
-                      width: 90,
-                      child: TextFormField(
-                        controller: _stonePcsController,
-                        focusNode: _stonePcsFocus,
-                        decoration: _modalInputDecoration("Pcs *"),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        textInputAction: TextInputAction.next,
-                        onFieldSubmitted: (_) => _stoneWeightFocus.requestFocus(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Weight
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        controller: _stoneWeightController,
-                        focusNode: _stoneWeightFocus,
-                        decoration: _modalInputDecoration("Weight *", hint: "0.000"),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
-                        textInputAction: TextInputAction.next,
-                        onChanged: (_) => _onStoneWeightOrRateChanged(),
-                        onFieldSubmitted: (_) => _stoneRateFocus.requestFocus(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Rate (₹)
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        controller: _stoneRateController,
-                        focusNode: _stoneRateFocus,
-                        decoration: _modalInputDecoration("Rate (₹)"),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                        textInputAction: TextInputAction.next,
-                        onChanged: (_) => _onStoneWeightOrRateChanged(),
-                        onFieldSubmitted: (_) {
-                          _onStoneWeightOrRateChanged();
-                          _stoneAmountFocus.requestFocus();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Purchase Amount (₹)
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        controller: _stoneAmountController,
-                        focusNode: _stoneAmountFocus,
-                        decoration: _modalInputDecoration("Purchase Amt (₹)"),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _addOrUpdateStone(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Add / Update Button
-                    ElevatedButton.icon(
-                      onPressed: _addOrUpdateStone,
-                      icon: Icon(_editingStoneIndex != null ? Icons.check_rounded : Icons.add_rounded, size: 16),
-                      label: Text(_editingStoneIndex != null ? "Update Row" : "+ Add to Grid"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF059669),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-
-                    if (_editingStoneIndex != null) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        onPressed: _cancelStoneEdit,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF64748B),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: const Text("Cancel"),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Stones Grid Table
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: _stones.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.grain_rounded, size: 40, color: Color(0xFFCBD5E1)),
-                          const SizedBox(height: 8),
-                          const Text("No stone items added to grid yet.", style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-                          const SizedBox(height: 4),
-                          const Text("Fill the form above and press Enter to add the first stone row.", style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8))),
-                        ],
-                      ),
-                    )
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: DataTable(
-                            headingRowHeight: 40,
-                            dataRowMinHeight: 42,
-                            dataRowMaxHeight: 46,
-                            headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
-                            columns: const [
-                              DataColumn(label: Text("#", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Product Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Sub-Product", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Unit", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Pcs", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Weight", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Rate (₹)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Purchase Amount (₹)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                            ],
-                            rows: List.generate(_stones.length, (index) {
-                              final item = _stones[index];
-                              final isEditing = _editingStoneIndex == index;
-
-                              return DataRow(
-                                color: isEditing ? WidgetStateProperty.all(const Color(0xFFECFDF5)) : null,
-                                cells: [
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                      decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(6)),
-                                      child: Text("#${index + 1}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
-                                    ),
-                                  ),
-                                  DataCell(Text(item.stoneProductName ?? "Product #${item.stoneProductId}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-                                  DataCell(Text(item.stoneSubProductName ?? "-", style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4)),
-                                      child: Text(item.stoneUnit.toUpperCase() == 'C' ? "Carat (C)" : "Gram (G)", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                                    ),
-                                  ),
-                                  DataCell(Text("${item.pcs}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-                                  DataCell(Text("${item.weight.toStringAsFixed(3)} ${item.stoneUnit}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
-                                  DataCell(Text(item.rate > 0 ? "₹${item.rate.toStringAsFixed(2)}" : "-", style: const TextStyle(fontSize: 12))),
-                                  DataCell(Text("₹${item.calculatedAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF059669)))),
-                                  DataCell(
-                                    Focus(
-                                      canRequestFocus: false,
-                                      skipTraversal: true,
-                                      descendantsAreFocusable: false,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.edit_outlined, size: 17, color: Color(0xFF0284C7)),
-                                            tooltip: "Edit Item",
-                                            onPressed: () => _editStone(index),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_outline_rounded, size: 17, color: Color(0xFFEF4444)),
-                                            tooltip: "Remove Item",
-                                            onPressed: () => _deleteStone(index),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }),
-                          ),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ================= DIAMONDS TAB CONTENT =================
-  Widget _buildDiamondsTabContent() {
-    final matchingSub = widget.allSubProducts.where((sp) {
-      if (_selectedDiaProductId == null) return true;
-      return sp.productid == _selectedDiaProductId;
-    }).toList();
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Diamond Input Form Card (2 Rows)
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _editingDiaIndex != null ? const Color(0xFF0284C7) : const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(_editingDiaIndex != null ? Icons.edit_note_rounded : Icons.diamond_outlined,
-                        size: 16, color: const Color(0xFF0284C7)),
-                    const SizedBox(width: 6),
-                    Text(
-                      _editingDiaIndex != null ? "Editing Diamond Row #${_editingDiaIndex! + 1}" : "Add Diamond Entry to Grid",
-                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                    ),
-                    const Spacer(),
-                    const Text("Fill fields and press Enter on Purchase Cost to add to grid", style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // Row 1: Product, Sub-Product, Unit
-                Row(
-                  children: [
-                    // Product Dropdown
-                    Expanded(
-                      flex: 4,
-                      child: DropdownButtonFormField<int?>(
-                        isExpanded: true,
-                        value: _selectedDiaProductId,
-                        decoration: _modalInputDecoration("Diamond Product *"),
-                        items: _diamondProducts.map((p) {
-                          return DropdownMenuItem<int?>(
-                            value: p.productid,
-                            child: Text(p.productname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedDiaProductId = val;
-                            if (_selectedDiaSubProductId != null && !matchingSub.any((sp) => sp.subproductid == _selectedDiaSubProductId && sp.productid == val)) {
-                              _selectedDiaSubProductId = null;
-                            }
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Sub-Product Dropdown
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<int?>(
-                        isExpanded: true,
-                        value: _selectedDiaSubProductId,
-                        decoration: _modalInputDecoration("Sub-Product"),
-                        items: [
-                          const DropdownMenuItem<int?>(value: null, child: Text("-- None --", style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))),
-                          ...matchingSub.map((sp) => DropdownMenuItem<int?>(
-                                value: sp.subproductid,
-                                child: Text(sp.subproductname, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
-                              )),
-                        ],
-                        onChanged: (val) => setState(() => _selectedDiaSubProductId = val),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Unit Dropdown (C / G)
-                    Expanded(
-                      flex: 2,
-                      child: DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: _selectedDiaUnit,
-                        decoration: _modalInputDecoration("Unit *"),
-                        items: const [
-                          DropdownMenuItem(value: 'C', child: Text("Carat (C)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)))),
-                          DropdownMenuItem(value: 'G', child: Text("Gram (G)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-                        ],
-                        onChanged: (val) => setState(() => _selectedDiaUnit = val ?? 'C'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // Row 2: Pcs, Weight, Rate, Purchase Cost, Action Buttons
-                Row(
-                  children: [
-                    // Pcs
-                    SizedBox(
-                      width: 90,
-                      child: TextFormField(
-                        controller: _diaPcsController,
-                        focusNode: _diaPcsFocus,
-                        decoration: _modalInputDecoration("Pcs *"),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        textInputAction: TextInputAction.next,
-                        onFieldSubmitted: (_) => _diaWeightFocus.requestFocus(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Weight (Carats / Wt)
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        controller: _diaWeightController,
-                        focusNode: _diaWeightFocus,
-                        decoration: _modalInputDecoration("Carats / Wt *", hint: "0.000"),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
-                        textInputAction: TextInputAction.next,
-                        onChanged: (_) => _onDiaWeightOrRateChanged(),
-                        onFieldSubmitted: (_) => _diaRateFocus.requestFocus(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Rate (₹ / Carat)
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        controller: _diaRateController,
-                        focusNode: _diaRateFocus,
-                        decoration: _modalInputDecoration("Per Carat Rate (₹)"),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                        textInputAction: TextInputAction.next,
-                        onChanged: (_) => _onDiaWeightOrRateChanged(),
-                        onFieldSubmitted: (_) {
-                          _onDiaWeightOrRateChanged();
-                          _diaAmountFocus.requestFocus();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Purchase Cost (₹)
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        controller: _diaAmountController,
-                        focusNode: _diaAmountFocus,
-                        decoration: _modalInputDecoration("Purchase Cost (₹)"),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _addOrUpdateDiamond(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-
-                    // Add / Update Button
-                    ElevatedButton.icon(
-                      onPressed: _addOrUpdateDiamond,
-                      icon: Icon(_editingDiaIndex != null ? Icons.check_rounded : Icons.add_rounded, size: 16),
-                      label: Text(_editingDiaIndex != null ? "Update Row" : "+ Add to Grid"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0284C7),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-
-                    if (_editingDiaIndex != null) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        onPressed: _cancelDiaEdit,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF64748B),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: const Text("Cancel"),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Diamonds Grid Table
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: _diamonds.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.diamond_rounded, size: 40, color: Color(0xFFCBD5E1)),
-                          const SizedBox(height: 8),
-                          const Text("No diamond items added to grid yet.", style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-                          const SizedBox(height: 4),
-                          const Text("Fill the form above and press Enter to add the first diamond row.", style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8))),
-                        ],
-                      ),
-                    )
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: DataTable(
-                            headingRowHeight: 40,
-                            dataRowMinHeight: 42,
-                            dataRowMaxHeight: 46,
-                            headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
-                            columns: const [
-                              DataColumn(label: Text("#", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Product Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Sub-Product", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Unit", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Pcs", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Carats / Wt", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Gram Eq.", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Rate (₹/ct)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Purchase Cost (₹)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                              DataColumn(label: Text("Actions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                            ],
-                            rows: List.generate(_diamonds.length, (index) {
-                              final item = _diamonds[index];
-                              final isEditing = _editingDiaIndex == index;
-
-                              return DataRow(
-                                color: isEditing ? WidgetStateProperty.all(const Color(0xFFF0F9FF)) : null,
-                                cells: [
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                      decoration: BoxDecoration(color: const Color(0xFFF0F9FF), borderRadius: BorderRadius.circular(6)),
-                                      child: Text("#${index + 1}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
-                                    ),
-                                  ),
-                                  DataCell(Text(item.diamondProductName ?? "Product #${item.diamondProductId}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-                                  DataCell(Text(item.diamondSubProductName ?? "-", style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4)),
-                                      child: Text(item.diamondUnit.toUpperCase() == 'G' ? "Gram (G)" : "Carat (C)", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                                    ),
-                                  ),
-                                  DataCell(Text("${item.pcs}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-                                  DataCell(Text("${item.weight.toStringAsFixed(3)} ${item.diamondUnit}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
-                                  DataCell(Text("${item.weightInGrams.toStringAsFixed(3)} g", style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
-                                  DataCell(Text(item.rate > 0 ? "₹${item.rate.toStringAsFixed(2)}" : "-", style: const TextStyle(fontSize: 12))),
-                                  DataCell(Text("₹${item.calculatedAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)))),
-                                  DataCell(
-                                    Focus(
-                                      canRequestFocus: false,
-                                      skipTraversal: true,
-                                      descendantsAreFocusable: false,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.edit_outlined, size: 17, color: Color(0xFF0284C7)),
-                                            tooltip: "Edit Item",
-                                            onPressed: () => _editDiamond(index),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_outline_rounded, size: 17, color: Color(0xFFEF4444)),
-                                            tooltip: "Remove Item",
-                                            onPressed: () => _deleteDiamond(index),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }),
-                          ),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-        ],
       ),
     );
   }

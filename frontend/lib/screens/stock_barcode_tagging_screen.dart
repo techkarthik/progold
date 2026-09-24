@@ -104,6 +104,11 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
 
   // Table Filter & Search State
   bool _filterOnlyCurrentLot = true;
+  DateTime? _filterFromDate = DateTime.now();
+  DateTime? _filterToDate = DateTime.now();
+  final DateFormat _apiDateFmt = DateFormat('yyyy-MM-dd');
+  final DateFormat _displayDateFmt = DateFormat('dd MMM yyyy');
+  bool _isLoadingTags = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -178,12 +183,14 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
       return;
     }
 
+    final todayStr = _apiDateFmt.format(DateTime.now());
+
     try {
       final futures = await Future.wait([
         _api.getPrepareSkuLots(token, isActive: '1'),
         _api.getBarcodeTemplates(token),
         _api.getLatestRates(token),
-        _api.getStockTags(token),
+        _api.getStockTags(token, companyId: auth.activeCompanyId, fromDate: todayStr, toDate: todayStr),
         _api.getStyles(token),
         _api.getSizes(token),
         _api.getPurities(token),
@@ -198,7 +205,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
         // SKU Lots: Filter strictly to active, non-disabled lots for barcoding
         if (futures[0] is List<PrepareSkuLotRecord>) {
           final lotsList = futures[0] as List<PrepareSkuLotRecord>;
-          _allLots = lotsList.where((l) => l.isActive && l.status.toUpperCase() != 'DISABLED').toList();
+          _allLots = lotsList.where((l) => l.isActive && l.status.toUpperCase() != 'DISABLED' && l.status.toUpperCase() != 'INACTIVE').toList();
         }
 
         // Barcode Templates
@@ -217,7 +224,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
           _latestRates = futures[2] as LatestRatesSummary;
         }
 
-        // Tagged stock
+        // Tagged stock (Current date by default)
         final f3 = futures[3] is Map<String, dynamic> ? futures[3] as Map<String, dynamic> : <String, dynamic>{};
         if (f3['success'] == true && f3['tags'] != null) {
           _taggedItems = (f3['tags'] as List)
@@ -270,20 +277,63 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
     }
   }
 
-  // --- Dynamic Ornament, Stone & Diamond Products from Product Master ---
+  /// Fetches stock tagged items for a selected date range
+  Future<void> _fetchTagsForDateRange({DateTime? from, DateTime? to}) async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) return;
+
+    setState(() => _isLoadingTags = true);
+    try {
+      final fromStr = from != null ? _apiDateFmt.format(from) : (_filterFromDate != null ? _apiDateFmt.format(_filterFromDate!) : null);
+      final toStr = to != null ? _apiDateFmt.format(to) : (_filterToDate != null ? _apiDateFmt.format(_filterToDate!) : null);
+
+      final res = await _api.getStockTags(
+        token,
+        companyId: auth.activeCompanyId,
+        fromDate: fromStr,
+        toDate: toStr,
+      );
+
+      if (mounted) {
+        if (res['success'] == true && res['tags'] != null) {
+          setState(() {
+            _taggedItems = (res['tags'] as List)
+                .map((t) => StockTaggedItem.fromJson(t as Map<String, dynamic>))
+                .toList();
+            _isLoadingTags = false;
+          });
+        } else {
+          setState(() => _isLoadingTags = false);
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching tags: $e");
+      if (mounted) setState(() => _isLoadingTags = false);
+    }
+  }
+
+  // --- Dynamic Ornament, Stone & Diamond Products from Product Master (metalid 'D' vs 'T') ---
+  bool _isDiamondProduct(ProductRecord? p) {
+    if (p == null) return false;
+    final m = (p.metalid ?? '').toUpperCase().trim();
+    final d = p.diastone.toUpperCase().trim();
+    return m == 'D' || m == 'DIAMOND' || d == 'D' || d == 'DIAMOND';
+  }
+
+  bool _isStoneProduct(ProductRecord? p) {
+    if (p == null) return false;
+    final m = (p.metalid ?? '').toUpperCase().trim();
+    final d = p.diastone.toUpperCase().trim();
+    return m == 'T' || m == 'STONE' || m == 'S' || d == 'S' || d == 'STONE' || d == 'SYNTHETIC' || d == 'P' || d == 'PRECIOUS';
+  }
+
   List<ProductRecord> get _ornamentProducts => _allProducts.where((p) {
-    final d = p.diastone.toUpperCase().trim();
-    return d != 'S' && d != 'STONE' && d != 'SYNTHETIC' && d != 'P' && d != 'PRECIOUS' && d != 'D' && d != 'DIAMOND';
+    return !_isDiamondProduct(p) && !_isStoneProduct(p);
   }).toList();
 
-  List<ProductRecord> get _stoneProducts => _allProducts.where((p) {
-    final d = p.diastone.toUpperCase().trim();
-    return d == 'S' || d == 'STONE' || d == 'SYNTHETIC' || d == 'P' || d == 'PRECIOUS';
-  }).toList();
-
-  List<ProductRecord> get _diamondProducts => _allProducts.where((p) {
-    final d = p.diastone.toUpperCase().trim();
-    return d == 'D' || d == 'DIAMOND';
+  List<ProductRecord> get _stoneAndDiamondProducts => _allProducts.where((p) {
+    return _isDiamondProduct(p) || _isStoneProduct(p);
   }).toList();
 
   // --- Dynamic Multi-Item Totals for Current Tag ---
@@ -310,7 +360,9 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
     setState(() {});
   }
 
-  // --- Dynamic Lot Calculations ---
+  // --- Dynamic Lot Calculations & 0.200g (0.20 ml) Tolerance Rule ---
+  static const double _lotToleranceGrams = 0.200; // 0.20 ml / 200 mg tolerance threshold
+
   List<StockTaggedItem> get _currentLotTaggedItems {
     if (_selectedLot == null) return [];
     return _taggedItems.where((t) => t.lotId == _selectedLot!.lotId).toList();
@@ -322,8 +374,18 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
   int get _taggedPcsCount => _currentLotTaggedItems.fold(0, (sum, t) => sum + t.pcs);
   double get _taggedGrossWeight => _currentLotTaggedItems.fold(0.0, (sum, t) => sum + t.grossWeight);
 
+  double get _rawRemainingGrossWeight => (_lotTotalGrossWeight - _taggedGrossWeight);
+
+  /// A lot is completed if the raw remaining balance is <= 0.200g (0.20 ml) or remaining pcs <= 0
+  bool get _isLotCompleted =>
+      _selectedLot != null &&
+      (_rawRemainingGrossWeight <= _lotToleranceGrams ||
+          (_lotTotalPcs > 0 && _remainingPcs <= 0 && _rawRemainingGrossWeight <= _lotToleranceGrams));
+
   int get _remainingPcs => (_lotTotalPcs - _taggedPcsCount).clamp(0, 999999);
-  double get _remainingGrossWeight => (_lotTotalGrossWeight - _taggedGrossWeight).clamp(0.0, 999999.0);
+
+  /// Returns 0.000g if balance <= 0.200g (0.20 ml)
+  double get _remainingGrossWeight => _isLotCompleted ? 0.0 : _rawRemainingGrossWeight.clamp(0.0, 999999.0);
   double get _taggingProgress => _lotTotalPcs > 0 ? (_taggedPcsCount / _lotTotalPcs).clamp(0.0, 1.0) : 0.0;
 
   // Effective Product, SubProduct & Names (Handles Assorted Lot override vs Fixed Lot)
@@ -541,133 +603,110 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
           : _otherLessWeightController.text,
     );
 
-    final stoneProducts = _stoneProducts;
-    final diamondProducts = _diamondProducts;
+    final combinedProducts = _stoneAndDiamondProducts;
 
-    // Quick Entry State for Adding Stones Row-by-Row
-    int? quickStnProductId = stoneProducts.isNotEmpty ? stoneProducts.first.productid : null;
-    String quickStnProductName = stoneProducts.isNotEmpty ? stoneProducts.first.productname : '';
-    int? quickStnSubProductId;
-    String quickStnSubProductName = '';
-    String quickStnUnit = 'G';
+    // Quick Entry State for Adding Stones or Diamonds in a Single Row
+    int? quickProductId = combinedProducts.isNotEmpty ? combinedProducts.first.productid : null;
+    String quickProductName = combinedProducts.isNotEmpty ? combinedProducts.first.productname : '';
+    int? quickSubProductId;
+    String quickSubProductName = '';
+    String quickUnit = (combinedProducts.isNotEmpty && _isDiamondProduct(combinedProducts.first)) ? 'C' : 'G';
 
-    // Pre-select Stone product from Lot if present
-    if (_selectedLot != null && _selectedLot!.stoneItems.isNotEmpty) {
-      final firstLotStn = _selectedLot!.stoneItems.first;
-      if (firstLotStn.stoneProductId != null) {
-        final match = stoneProducts.where((p) => p.productid == firstLotStn.stoneProductId).toList();
-        if (match.isNotEmpty) {
-          quickStnProductId = match.first.productid;
-          quickStnProductName = match.first.productname;
-          quickStnSubProductId = firstLotStn.stoneSubProductId;
-          if (firstLotStn.stoneUnit.isNotEmpty) quickStnUnit = firstLotStn.stoneUnit;
+    // Pre-select from Lot if present
+    if (_selectedLot != null) {
+      if (_selectedLot!.diamondItems.isNotEmpty) {
+        final firstLotDmd = _selectedLot!.diamondItems.first;
+        if (firstLotDmd.diamondProductId != null) {
+          final match = combinedProducts.where((p) => p.productid == firstLotDmd.diamondProductId).toList();
+          if (match.isNotEmpty) {
+            quickProductId = match.first.productid;
+            quickProductName = match.first.productname;
+            quickSubProductId = firstLotDmd.diamondSubProductId;
+            if (firstLotDmd.diamondUnit.isNotEmpty) quickUnit = firstLotDmd.diamondUnit;
+          }
+        }
+      } else if (_selectedLot!.stoneItems.isNotEmpty) {
+        final firstLotStn = _selectedLot!.stoneItems.first;
+        if (firstLotStn.stoneProductId != null) {
+          final match = combinedProducts.where((p) => p.productid == firstLotStn.stoneProductId).toList();
+          if (match.isNotEmpty) {
+            quickProductId = match.first.productid;
+            quickProductName = match.first.productname;
+            quickSubProductId = firstLotStn.stoneSubProductId;
+            if (firstLotStn.stoneUnit.isNotEmpty) quickUnit = firstLotStn.stoneUnit;
+          }
         }
       }
     }
 
-    final quickStnPcsCtrl = TextEditingController(text: '1');
-    final quickStnWtCtrl = TextEditingController();
-    final quickStnPurRateCtrl = TextEditingController();
-    final quickStnPurAmtCtrl = TextEditingController();
-    final quickStnSalesRateCtrl = TextEditingController();
-    final quickStnSalesAmtCtrl = TextEditingController();
-    final FocusNode quickStnPcsFocus = FocusNode();
-    final FocusNode quickStnWtFocus = FocusNode();
-    final FocusNode quickStnPurRateFocus = FocusNode();
-    final FocusNode quickStnPurAmtFocus = FocusNode();
-    final FocusNode quickStnSalesRateFocus = FocusNode();
-    final FocusNode quickStnSalesAmtFocus = FocusNode();
-    String? stnNoticeMsg;
+    final quickPcsCtrl = TextEditingController(text: '1');
+    final quickWtCtrl = TextEditingController();
+    final quickPurRateCtrl = TextEditingController();
+    final quickPurAmtCtrl = TextEditingController();
+    final quickSalesRateCtrl = TextEditingController();
+    final quickSalesAmtCtrl = TextEditingController();
 
-    // Helper: Lookup Stone Purchase Rate from Lot & Sales Rate from Master Settings
-    // STRICT RULE: Only populates if wt > 0. If no master is found, sales rate is 0.00 (NO fallback to purchase rate).
-    void lookupStoneRates(int? prodId, int? subProdId, double wt, String unit, StateSetter setDialogState) {
+    final FocusNode quickProdFocus = FocusNode();
+    final FocusNode quickSubProdFocus = FocusNode();
+    final FocusNode quickUnitFocus = FocusNode();
+    final FocusNode quickPcsFocus = FocusNode();
+    final FocusNode quickWtFocus = FocusNode();
+    final FocusNode quickPurRateFocus = FocusNode();
+    final FocusNode quickPurAmtFocus = FocusNode();
+    final FocusNode quickSalesRateFocus = FocusNode();
+    final FocusNode quickSalesAmtFocus = FocusNode();
+    final FocusNode quickAddFocus = FocusNode();
+    String? noticeMsg;
+
+    // Helper: Lookup Purchase Rate from Lot & Sales Rate from Master Settings based on metalid / diastone
+    void lookupRates(int? prodId, int? subProdId, double wt, String unit, StateSetter setDialogState) {
       if (prodId == null || wt <= 0) {
         setDialogState(() {
-          quickStnPurRateCtrl.clear();
-          quickStnPurAmtCtrl.clear();
-          quickStnSalesRateCtrl.clear();
-          quickStnSalesAmtCtrl.clear();
-          stnNoticeMsg = null;
+          quickPurRateCtrl.clear();
+          quickPurAmtCtrl.clear();
+          quickSalesRateCtrl.clear();
+          quickSalesAmtCtrl.clear();
+          noticeMsg = null;
         });
         return;
       }
 
-      // 1. Stone Purchase Rate from Lot
+      final matchingProdList = _allProducts.where((p) => p.productid == prodId).toList();
+      final currentProd = matchingProdList.isNotEmpty ? matchingProdList.first : null;
+      final isDiamond = _isDiamondProduct(currentProd);
+
       double purRate = 0.0;
-      if (_selectedLot != null && _selectedLot!.stoneItems.isNotEmpty) {
-        final matchingLotStones = _selectedLot!.stoneItems.where((s) {
-          if (s.stoneProductId != prodId) return false;
-          if (subProdId != null && s.stoneSubProductId != null && s.stoneSubProductId != 0 && s.stoneSubProductId != subProdId) return false;
-          return true;
-        }).toList();
-
-        if (matchingLotStones.isNotEmpty) {
-          final lotStn = matchingLotStones.first;
-          if (lotStn.rate > 0) {
-            purRate = lotStn.rate;
-            if (lotStn.stoneUnit.isNotEmpty && quickStnUnit != lotStn.stoneUnit) {
-              quickStnUnit = lotStn.stoneUnit;
-            }
-          }
-        } else {
-          final prodLotStones = _selectedLot!.stoneItems.where((s) => s.stoneProductId == prodId).toList();
-          if (prodLotStones.isNotEmpty && prodLotStones.first.rate > 0) {
-            purRate = prodLotStones.first.rate;
-            if (prodLotStones.first.stoneUnit.isNotEmpty && quickStnUnit != prodLotStones.first.stoneUnit) {
-              quickStnUnit = prodLotStones.first.stoneUnit;
-            }
-          }
-        }
-      }
-
-      // 2. Stone Sales Rate from Master Settings (strictly 0 if not found in master)
       double salesRate = 0.0;
+      double centRate = 0.0;
       String? matchedSource;
 
-      // A. Check in Price Setting Master (_priceSettings)
-      final matchingPs = _priceSettings.where((ps) {
-        if (ps.productid != prodId) return false;
-        if (subProdId != null && ps.subproductid != null && ps.subproductid != 0 && ps.subproductid != subProdId) return false;
-        if (ps.weightFrom > 0 || ps.weightTo > 0) {
-          if (wt < ps.weightFrom || (ps.weightTo > 0 && wt > ps.weightTo)) return false;
-        }
-        return true;
-      }).toList();
+      if (isDiamond) {
+        // --- DIAMOND RATE LOOKUP (metalid 'D') ---
+        if (_selectedLot != null && _selectedLot!.diamondItems.isNotEmpty) {
+          final matchingLotDmds = _selectedLot!.diamondItems.where((d) {
+            if (d.diamondProductId != prodId) return false;
+            if (subProdId != null && d.diamondSubProductId != null && d.diamondSubProductId != 0 && d.diamondSubProductId != subProdId) return false;
+            return true;
+          }).toList();
 
-      if (matchingPs.isNotEmpty) {
-        final ps = matchingPs.first;
-        if (ps.mcPerGram > 0) {
-          salesRate = ps.mcPerGram;
-          matchedSource = 'Price Setting Master (₹${ps.mcPerGram}/g)';
-        } else if (ps.mCharge > 0) {
-          salesRate = ps.mCharge;
-          matchedSource = 'Price Setting Master (Fixed ₹${ps.mCharge})';
-        }
-      } else {
-        final fallbackPs = _priceSettings.where((ps) {
-          if (ps.productid != prodId) return false;
-          if (ps.weightFrom > 0 || ps.weightTo > 0) {
-            if (wt < ps.weightFrom || (ps.weightTo > 0 && wt > ps.weightTo)) return false;
-          }
-          return true;
-        }).toList();
-        if (fallbackPs.isNotEmpty) {
-          final ps = fallbackPs.first;
-          if (ps.mcPerGram > 0) {
-            salesRate = ps.mcPerGram;
-            matchedSource = 'Price Setting Master (₹${ps.mcPerGram}/g)';
-          } else if (ps.mCharge > 0) {
-            salesRate = ps.mCharge;
-            matchedSource = 'Price Setting Master (Fixed ₹${ps.mCharge})';
+          if (matchingLotDmds.isNotEmpty && matchingLotDmds.first.rate > 0) {
+            purRate = matchingLotDmds.first.rate;
+            if (matchingLotDmds.first.diamondUnit.isNotEmpty && quickUnit != matchingLotDmds.first.diamondUnit) {
+              quickUnit = matchingLotDmds.first.diamondUnit;
+            }
+          } else {
+            final prodLotDmds = _selectedLot!.diamondItems.where((d) => d.diamondProductId == prodId).toList();
+            if (prodLotDmds.isNotEmpty && prodLotDmds.first.rate > 0) {
+              purRate = prodLotDmds.first.rate;
+              if (prodLotDmds.first.diamondUnit.isNotEmpty && quickUnit != prodLotDmds.first.diamondUnit) {
+                quickUnit = prodLotDmds.first.diamondUnit;
+              }
+            }
           }
         }
-      }
 
-      // B. Check in Diamond / Stone Price Settings (_diamondPriceSettings) if not found above
-      if (salesRate <= 0) {
-        final cents = unit.toUpperCase() == 'C' ? (wt * 100.0) : (wt * 500.0);
-        final matchingDps = _diamondPriceSettings.where((dps) {
+        final cents = unit.toUpperCase() == 'C' ? (wt * 100.0) : (unit.toUpperCase() == 'CENT' ? wt : (wt * 500.0));
+        final matched = _diamondPriceSettings.where((dps) {
           if (dps.productid != prodId) return false;
           if (subProdId != null && dps.subproductid != null && dps.subproductid != 0 && dps.subproductid != subProdId) return false;
           if (dps.fromCent > 0 || dps.toCent > 0) {
@@ -676,161 +715,120 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
           return true;
         }).toList();
 
-        if (matchingDps.isNotEmpty && matchingDps.first.centRate > 0) {
-          final dps = matchingDps.first;
-          salesRate = unit.toUpperCase() == 'C' ? (dps.centRate * 100.0) : (dps.centRate * 500.0);
-          matchedSource = 'Diamond/Stone Master (₹${dps.centRate}/cent)';
+        if (matched.isNotEmpty && matched.first.centRate > 0) {
+          final dps = matched.first;
+          centRate = dps.centRate;
+          salesRate = unit.toUpperCase() == 'C' ? (dps.centRate * 100.0) : (unit.toUpperCase() == 'CENT' ? dps.centRate : dps.centRate * 500.0);
+          matchedSource = "Diamond Master (₹${dps.centRate}/cent)";
         } else {
-          final fallbackDps = _diamondPriceSettings.where((dps) => dps.productid == prodId).toList();
-          if (fallbackDps.isNotEmpty && fallbackDps.first.centRate > 0) {
-            final dps = fallbackDps.first;
-            salesRate = unit.toUpperCase() == 'C' ? (dps.centRate * 100.0) : (dps.centRate * 500.0);
-            matchedSource = 'Diamond/Stone Master (₹${dps.centRate}/cent)';
+          final fallback = _diamondPriceSettings.where((dps) => dps.productid == prodId).toList();
+          if (fallback.isNotEmpty && fallback.first.centRate > 0) {
+            final dps = fallback.first;
+            centRate = dps.centRate;
+            salesRate = unit.toUpperCase() == 'C' ? (dps.centRate * 100.0) : (unit.toUpperCase() == 'CENT' ? dps.centRate : dps.centRate * 500.0);
+            matchedSource = "Diamond Master (₹${dps.centRate}/cent)";
           }
         }
-      }
+      } else {
+        // --- STONE RATE LOOKUP (metalid 'T') ---
+        if (_selectedLot != null && _selectedLot!.stoneItems.isNotEmpty) {
+          final matchingLotStones = _selectedLot!.stoneItems.where((s) {
+            if (s.stoneProductId != prodId) return false;
+            if (subProdId != null && s.stoneSubProductId != null && s.stoneSubProductId != 0 && s.stoneSubProductId != subProdId) return false;
+            return true;
+          }).toList();
 
-      final purAmt = wt * purRate;
-      final salesAmt = wt * salesRate;
-
-      setDialogState(() {
-        quickStnPurRateCtrl.text = purRate > 0 ? purRate.toStringAsFixed(2) : '0.00';
-        quickStnPurAmtCtrl.text = purAmt > 0 ? purAmt.toStringAsFixed(2) : '0.00';
-        quickStnSalesRateCtrl.text = salesRate > 0 ? salesRate.toStringAsFixed(2) : '0.00';
-        quickStnSalesAmtCtrl.text = salesAmt > 0 ? salesAmt.toStringAsFixed(2) : '0.00';
-
-        if (matchedSource != null) {
-          stnNoticeMsg = "✨ Stone Sales Rate from $matchedSource: ₹${salesRate.toStringAsFixed(2)}/$unit";
-        } else if (purRate > 0) {
-          stnNoticeMsg = "ℹ️ Stone Purchase Rate from Lot: ₹${purRate.toStringAsFixed(2)}/$unit | No Sales Master (Sales Rate: 0.00)";
-        } else {
-          stnNoticeMsg = "ℹ️ No Master/Lot rate found. Rates set to 0.00";
+          if (matchingLotStones.isNotEmpty && matchingLotStones.first.rate > 0) {
+            purRate = matchingLotStones.first.rate;
+            if (matchingLotStones.first.stoneUnit.isNotEmpty && quickUnit != matchingLotStones.first.stoneUnit) {
+              quickUnit = matchingLotStones.first.stoneUnit;
+            }
+          } else {
+            final prodLotStones = _selectedLot!.stoneItems.where((s) => s.stoneProductId == prodId).toList();
+            if (prodLotStones.isNotEmpty && prodLotStones.first.rate > 0) {
+              purRate = prodLotStones.first.rate;
+              if (prodLotStones.first.stoneUnit.isNotEmpty && quickUnit != prodLotStones.first.stoneUnit) {
+                quickUnit = prodLotStones.first.stoneUnit;
+              }
+            }
+          }
         }
-      });
-    }
 
-    // Quick Entry State for Adding Diamonds Row-by-Row
-    int? quickDmdProductId = diamondProducts.isNotEmpty ? diamondProducts.first.productid : null;
-    String quickDmdProductName = diamondProducts.isNotEmpty ? diamondProducts.first.productname : '';
-    int? quickDmdSubProductId;
-    String quickDmdSubProductName = '';
-    String quickDmdUnit = 'C';
-
-    // Pre-select Diamond product from Lot if present
-    if (_selectedLot != null && _selectedLot!.diamondItems.isNotEmpty) {
-      final firstLotDmd = _selectedLot!.diamondItems.first;
-      if (firstLotDmd.diamondProductId != null) {
-        final match = diamondProducts.where((p) => p.productid == firstLotDmd.diamondProductId).toList();
-        if (match.isNotEmpty) {
-          quickDmdProductId = match.first.productid;
-          quickDmdProductName = match.first.productname;
-          quickDmdSubProductId = firstLotDmd.diamondSubProductId;
-          if (firstLotDmd.diamondUnit.isNotEmpty) quickDmdUnit = firstLotDmd.diamondUnit;
-        }
-      }
-    }
-
-    final quickDmdPcsCtrl = TextEditingController(text: '1');
-    final quickDmdWtCtrl = TextEditingController();
-    final quickDmdPurRateCtrl = TextEditingController();
-    final quickDmdPurAmtCtrl = TextEditingController();
-    final quickDmdSalesRateCtrl = TextEditingController();
-    final quickDmdSalesAmtCtrl = TextEditingController();
-    final FocusNode quickDmdPcsFocus = FocusNode();
-    final FocusNode quickDmdWtFocus = FocusNode();
-    final FocusNode quickDmdPurRateFocus = FocusNode();
-    final FocusNode quickDmdPurAmtFocus = FocusNode();
-    final FocusNode quickDmdSalesRateFocus = FocusNode();
-    final FocusNode quickDmdSalesAmtFocus = FocusNode();
-    String? dmdNoticeMsg;
-
-    // Helper: Lookup Diamond Purchase Rate from Lot & Sales Rate from Diamond Price Setting Master
-    // STRICT RULE: Only populates if wt > 0. If no master is found, sales rate is 0.00 (NO fallback to purchase rate).
-    void lookupDiamondRates(int? prodId, int? subProdId, double wt, String unit, StateSetter setDialogState) {
-      if (prodId == null || wt <= 0) {
-        setDialogState(() {
-          quickDmdPurRateCtrl.clear();
-          quickDmdPurAmtCtrl.clear();
-          quickDmdSalesRateCtrl.clear();
-          quickDmdSalesAmtCtrl.clear();
-          dmdNoticeMsg = null;
-        });
-        return;
-      }
-
-      // 1. Diamond Purchase Rate from Lot
-      double purRate = 0.0;
-      if (_selectedLot != null && _selectedLot!.diamondItems.isNotEmpty) {
-        final matchingLotDmds = _selectedLot!.diamondItems.where((d) {
-          if (d.diamondProductId != prodId) return false;
-          if (subProdId != null && d.diamondSubProductId != null && d.diamondSubProductId != 0 && d.diamondSubProductId != subProdId) return false;
+        final matchingPs = _priceSettings.where((ps) {
+          if (ps.productid != prodId) return false;
+          if (subProdId != null && ps.subproductid != null && ps.subproductid != 0 && ps.subproductid != subProdId) return false;
+          if (ps.weightFrom > 0 || ps.weightTo > 0) {
+            if (wt < ps.weightFrom || (ps.weightTo > 0 && wt > ps.weightTo)) return false;
+          }
           return true;
         }).toList();
 
-        if (matchingLotDmds.isNotEmpty) {
-          final lotDmd = matchingLotDmds.first;
-          if (lotDmd.rate > 0) {
-            purRate = lotDmd.rate;
-            if (lotDmd.diamondUnit.isNotEmpty && quickDmdUnit != lotDmd.diamondUnit) {
-              quickDmdUnit = lotDmd.diamondUnit;
-            }
+        if (matchingPs.isNotEmpty) {
+          final ps = matchingPs.first;
+          if (ps.mcPerGram > 0) {
+            salesRate = ps.mcPerGram;
+            matchedSource = "Price Setting Master (₹${ps.mcPerGram}/g)";
+          } else if (ps.mCharge > 0) {
+            salesRate = ps.mCharge;
+            matchedSource = "Price Setting Master (Fixed ₹${ps.mCharge})";
           }
         } else {
-          final prodLotDmds = _selectedLot!.diamondItems.where((d) => d.diamondProductId == prodId).toList();
-          if (prodLotDmds.isNotEmpty && prodLotDmds.first.rate > 0) {
-            purRate = prodLotDmds.first.rate;
-            if (prodLotDmds.first.diamondUnit.isNotEmpty && quickDmdUnit != prodLotDmds.first.diamondUnit) {
-              quickDmdUnit = prodLotDmds.first.diamondUnit;
+          final fallbackPs = _priceSettings.where((ps) {
+            if (ps.productid != prodId) return false;
+            if (ps.weightFrom > 0 || ps.weightTo > 0) {
+              if (wt < ps.weightFrom || (ps.weightTo > 0 && wt > ps.weightTo)) return false;
+            }
+            return true;
+          }).toList();
+          if (fallbackPs.isNotEmpty) {
+            final ps = fallbackPs.first;
+            if (ps.mcPerGram > 0) {
+              salesRate = ps.mcPerGram;
+              matchedSource = "Price Setting Master (₹${ps.mcPerGram}/g)";
+            } else if (ps.mCharge > 0) {
+              salesRate = ps.mCharge;
+              matchedSource = "Price Setting Master (Fixed ₹${ps.mCharge})";
             }
           }
         }
-      }
 
-      // 2. Diamond Sales Rate from Diamond Price Setting Master (strictly 0 if not found in master)
-      final cents = unit.toUpperCase() == 'C' ? (wt * 100.0) : (wt * 500.0);
-      double salesRate = 0.0;
-      double centRate = 0.0;
-      String? matchedSource;
+        if (salesRate <= 0) {
+          final cents = unit.toUpperCase() == 'C' ? (wt * 100.0) : (wt * 500.0);
+          final matchingDps = _diamondPriceSettings.where((dps) {
+            if (dps.productid != prodId) return false;
+            if (subProdId != null && dps.subproductid != null && dps.subproductid != 0 && dps.subproductid != subProdId) return false;
+            if (dps.fromCent > 0 || dps.toCent > 0) {
+              if (cents < dps.fromCent || (dps.toCent > 0 && cents > dps.toCent)) return false;
+            }
+            return true;
+          }).toList();
 
-      final matched = _diamondPriceSettings.where((dps) {
-        if (dps.productid != prodId) return false;
-        if (subProdId != null && dps.subproductid != null && dps.subproductid != 0 && dps.subproductid != subProdId) return false;
-        if (dps.fromCent > 0 || dps.toCent > 0) {
-          if (cents < dps.fromCent || (dps.toCent > 0 && cents > dps.toCent)) return false;
-        }
-        return true;
-      }).toList();
-
-      if (matched.isNotEmpty && matched.first.centRate > 0) {
-        final dps = matched.first;
-        centRate = dps.centRate;
-        salesRate = unit.toUpperCase() == 'C' ? (dps.centRate * 100.0) : (dps.centRate * 500.0);
-        matchedSource = 'Diamond Master (₹${dps.centRate}/cent)';
-      } else {
-        final fallback = _diamondPriceSettings.where((dps) => dps.productid == prodId).toList();
-        if (fallback.isNotEmpty && fallback.first.centRate > 0) {
-          final dps = fallback.first;
-          centRate = dps.centRate;
-          salesRate = unit.toUpperCase() == 'C' ? (dps.centRate * 100.0) : (dps.centRate * 500.0);
-          matchedSource = 'Diamond Master (₹${dps.centRate}/cent)';
+          if (matchingDps.isNotEmpty && matchingDps.first.centRate > 0) {
+            final dps = matchingDps.first;
+            salesRate = unit.toUpperCase() == 'C' ? (dps.centRate * 100.0) : (dps.centRate * 500.0);
+            matchedSource = "Diamond/Stone Master (₹${dps.centRate}/cent)";
+          }
         }
       }
 
       final purAmt = wt * purRate;
-      final salesAmt = (centRate > 0 && cents > 0) ? (cents * centRate) : (wt * salesRate);
+      final salesAmt = (isDiamond && centRate > 0)
+          ? ((unit.toUpperCase() == 'C' ? wt * 100.0 : (unit.toUpperCase() == 'CENT' ? wt : wt * 500.0)) * centRate)
+          : (wt * salesRate);
 
       setDialogState(() {
-        quickDmdPurRateCtrl.text = purRate > 0 ? purRate.toStringAsFixed(2) : '0.00';
-        quickDmdPurAmtCtrl.text = purAmt > 0 ? purAmt.toStringAsFixed(2) : '0.00';
-        quickDmdSalesRateCtrl.text = salesRate > 0 ? salesRate.toStringAsFixed(2) : '0.00';
-        quickDmdSalesAmtCtrl.text = salesAmt > 0 ? salesAmt.toStringAsFixed(2) : '0.00';
+        quickPurRateCtrl.text = purRate > 0 ? purRate.toStringAsFixed(2) : '0.00';
+        quickPurAmtCtrl.text = purAmt > 0 ? purAmt.toStringAsFixed(2) : '0.00';
+        quickSalesRateCtrl.text = salesRate > 0 ? salesRate.toStringAsFixed(2) : '0.00';
+        quickSalesAmtCtrl.text = salesAmt > 0 ? salesAmt.toStringAsFixed(2) : '0.00';
 
+        final itemTypeName = isDiamond ? 'Diamond (D)' : 'Stone (T)';
         if (matchedSource != null) {
-          dmdNoticeMsg = "✨ Diamond Sales Rate: ₹$centRate/cent (₹${salesRate.toStringAsFixed(0)}/$unit)";
+          noticeMsg = "✨ $itemTypeName Sales Rate from $matchedSource: ₹${salesRate.toStringAsFixed(2)}/$unit";
         } else if (purRate > 0) {
-          dmdNoticeMsg = "ℹ️ Diamond Purchase Rate from Lot: ₹${purRate.toStringAsFixed(2)}/$unit | No Sales Master (Sales Rate: 0.00)";
+          noticeMsg = "ℹ️ $itemTypeName Pur Rate from Lot: ₹${purRate.toStringAsFixed(2)}/$unit | No Sales Master (0.00)";
         } else {
-          dmdNoticeMsg = "ℹ️ No Master/Lot rate found. Rates set to 0.00";
+          noticeMsg = "ℹ️ $itemTypeName: No Master/Lot rate found. Rates set to 0.00";
         }
       });
     }
@@ -841,6 +839,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
       builder: (ctx) {
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (quickProdFocus.canRequestFocus && !quickProdFocus.hasFocus && !quickWtFocus.hasFocus && !quickPcsFocus.hasFocus && !quickPurRateFocus.hasFocus && !quickSalesRateFocus.hasFocus) {
+                quickProdFocus.requestFocus();
+              }
+            });
+
             final stoneLessGrams = tempStones.fold(0.0, (sum, i) => sum + i.weightInGrams);
             final stoneTotalPurCost = tempStones.fold(0.0, (sum, i) => sum + i.purAmount);
             final stoneTotalSalesAmt = tempStones.fold(0.0, (sum, i) => sum + i.amount);
@@ -859,113 +863,89 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
 
             final totalCombinedPurCost = stoneTotalPurCost + diamondTotalPurCost;
             final totalCombinedSalesAmt = stoneTotalSalesAmt + diamondTotalSalesAmt;
+            final totalCombinedPcs = stoneTotalPcs + diamondTotalPcs;
+            final totalCombinedItemsCount = tempStones.length + tempDiamonds.length;
 
-            final matchingStnSubProducts = _allSubProducts.where((sp) {
-              if (quickStnProductId == null) return true;
-              return sp.productid == quickStnProductId;
+            final matchingSubProducts = _allSubProducts.where((sp) {
+              if (quickProductId == null) return true;
+              return sp.productid == quickProductId;
             }).toList();
 
-            final matchingDmdSubProducts = _allSubProducts.where((sp) {
-              if (quickDmdProductId == null) return true;
-              return sp.productid == quickDmdProductId;
-            }).toList();
-
-            void addQuickStone() {
-              final wt = double.tryParse(quickStnWtCtrl.text.trim()) ?? 0.0;
-              final pcs = int.tryParse(quickStnPcsCtrl.text.trim()) ?? 1;
-              final purRate = double.tryParse(quickStnPurRateCtrl.text.trim()) ?? 0.0;
-              final purAmt = double.tryParse(quickStnPurAmtCtrl.text.trim()) ?? (wt * purRate);
-              final salesRate = double.tryParse(quickStnSalesRateCtrl.text.trim()) ?? 0.0;
-              final salesAmt = double.tryParse(quickStnSalesAmtCtrl.text.trim()) ?? (wt * salesRate);
+            void addUnifiedItem() {
+              final wt = double.tryParse(quickWtCtrl.text.trim()) ?? 0.0;
+              final pcs = int.tryParse(quickPcsCtrl.text.trim()) ?? 1;
+              final purRate = double.tryParse(quickPurRateCtrl.text.trim()) ?? 0.0;
+              final purAmt = double.tryParse(quickPurAmtCtrl.text.trim()) ?? (wt * purRate);
+              final salesRate = double.tryParse(quickSalesRateCtrl.text.trim()) ?? 0.0;
+              final salesAmt = double.tryParse(quickSalesAmtCtrl.text.trim()) ?? (wt * salesRate);
 
               if (wt <= 0 && pcs <= 0) {
                 setDialogState(() {
-                  stnNoticeMsg = '⚠️ Please enter stone weight or pcs before adding.';
+                  noticeMsg = '⚠️ Please enter item weight/carats or pcs before adding.';
                 });
-                quickStnWtFocus.requestFocus();
+                quickWtFocus.requestFocus();
                 return;
               }
 
+              final prodMatch = combinedProducts.where((p) => p.productid == quickProductId).toList();
+              final currentProd = prodMatch.isNotEmpty ? prodMatch.first : null;
+              final isDiamond = _isDiamondProduct(currentProd);
+
               setDialogState(() {
-                tempStones.add(TagStoneItem(
-                  productId: quickStnProductId,
-                  productName: quickStnProductName,
-                  subProductId: quickStnSubProductId,
-                  subProductName: quickStnSubProductName,
-                  unit: quickStnUnit,
-                  pcs: pcs,
-                  weight: wt,
-                  purRate: purRate,
-                  purAmount: purAmt,
-                  rate: salesRate,
-                  amount: salesAmt,
-                ));
-                // Reset quick entry fields for the NEXT stone
-                quickStnPcsCtrl.text = '1';
-                quickStnWtCtrl.clear();
-                quickStnPurRateCtrl.clear();
-                quickStnPurAmtCtrl.clear();
-                quickStnSalesRateCtrl.clear();
-                quickStnSalesAmtCtrl.clear();
-                stnNoticeMsg = '✓ Stone #${tempStones.length} added! Pur Cost: ₹${purAmt.toStringAsFixed(2)}, Sales: ₹${salesAmt.toStringAsFixed(2)}';
+                if (isDiamond) {
+                  tempDiamonds.add(TagDiamondItem(
+                    productId: quickProductId,
+                    productName: quickProductName,
+                    subProductId: quickSubProductId,
+                    subProductName: quickSubProductName,
+                    unit: quickUnit,
+                    pcs: pcs,
+                    weight: wt,
+                    purRate: purRate,
+                    purAmount: purAmt,
+                    rate: salesRate,
+                    amount: salesAmt,
+                  ));
+                } else {
+                  tempStones.add(TagStoneItem(
+                    productId: quickProductId,
+                    productName: quickProductName,
+                    subProductId: quickSubProductId,
+                    subProductName: quickSubProductName,
+                    unit: quickUnit,
+                    pcs: pcs,
+                    weight: wt,
+                    purRate: purRate,
+                    purAmount: purAmt,
+                    rate: salesRate,
+                    amount: salesAmt,
+                  ));
+                }
+
+                quickPcsCtrl.text = '1';
+                quickWtCtrl.clear();
+                quickPurRateCtrl.clear();
+                quickPurAmtCtrl.clear();
+                quickSalesRateCtrl.clear();
+                quickSalesAmtCtrl.clear();
+                noticeMsg = '✓ ${isDiamond ? "✨ Diamond" : "💎 Stone"} #$totalCombinedItemsCount added! Pur: ₹${purAmt.toStringAsFixed(2)}, Sales: ₹${salesAmt.toStringAsFixed(2)}';
               });
 
-              quickStnPcsFocus.requestFocus();
+              quickProdFocus.requestFocus();
             }
 
-            void addQuickDiamond() {
-              final wt = double.tryParse(quickDmdWtCtrl.text.trim()) ?? 0.0;
-              final pcs = int.tryParse(quickDmdPcsCtrl.text.trim()) ?? 1;
-              final purRate = double.tryParse(quickDmdPurRateCtrl.text.trim()) ?? 0.0;
-              final purAmt = double.tryParse(quickDmdPurAmtCtrl.text.trim()) ?? (wt * purRate);
-              final salesRate = double.tryParse(quickDmdSalesRateCtrl.text.trim()) ?? 0.0;
-              final salesAmt = double.tryParse(quickDmdSalesAmtCtrl.text.trim()) ?? (wt * salesRate);
-
-              if (wt <= 0 && pcs <= 0) {
-                setDialogState(() {
-                  dmdNoticeMsg = '⚠️ Please enter diamond carats/weight before adding.';
-                });
-                quickDmdWtFocus.requestFocus();
-                return;
-              }
+            void importAllFromLot() {
+              if (_selectedLot == null) return;
+              final lotStones = _selectedLot!.stoneItems;
+              final lotDiamonds = _selectedLot!.diamondItems;
+              if (lotStones.isEmpty && lotDiamonds.isEmpty) return;
 
               setDialogState(() {
-                tempDiamonds.add(TagDiamondItem(
-                  productId: quickDmdProductId,
-                  productName: quickDmdProductName,
-                  subProductId: quickDmdSubProductId,
-                  subProductName: quickDmdSubProductName,
-                  unit: quickDmdUnit,
-                  pcs: pcs,
-                  weight: wt,
-                  purRate: purRate,
-                  purAmount: purAmt,
-                  rate: salesRate,
-                  amount: salesAmt,
-                ));
-                // Reset quick entry fields for the NEXT diamond
-                quickDmdPcsCtrl.text = '1';
-                quickDmdWtCtrl.clear();
-                quickDmdPurRateCtrl.clear();
-                quickDmdPurAmtCtrl.clear();
-                quickDmdSalesRateCtrl.clear();
-                quickDmdSalesAmtCtrl.clear();
-                dmdNoticeMsg = '✓ Diamond #${tempDiamonds.length} added! Pur Cost: ₹${purAmt.toStringAsFixed(2)}, Sales: ₹${salesAmt.toStringAsFixed(2)}';
-              });
-
-              quickDmdPcsFocus.requestFocus();
-            }
-
-            // 1-Click Import Stones from Lot
-            void importAllStonesFromLot() {
-              if (_selectedLot == null || _selectedLot!.stoneItems.isEmpty) return;
-              setDialogState(() {
-                for (final stn in _selectedLot!.stoneItems) {
+                for (final stn in lotStones) {
                   final purRate = stn.rate;
                   final wt = stn.weight;
                   final purAmt = stn.amount > 0 ? stn.amount : (wt * purRate);
 
-                  // Calculate master sales rate (0.0 if not in master)
                   double salesRate = 0.0;
                   final matchingPs = _priceSettings.where((ps) {
                     if (ps.productid != stn.stoneProductId) return false;
@@ -980,20 +960,6 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                     final ps = matchingPs.first;
                     salesRate = ps.mcPerGram > 0 ? ps.mcPerGram : ps.mCharge;
                   }
-                  if (salesRate <= 0) {
-                    final cents = stn.stoneUnit.toUpperCase() == 'C' ? (wt * 100.0) : (wt * 500.0);
-                    final matchingDps = _diamondPriceSettings.where((dps) {
-                      if (dps.productid != stn.stoneProductId) return false;
-                      if (stn.stoneSubProductId != null && dps.subproductid != null && dps.subproductid != 0 && dps.subproductid != stn.stoneSubProductId) return false;
-                      if (dps.fromCent > 0 || dps.toCent > 0) {
-                        if (cents < dps.fromCent || (dps.toCent > 0 && cents > dps.toCent)) return false;
-                      }
-                      return true;
-                    }).toList();
-                    if (matchingDps.isNotEmpty && matchingDps.first.centRate > 0) {
-                      salesRate = stn.stoneUnit.toUpperCase() == 'C' ? (matchingDps.first.centRate * 100.0) : (matchingDps.first.centRate * 500.0);
-                    }
-                  }
                   final salesAmt = wt * salesRate;
 
                   tempStones.add(TagStoneItem(
@@ -1001,7 +967,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                     productName: stn.stoneProductName,
                     subProductId: stn.stoneSubProductId,
                     subProductName: stn.stoneSubProductName,
-                    unit: stn.stoneUnit,
+                    unit: stn.stoneUnit.isNotEmpty ? stn.stoneUnit : 'G',
                     pcs: stn.pcs,
                     weight: stn.weight,
                     purRate: purRate,
@@ -1010,20 +976,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                     amount: salesAmt,
                   ));
                 }
-                stnNoticeMsg = '⚡ Imported ${_selectedLot!.stoneItems.length} stones from Lot!';
-              });
-            }
 
-            // 1-Click Import Diamonds from Lot
-            void importAllDiamondsFromLot() {
-              if (_selectedLot == null || _selectedLot!.diamondItems.isEmpty) return;
-              setDialogState(() {
-                for (final dmd in _selectedLot!.diamondItems) {
+                for (final dmd in lotDiamonds) {
                   final purRate = dmd.rate;
                   final wt = dmd.weight;
                   final purAmt = dmd.amount > 0 ? dmd.amount : (wt * purRate);
 
-                  // Calculate master diamond sales rate (0.0 if not in master)
                   double salesRate = 0.0;
                   double centRate = 0.0;
                   final cents = dmd.diamondUnit.toUpperCase() == 'C' ? (wt * 100.0) : (wt * 500.0);
@@ -1055,7 +1013,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                     productName: dmd.diamondProductName,
                     subProductId: dmd.diamondSubProductId,
                     subProductName: dmd.diamondSubProductName,
-                    unit: dmd.diamondUnit,
+                    unit: dmd.diamondUnit.isNotEmpty ? dmd.diamondUnit : 'C',
                     pcs: dmd.pcs,
                     weight: dmd.weight,
                     purRate: purRate,
@@ -1064,7 +1022,8 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                     amount: salesAmt,
                   ));
                 }
-                dmdNoticeMsg = '⚡ Imported ${_selectedLot!.diamondItems.length} diamonds from Lot!';
+
+                noticeMsg = '⚡ Imported ${lotStones.length} stones & ${lotDiamonds.length} diamonds from Lot!';
               });
             }
 
@@ -1072,7 +1031,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
               backgroundColor: Colors.transparent,
               insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Container(
-                width: 1180,
+                width: 1200,
                 constraints: const BoxConstraints(maxHeight: 780),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0F172A),
@@ -1091,22 +1050,44 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.diamond_rounded, color: Color(0xFF38BDF8), size: 22),
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(Icons.diamond_rounded, color: Color(0xFF38BDF8), size: 20),
+                          ),
                           const SizedBox(width: 10),
                           const Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Tag Stones & Diamonds Master Entry',
+                                'Tag Stones & Diamonds Entry (Single Window)',
                                 style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                               Text(
-                                'Stone & Diamond purchase rate auto-populated from Lot. Sales rate auto-matched from Price Setting Master.',
+                                'Select Stone (T) or Diamond (D) in single dropdown. Rates auto-calculated. Press Enter to navigate & add.',
                                 style: TextStyle(color: Colors.white60, fontSize: 11),
                               ),
                             ],
                           ),
                           const Spacer(),
+                          if (_selectedLot != null && (_selectedLot!.stoneItems.isNotEmpty || _selectedLot!.diamondItems.isNotEmpty))
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                backgroundColor: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                                foregroundColor: const Color(0xFF38BDF8),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              ),
+                              icon: const Icon(Icons.download_rounded, size: 15),
+                              label: Text(
+                                '⚡ Import Lot Items (${_selectedLot!.stoneItems.length + _selectedLot!.diamondItems.length})',
+                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: importAllFromLot,
+                            ),
+                          const SizedBox(width: 8),
                           IconButton(
                             icon: const Icon(Icons.close, color: Colors.white60),
                             onPressed: () => Navigator.pop(ctx),
@@ -1122,330 +1103,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 1. STONES SECTION
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1E293B),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.4)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.grain_rounded, size: 16, color: Color(0xFF34D399)),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        "💎 Stones Line Items (${tempStones.length}) — Total Wt: ${_weightFmt.format(stoneTotalWt)}g ($stoneTotalPcs pcs) | Pur Cost: ₹${stoneTotalPurCost.toStringAsFixed(2)} | Sales: ₹${stoneTotalSalesAmt.toStringAsFixed(2)}",
-                                        style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 12),
-                                      ),
-                                      const Spacer(),
-                                      if (_selectedLot != null && _selectedLot!.stoneItems.isNotEmpty)
-                                        TextButton.icon(
-                                          style: TextButton.styleFrom(
-                                            backgroundColor: const Color(0xFF059669).withValues(alpha: 0.2),
-                                            foregroundColor: const Color(0xFF34D399),
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          ),
-                                          icon: const Icon(Icons.download_rounded, size: 14),
-                                          label: Text('⚡ Import Lot Stones (${_selectedLot!.stoneItems.length})', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                          onPressed: importAllStonesFromLot,
-                                        ),
-                                      if (stnNoticeMsg != null) ...[
-                                        const SizedBox(width: 8),
-                                        Text(stnNoticeMsg!, style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold)),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-
-                                  // Quick Add Stone Input Bar
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0F172A),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: const Color(0xFF334155)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        // Stone Product
-                                        Expanded(
-                                          flex: 3,
-                                          child: DropdownButtonFormField<int?>(
-                                            initialValue: quickStnProductId,
-                                            dropdownColor: const Color(0xFF1E293B),
-                                            isExpanded: true,
-                                            decoration: _buildDialogInputDecoration('Stone Product *'),
-                                            items: stoneProducts.map((p) {
-                                              final inLot = _selectedLot?.stoneItems.where((s) => s.stoneProductId == p.productid).toList();
-                                              final lotLabel = (inLot != null && inLot.isNotEmpty && inLot.first.rate > 0)
-                                                  ? ' [Lot: ₹${inLot.first.rate.toStringAsFixed(0)}]'
-                                                  : '';
-                                              return DropdownMenuItem<int?>(
-                                                value: p.productid,
-                                                child: Text(
-                                                  '${p.productname}$lotLabel',
-                                                  style: TextStyle(
-                                                    color: lotLabel.isNotEmpty ? const Color(0xFF34D399) : Colors.white,
-                                                    fontSize: 12,
-                                                    fontWeight: lotLabel.isNotEmpty ? FontWeight.bold : FontWeight.normal,
-                                                  ),
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              );
-                                            }).toList(),
-                                            onChanged: (val) {
-                                              setDialogState(() {
-                                                quickStnProductId = val;
-                                                final match = stoneProducts.firstWhere((p) => p.productid == val, orElse: () => stoneProducts.first);
-                                                quickStnProductName = match.productname;
-                                                final wt = double.tryParse(quickStnWtCtrl.text.trim()) ?? 0.0;
-                                                lookupStoneRates(val, quickStnSubProductId, wt, quickStnUnit, setDialogState);
-                                              });
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Sub-product
-                                        Expanded(
-                                          flex: 2,
-                                          child: DropdownButtonFormField<int?>(
-                                            initialValue: quickStnSubProductId,
-                                            dropdownColor: const Color(0xFF1E293B),
-                                            isExpanded: true,
-                                            decoration: _buildDialogInputDecoration('Sub-Product'),
-                                            items: [
-                                              const DropdownMenuItem<int?>(value: null, child: Text('-- None --', style: TextStyle(color: Colors.white54, fontSize: 12))),
-                                              ...matchingStnSubProducts.map((sp) {
-                                                return DropdownMenuItem<int?>(value: sp.subproductid, child: Text(sp.subproductname, style: const TextStyle(color: Colors.white, fontSize: 12), overflow: TextOverflow.ellipsis));
-                                              }),
-                                            ],
-                                            onChanged: (val) {
-                                              setDialogState(() {
-                                                quickStnSubProductId = val;
-                                                if (val != null) {
-                                                  final sp = matchingStnSubProducts.firstWhere((s) => s.subproductid == val, orElse: () => matchingStnSubProducts.first);
-                                                  quickStnSubProductName = sp.subproductname;
-                                                } else {
-                                                  quickStnSubProductName = '';
-                                                }
-                                                final wt = double.tryParse(quickStnWtCtrl.text.trim()) ?? 0.0;
-                                                lookupStoneRates(quickStnProductId, val, wt, quickStnUnit, setDialogState);
-                                              });
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Unit
-                                        SizedBox(
-                                          width: 85,
-                                          child: DropdownButtonFormField<String>(
-                                            initialValue: quickStnUnit,
-                                            dropdownColor: const Color(0xFF1E293B),
-                                            decoration: _buildDialogInputDecoration('Unit'),
-                                            items: const [
-                                              DropdownMenuItem(value: 'G', child: Text('Gram (G)', style: TextStyle(color: Colors.white, fontSize: 11))),
-                                              DropdownMenuItem(value: 'C', child: Text('Carat (C)', style: TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold))),
-                                            ],
-                                            onChanged: (val) {
-                                              setDialogState(() => quickStnUnit = val ?? 'G');
-                                              final wt = double.tryParse(quickStnWtCtrl.text.trim()) ?? 0.0;
-                                              lookupStoneRates(quickStnProductId, quickStnSubProductId, wt, quickStnUnit, setDialogState);
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Pcs
-                                        SizedBox(
-                                          width: 55,
-                                          child: TextFormField(
-                                            controller: quickStnPcsCtrl,
-                                            focusNode: quickStnPcsFocus,
-                                            keyboardType: TextInputType.number,
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickStnWtFocus.requestFocus(),
-                                            style: const TextStyle(color: Colors.white, fontSize: 12),
-                                            decoration: _buildDialogInputDecoration('Pcs'),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Weight
-                                        SizedBox(
-                                          width: 75,
-                                          child: TextFormField(
-                                            controller: quickStnWtCtrl,
-                                            focusNode: quickStnWtFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickStnPurRateFocus.requestFocus(),
-                                            style: const TextStyle(color: Color(0xFF34D399), fontSize: 13, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Weight *'),
-                                            onChanged: (v) {
-                                              final wt = double.tryParse(v.trim()) ?? 0.0;
-                                              lookupStoneRates(quickStnProductId, quickStnSubProductId, wt, quickStnUnit, setDialogState);
-                                              setDialogState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Purchase Rate (₹) from Lot
-                                        SizedBox(
-                                          width: 80,
-                                          child: TextFormField(
-                                            controller: quickStnPurRateCtrl,
-                                            focusNode: quickStnPurRateFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickStnPurAmtFocus.requestFocus(),
-                                            style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Pur Rate'),
-                                            onChanged: (v) {
-                                              final pr = double.tryParse(v.trim()) ?? 0.0;
-                                              final wt = double.tryParse(quickStnWtCtrl.text.trim()) ?? 0.0;
-                                              if (wt > 0) quickStnPurAmtCtrl.text = (wt * pr).toStringAsFixed(2);
-                                              setDialogState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Purchase Amount (₹)
-                                        SizedBox(
-                                          width: 85,
-                                          child: TextFormField(
-                                            controller: quickStnPurAmtCtrl,
-                                            focusNode: quickStnPurAmtFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickStnSalesRateFocus.requestFocus(),
-                                            style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Pur Amt (₹)'),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Sales Rate (₹) from Master
-                                        SizedBox(
-                                          width: 80,
-                                          child: TextFormField(
-                                            controller: quickStnSalesRateCtrl,
-                                            focusNode: quickStnSalesRateFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickStnSalesAmtFocus.requestFocus(),
-                                            style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Sales Rate'),
-                                            onChanged: (v) {
-                                              final sr = double.tryParse(v.trim()) ?? 0.0;
-                                              final wt = double.tryParse(quickStnWtCtrl.text.trim()) ?? 0.0;
-                                              if (wt > 0) quickStnSalesAmtCtrl.text = (wt * sr).toStringAsFixed(2);
-                                              setDialogState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Sales Amount (₹)
-                                        SizedBox(
-                                          width: 85,
-                                          child: TextFormField(
-                                            controller: quickStnSalesAmtCtrl,
-                                            focusNode: quickStnSalesAmtFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.done,
-                                            onFieldSubmitted: (_) => addQuickStone(),
-                                            style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Sales Amt (₹)'),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Add Button
-                                        ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFF059669),
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                          ),
-                                          icon: const Icon(Icons.add, size: 16),
-                                          label: const Text('+ Add', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                          onPressed: addQuickStone,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-
-                                  // Table of Added Stones
-                                  if (tempStones.isNotEmpty)
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF0F172A),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: const Color(0xFF334155)),
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          ...tempStones.asMap().entries.map((entry) {
-                                            final index = entry.key;
-                                            final item = entry.value;
-                                            return Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                              decoration: BoxDecoration(
-                                                border: Border(bottom: BorderSide(color: index < tempStones.length - 1 ? const Color(0xFF1E293B) : Colors.transparent)),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  Text('#${index + 1}', style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 11)),
-                                                  const SizedBox(width: 10),
-                                                  Expanded(flex: 3, child: Text(item.productName ?? 'Stone Item', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
-                                                  Expanded(flex: 2, child: Text(item.subProductName ?? '-', style: const TextStyle(color: Colors.white70, fontSize: 11))),
-                                                  Text('${item.pcs} pcs | ${_weightFmt.format(item.weight)} ${item.unit} (-${_weightFmt.format(item.weightInGrams)}g)', style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11)),
-                                                  const SizedBox(width: 12),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(color: const Color(0xFF059669).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.4))),
-                                                    child: Text('Pur: ₹${item.purRate}/u = ₹${item.purAmount.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 10.5, fontWeight: FontWeight.w600)),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(color: const Color(0xFFD97706).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFFD97706).withValues(alpha: 0.4))),
-                                                    child: Text('Sales: ₹${item.rate}/u = ₹${item.amount.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 10.5, fontWeight: FontWeight.bold)),
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Focus(
-                                                    canRequestFocus: false,
-                                                    skipTraversal: true,
-                                                    child: IconButton(
-                                                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                                                      padding: EdgeInsets.zero,
-                                                      constraints: const BoxConstraints(),
-                                                      onPressed: () => setDialogState(() => tempStones.removeAt(index)),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                          }),
-                                        ],
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-
-                            // 2. DIAMONDS SECTION
+                            // SINGLE QUICK ENTRY BAR
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
@@ -1458,308 +1116,376 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                 children: [
                                   Row(
                                     children: [
-                                      const Icon(Icons.diamond_outlined, size: 16, color: Color(0xFF38BDF8)),
+                                      const Icon(Icons.playlist_add_rounded, size: 18, color: Color(0xFF38BDF8)),
                                       const SizedBox(width: 6),
-                                      Text(
-                                        "✨ Diamonds Line Items (${tempDiamonds.length}) — Total Wt: ${_weightFmt.format(diamondTotalWt)}ct ($diamondTotalPcs pcs) | Pur Cost: ₹${diamondTotalPurCost.toStringAsFixed(2)} | Sales: ₹${diamondTotalSalesAmt.toStringAsFixed(2)}",
-                                        style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 12),
+                                      const Text(
+                                        'Add Stone / Diamond Item',
+                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0284C7).withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Text('Enter-Key Navigation Enabled', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 10, fontWeight: FontWeight.bold)),
                                       ),
                                       const Spacer(),
-                                      if (_selectedLot != null && _selectedLot!.diamondItems.isNotEmpty)
-                                        TextButton.icon(
-                                          style: TextButton.styleFrom(
-                                            backgroundColor: const Color(0xFF0284C7).withValues(alpha: 0.2),
-                                            foregroundColor: const Color(0xFF38BDF8),
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          ),
-                                          icon: const Icon(Icons.download_rounded, size: 14),
-                                          label: Text('⚡ Import Lot Diamonds (${_selectedLot!.diamondItems.length})', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                          onPressed: importAllDiamondsFromLot,
+                                      if (noticeMsg != null)
+                                        Text(
+                                          noticeMsg!,
+                                          style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold),
                                         ),
-                                      if (dmdNoticeMsg != null) ...[
-                                        const SizedBox(width: 8),
-                                        Text(dmdNoticeMsg!, style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
-                                      ],
                                     ],
                                   ),
                                   const SizedBox(height: 10),
 
-                                  // Quick Add Diamond Input Bar
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0F172A),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: const Color(0xFF334155)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        // Diamond Product
-                                        Expanded(
-                                          flex: 3,
-                                          child: DropdownButtonFormField<int?>(
-                                            initialValue: quickDmdProductId,
-                                            dropdownColor: const Color(0xFF1E293B),
-                                            isExpanded: true,
-                                            decoration: _buildDialogInputDecoration('Diamond Product *'),
-                                            items: diamondProducts.map((p) {
-                                              final inLot = _selectedLot?.diamondItems.where((d) => d.diamondProductId == p.productid).toList();
-                                              final lotLabel = (inLot != null && inLot.isNotEmpty && inLot.first.rate > 0)
-                                                  ? ' [Lot: ₹${inLot.first.rate.toStringAsFixed(0)}]'
-                                                  : '';
-                                              return DropdownMenuItem<int?>(
-                                                value: p.productid,
-                                                child: Text(
-                                                  '${p.productname}$lotLabel',
-                                                  style: TextStyle(
-                                                    color: lotLabel.isNotEmpty ? const Color(0xFF38BDF8) : Colors.white,
-                                                    fontSize: 12,
-                                                    fontWeight: lotLabel.isNotEmpty ? FontWeight.bold : FontWeight.normal,
-                                                  ),
-                                                  overflow: TextOverflow.ellipsis,
+                                  // Row of Input Controls
+                                  Row(
+                                    children: [
+                                      // 1. Single Dropdown for Stone & Diamond Products
+                                      Expanded(
+                                        flex: 4,
+                                        child: DropdownButtonFormField<int?>(
+                                          initialValue: quickProductId,
+                                          focusNode: quickProdFocus,
+                                          dropdownColor: const Color(0xFF1E293B),
+                                          isExpanded: true,
+                                          decoration: _buildDialogInputDecoration('Item / Product (D/T) *'),
+                                          items: combinedProducts.map((p) {
+                                            final isDia = _isDiamondProduct(p);
+                                            final isStn = _isStoneProduct(p);
+                                            final typeTag = isDia ? '✨ [Dia]' : (isStn ? '💎 [Stn]' : '[Item]');
+                                            double lotRate = 0.0;
+                                            if (isDia) {
+                                              final match = _selectedLot?.diamondItems.where((d) => d.diamondProductId == p.productid).toList();
+                                              if (match != null && match.isNotEmpty) lotRate = match.first.rate;
+                                            } else {
+                                              final match = _selectedLot?.stoneItems.where((s) => s.stoneProductId == p.productid).toList();
+                                              if (match != null && match.isNotEmpty) lotRate = match.first.rate;
+                                            }
+                                            final lotLabel = lotRate > 0
+                                                ? ' [Lot: ₹${lotRate.toStringAsFixed(0)}]'
+                                                : '';
+                                            return DropdownMenuItem<int?>(
+                                              value: p.productid,
+                                              child: Text(
+                                                '$typeTag ${p.productname}$lotLabel',
+                                                style: TextStyle(
+                                                  color: isDia ? const Color(0xFF38BDF8) : const Color(0xFF34D399),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
                                                 ),
-                                              );
-                                            }).toList(),
-                                            onChanged: (val) {
-                                              setDialogState(() {
-                                                quickDmdProductId = val;
-                                                final match = diamondProducts.firstWhere((p) => p.productid == val, orElse: () => diamondProducts.first);
-                                                quickDmdProductName = match.productname;
-                                                final wt = double.tryParse(quickDmdWtCtrl.text.trim()) ?? 0.0;
-                                                lookupDiamondRates(val, quickDmdSubProductId, wt, quickDmdUnit, setDialogState);
-                                              });
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Sub-product
-                                        Expanded(
-                                          flex: 2,
-                                          child: DropdownButtonFormField<int?>(
-                                            initialValue: quickDmdSubProductId,
-                                            dropdownColor: const Color(0xFF1E293B),
-                                            isExpanded: true,
-                                            decoration: _buildDialogInputDecoration('Sub-Product'),
-                                            items: [
-                                              const DropdownMenuItem<int?>(value: null, child: Text('-- None --', style: TextStyle(color: Colors.white54, fontSize: 12))),
-                                              ...matchingDmdSubProducts.map((sp) {
-                                                return DropdownMenuItem<int?>(value: sp.subproductid, child: Text(sp.subproductname, style: const TextStyle(color: Colors.white, fontSize: 12), overflow: TextOverflow.ellipsis));
-                                              }),
-                                            ],
-                                            onChanged: (val) {
-                                              setDialogState(() {
-                                                quickDmdSubProductId = val;
-                                                if (val != null) {
-                                                  final sp = matchingDmdSubProducts.firstWhere((s) => s.subproductid == val, orElse: () => matchingDmdSubProducts.first);
-                                                  quickDmdSubProductName = sp.subproductname;
-                                                } else {
-                                                  quickDmdSubProductName = '';
-                                                }
-                                                final wt = double.tryParse(quickDmdWtCtrl.text.trim()) ?? 0.0;
-                                                lookupDiamondRates(quickDmdProductId, val, wt, quickDmdUnit, setDialogState);
-                                              });
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Unit
-                                        SizedBox(
-                                          width: 85,
-                                          child: DropdownButtonFormField<String>(
-                                            initialValue: quickDmdUnit,
-                                            dropdownColor: const Color(0xFF1E293B),
-                                            decoration: _buildDialogInputDecoration('Unit'),
-                                            items: const [
-                                              DropdownMenuItem(value: 'C', child: Text('Carat (C)', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold))),
-                                              DropdownMenuItem(value: 'G', child: Text('Gram (G)', style: TextStyle(color: Colors.white, fontSize: 11))),
-                                            ],
-                                            onChanged: (val) {
-                                              setDialogState(() => quickDmdUnit = val ?? 'C');
-                                              final wt = double.tryParse(quickDmdWtCtrl.text.trim()) ?? 0.0;
-                                              lookupDiamondRates(quickDmdProductId, quickDmdSubProductId, wt, quickDmdUnit, setDialogState);
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Pcs
-                                        SizedBox(
-                                          width: 55,
-                                          child: TextFormField(
-                                            controller: quickDmdPcsCtrl,
-                                            focusNode: quickDmdPcsFocus,
-                                            keyboardType: TextInputType.number,
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickDmdWtFocus.requestFocus(),
-                                            style: const TextStyle(color: Colors.white, fontSize: 12),
-                                            decoration: _buildDialogInputDecoration('Pcs'),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Carats / Weight (triggers diamond rate lookups)
-                                        SizedBox(
-                                          width: 75,
-                                          child: TextFormField(
-                                            controller: quickDmdWtCtrl,
-                                            focusNode: quickDmdWtFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickDmdPurRateFocus.requestFocus(),
-                                            style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Carats *'),
-                                            onChanged: (v) {
-                                              final wt = double.tryParse(v.trim()) ?? 0.0;
-                                              lookupDiamondRates(quickDmdProductId, quickDmdSubProductId, wt, quickDmdUnit, setDialogState);
-                                              setDialogState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Pur Rate (₹) from Lot
-                                        SizedBox(
-                                          width: 80,
-                                          child: TextFormField(
-                                            controller: quickDmdPurRateCtrl,
-                                            focusNode: quickDmdPurRateFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickDmdPurAmtFocus.requestFocus(),
-                                            style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Pur Rate'),
-                                            onChanged: (v) {
-                                              final pr = double.tryParse(v.trim()) ?? 0.0;
-                                              final wt = double.tryParse(quickDmdWtCtrl.text.trim()) ?? 0.0;
-                                              if (wt > 0) quickDmdPurAmtCtrl.text = (wt * pr).toStringAsFixed(2);
-                                              setDialogState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Pur Amount (₹)
-                                        SizedBox(
-                                          width: 85,
-                                          child: TextFormField(
-                                            controller: quickDmdPurAmtCtrl,
-                                            focusNode: quickDmdPurAmtFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickDmdSalesRateFocus.requestFocus(),
-                                            style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Pur Amt (₹)'),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Sales Rate (₹/ct or ₹/cent) from Master
-                                        SizedBox(
-                                          width: 80,
-                                          child: TextFormField(
-                                            controller: quickDmdSalesRateCtrl,
-                                            focusNode: quickDmdSalesRateFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.next,
-                                            onFieldSubmitted: (_) => quickDmdSalesAmtFocus.requestFocus(),
-                                            style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Sales Rate'),
-                                            onChanged: (v) {
-                                              final rate = double.tryParse(v.trim()) ?? 0.0;
-                                              final wt = double.tryParse(quickDmdWtCtrl.text.trim()) ?? 0.0;
-                                              if (wt > 0) {
-                                                quickDmdSalesAmtCtrl.text = (wt * rate).toStringAsFixed(2);
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            );
+                                          }).toList(),
+                                          onChanged: (val) {
+                                            setDialogState(() {
+                                              quickProductId = val;
+                                              final match = combinedProducts.firstWhere((p) => p.productid == val, orElse: () => combinedProducts.first);
+                                              quickProductName = match.productname;
+                                              if (_isDiamondProduct(match) && quickUnit != 'C' && quickUnit != 'cent') {
+                                                quickUnit = 'C';
+                                              } else if (_isStoneProduct(match) && quickUnit != 'G' && quickUnit != 'C') {
+                                                quickUnit = 'G';
                                               }
-                                              setDialogState(() {});
-                                            },
-                                          ),
+                                              final wt = double.tryParse(quickWtCtrl.text.trim()) ?? 0.0;
+                                              lookupRates(val, quickSubProductId, wt, quickUnit, setDialogState);
+                                            });
+                                            quickPcsFocus.requestFocus();
+                                          },
                                         ),
-                                        const SizedBox(width: 6),
-
-                                        // Sales Amount (₹)
-                                        SizedBox(
-                                          width: 85,
-                                          child: TextFormField(
-                                            controller: quickDmdSalesAmtCtrl,
-                                            focusNode: quickDmdSalesAmtFocus,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            textInputAction: TextInputAction.done,
-                                            onFieldSubmitted: (_) => addQuickDiamond(),
-                                            style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
-                                            decoration: _buildDialogInputDecoration('Sales Amt (₹)'),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-
-                                        // Add Button
-                                        ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFF0284C7),
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                          ),
-                                          icon: const Icon(Icons.add, size: 16),
-                                          label: const Text('+ Add', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                          onPressed: addQuickDiamond,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-
-                                  // Table of Added Diamonds
-                                  if (tempDiamonds.isNotEmpty)
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF0F172A),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: const Color(0xFF334155)),
                                       ),
-                                      child: Column(
-                                        children: [
+                                      const SizedBox(width: 6),
+
+                                      // 2. Sub-product
+                                      Expanded(
+                                        flex: 2,
+                                        child: DropdownButtonFormField<int?>(
+                                          initialValue: quickSubProductId,
+                                          focusNode: quickSubProdFocus,
+                                          dropdownColor: const Color(0xFF1E293B),
+                                          isExpanded: true,
+                                          decoration: _buildDialogInputDecoration('Sub-Product'),
+                                          items: [
+                                            const DropdownMenuItem<int?>(value: null, child: Text('-- None --', style: TextStyle(color: Colors.white54, fontSize: 11))),
+                                            ...matchingSubProducts.map((sp) {
+                                              return DropdownMenuItem<int?>(value: sp.subproductid, child: Text(sp.subproductname, style: const TextStyle(color: Colors.white, fontSize: 11), overflow: TextOverflow.ellipsis));
+                                            }),
+                                          ],
+                                          onChanged: (val) {
+                                            setDialogState(() {
+                                              quickSubProductId = val;
+                                              if (val != null) {
+                                                final sp = matchingSubProducts.firstWhere((s) => s.subproductid == val, orElse: () => matchingSubProducts.first);
+                                                quickSubProductName = sp.subproductname;
+                                              } else {
+                                                quickSubProductName = '';
+                                              }
+                                              final wt = double.tryParse(quickWtCtrl.text.trim()) ?? 0.0;
+                                              lookupRates(quickProductId, val, wt, quickUnit, setDialogState);
+                                            });
+                                            quickPcsFocus.requestFocus();
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+
+                                      // 3. Unit Dropdown
+                                      SizedBox(
+                                        width: 85,
+                                        child: DropdownButtonFormField<String>(
+                                          initialValue: quickUnit,
+                                          focusNode: quickUnitFocus,
+                                          dropdownColor: const Color(0xFF1E293B),
+                                          decoration: _buildDialogInputDecoration('Unit'),
+                                          items: const [
+                                            DropdownMenuItem(value: 'G', child: Text('Gram (G)', style: TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold))),
+                                            DropdownMenuItem(value: 'C', child: Text('Carat (C)', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                            DropdownMenuItem(value: 'cent', child: Text('Cent', style: TextStyle(color: Colors.white, fontSize: 11))),
+                                          ],
+                                          onChanged: (val) {
+                                            setDialogState(() => quickUnit = val ?? 'G');
+                                            final wt = double.tryParse(quickWtCtrl.text.trim()) ?? 0.0;
+                                            lookupRates(quickProductId, quickSubProductId, wt, quickUnit, setDialogState);
+                                            quickPcsFocus.requestFocus();
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+
+                                      // 4. Pcs
+                                      SizedBox(
+                                        width: 55,
+                                        child: TextFormField(
+                                          controller: quickPcsCtrl,
+                                          focusNode: quickPcsFocus,
+                                          keyboardType: TextInputType.number,
+                                          textInputAction: TextInputAction.next,
+                                          onFieldSubmitted: (_) => quickWtFocus.requestFocus(),
+                                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                                          decoration: _buildDialogInputDecoration('Pcs'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+
+                                      // 5. Weight / Carats
+                                      SizedBox(
+                                        width: 80,
+                                        child: TextFormField(
+                                          controller: quickWtCtrl,
+                                          focusNode: quickWtFocus,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          textInputAction: TextInputAction.next,
+                                          onFieldSubmitted: (_) => quickPurRateFocus.requestFocus(),
+                                          style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 13, fontWeight: FontWeight.bold),
+                                          decoration: _buildDialogInputDecoration('Weight *'),
+                                          onChanged: (v) {
+                                            final wt = double.tryParse(v.trim()) ?? 0.0;
+                                            lookupRates(quickProductId, quickSubProductId, wt, quickUnit, setDialogState);
+                                            setDialogState(() {});
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+
+                                      // 6. Pur Rate (₹)
+                                      SizedBox(
+                                        width: 80,
+                                        child: TextFormField(
+                                          controller: quickPurRateCtrl,
+                                          focusNode: quickPurRateFocus,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          textInputAction: TextInputAction.next,
+                                          onFieldSubmitted: (_) => quickPurAmtFocus.requestFocus(),
+                                          style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.bold),
+                                          decoration: _buildDialogInputDecoration('Pur Rate'),
+                                          onChanged: (v) {
+                                            final pr = double.tryParse(v.trim()) ?? 0.0;
+                                            final wt = double.tryParse(quickWtCtrl.text.trim()) ?? 0.0;
+                                            if (wt > 0) quickPurAmtCtrl.text = (wt * pr).toStringAsFixed(2);
+                                            setDialogState(() {});
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+
+                                      // 7. Pur Amount (₹)
+                                      SizedBox(
+                                        width: 85,
+                                        child: TextFormField(
+                                          controller: quickPurAmtCtrl,
+                                          focusNode: quickPurAmtFocus,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          textInputAction: TextInputAction.next,
+                                          onFieldSubmitted: (_) => quickSalesRateFocus.requestFocus(),
+                                          style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.bold),
+                                          decoration: _buildDialogInputDecoration('Pur Amt (₹)'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+
+                                      // 8. Sales Rate (₹)
+                                      SizedBox(
+                                        width: 80,
+                                        child: TextFormField(
+                                          controller: quickSalesRateCtrl,
+                                          focusNode: quickSalesRateFocus,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          textInputAction: TextInputAction.next,
+                                          onFieldSubmitted: (_) => quickSalesAmtFocus.requestFocus(),
+                                          style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
+                                          decoration: _buildDialogInputDecoration('Sales Rate'),
+                                          onChanged: (v) {
+                                            final sr = double.tryParse(v.trim()) ?? 0.0;
+                                            final wt = double.tryParse(quickWtCtrl.text.trim()) ?? 0.0;
+                                            if (wt > 0) quickSalesAmtCtrl.text = (wt * sr).toStringAsFixed(2);
+                                            setDialogState(() {});
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+
+                                      // 9. Sales Amount (₹) -> Pressing Enter adds to grid & focuses Product Dropdown!
+                                      SizedBox(
+                                        width: 85,
+                                        child: TextFormField(
+                                          controller: quickSalesAmtCtrl,
+                                          focusNode: quickSalesAmtFocus,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          textInputAction: TextInputAction.done,
+                                          onFieldSubmitted: (_) => addUnifiedItem(),
+                                          style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.bold),
+                                          decoration: _buildDialogInputDecoration('Sales Amt (₹)'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+
+                                      // 10. + Add Button
+                                      ElevatedButton.icon(
+                                        focusNode: quickAddFocus,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF0284C7),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                        ),
+                                        icon: const Icon(Icons.add, size: 16),
+                                        label: const Text('+ Add', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                        onPressed: addUnifiedItem,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+
+                            // UNIFIED ITEMS GRID TABLE
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF334155)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.table_chart_outlined, size: 16, color: Colors.white70),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        "Added Stone & Diamond Items ($totalCombinedItemsCount) — Total Wt: ${_weightFmt.format(stoneTotalWt + (diamondTotalWt * 0.2))}g ($totalCombinedPcs pcs) | Pur Cost: ₹${totalCombinedPurCost.toStringAsFixed(2)} | Sales: ₹${totalCombinedSalesAmt.toStringAsFixed(2)}",
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  if (tempStones.isEmpty && tempDiamonds.isEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 24),
+                                      alignment: Alignment.center,
+                                      child: const Text('No stones or diamonds added yet. Use the quick entry bar above.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                                    )
+                                  else
+                                    SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: DataTable(
+                                        headingRowColor: const WidgetStatePropertyAll(Color(0xFF0F172A)),
+                                        dataRowMinHeight: 38,
+                                        dataRowMaxHeight: 46,
+                                        columns: const [
+                                          DataColumn(label: Text('#', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('TYPE', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('PRODUCT NAME', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('SUB-PRODUCT', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('PCS', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('WEIGHT / CT', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('LESS (g)', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('PUR RATE (₹)', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('PUR AMT (₹)', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('SALES RATE (₹)', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('SALES AMT (₹)', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                          DataColumn(label: Text('ACTION', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11))),
+                                        ],
+                                        rows: [
+                                          ...tempStones.asMap().entries.map((entry) {
+                                            final i = entry.key;
+                                            final stn = entry.value;
+                                            return DataRow(
+                                              cells: [
+                                                DataCell(Text('${i + 1}', style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                                                DataCell(Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(color: const Color(0xFF059669).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
+                                                  child: const Text('💎 Stone (T)', style: TextStyle(color: Color(0xFF34D399), fontSize: 10.5, fontWeight: FontWeight.bold)),
+                                                )),
+                                                DataCell(Text(stn.productName ?? 'Stone', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold))),
+                                                DataCell(Text(stn.subProductName ?? '-', style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                                                DataCell(Text('${stn.pcs}', style: const TextStyle(color: Colors.white, fontSize: 11))),
+                                                DataCell(Text('${_weightFmt.format(stn.weight)} ${stn.unit}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                DataCell(Text('${_weightFmt.format(stn.weightInGrams)}g', style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 11))),
+                                                DataCell(Text('₹${stn.purRate.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 11))),
+                                                DataCell(Text('₹${stn.purAmount.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                DataCell(Text('₹${stn.rate.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 11))),
+                                                DataCell(Text('₹${stn.amount.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                DataCell(IconButton(
+                                                  icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFEF4444)),
+                                                  onPressed: () => setDialogState(() => tempStones.removeAt(i)),
+                                                )),
+                                              ],
+                                            );
+                                          }),
                                           ...tempDiamonds.asMap().entries.map((entry) {
-                                            final index = entry.key;
-                                            final item = entry.value;
-                                            return Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                              decoration: BoxDecoration(
-                                                border: Border(bottom: BorderSide(color: index < tempDiamonds.length - 1 ? const Color(0xFF1E293B) : Colors.transparent)),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  Text('#${index + 1}', style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 11)),
-                                                  const SizedBox(width: 10),
-                                                  Expanded(flex: 3, child: Text(item.productName ?? 'Diamond Item', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
-                                                  Expanded(flex: 2, child: Text(item.subProductName ?? '-', style: const TextStyle(color: Colors.white70, fontSize: 11))),
-                                                  Text('${item.pcs} pcs | ${_weightFmt.format(item.weight)} ${item.unit} (-${_weightFmt.format(item.weightInGrams)}g)', style: const TextStyle(color: Color(0xFF34D399), fontSize: 11)),
-                                                  const SizedBox(width: 12),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(color: const Color(0xFF059669).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.4))),
-                                                    child: Text('Pur: ₹${item.purRate}/ct = ₹${item.purAmount.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 10.5, fontWeight: FontWeight.w600)),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.4))),
-                                                    child: Text('Sales: ₹${item.rate}/ct = ₹${item.amount.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 10.5, fontWeight: FontWeight.bold)),
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Focus(
-                                                    canRequestFocus: false,
-                                                    skipTraversal: true,
-                                                    child: IconButton(
-                                                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-                                                      padding: EdgeInsets.zero,
-                                                      constraints: const BoxConstraints(),
-                                                      onPressed: () => setDialogState(() => tempDiamonds.removeAt(index)),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                                            final i = entry.key;
+                                            final dmd = entry.value;
+                                            return DataRow(
+                                              cells: [
+                                                DataCell(Text('${tempStones.length + i + 1}', style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                                                DataCell(Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
+                                                  child: const Text('✨ Diamond (D)', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 10.5, fontWeight: FontWeight.bold)),
+                                                )),
+                                                DataCell(Text(dmd.productName ?? 'Diamond', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold))),
+                                                DataCell(Text(dmd.subProductName ?? '-', style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                                                DataCell(Text('${dmd.pcs}', style: const TextStyle(color: Colors.white, fontSize: 11))),
+                                                DataCell(Text('${_weightFmt.format(dmd.weight)} ${dmd.unit}', style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                DataCell(Text('${_weightFmt.format(dmd.weightInGrams)}g', style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 11))),
+                                                DataCell(Text('₹${dmd.purRate.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 11))),
+                                                DataCell(Text('₹${dmd.purAmount.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                DataCell(Text('₹${dmd.rate.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 11))),
+                                                DataCell(Text('₹${dmd.amount.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 11, fontWeight: FontWeight.bold))),
+                                                DataCell(IconButton(
+                                                  icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFEF4444)),
+                                                  onPressed: () => setDialogState(() => tempDiamonds.removeAt(i)),
+                                                )),
+                                              ],
                                             );
                                           }),
                                         ],
@@ -1770,9 +1496,9 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                             ),
                             const SizedBox(height: 14),
 
-                            // 3. OTHER LESS WEIGHT
+                            // SUMMARY FOOTER
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF1E293B),
                                 borderRadius: BorderRadius.circular(10),
@@ -1780,58 +1506,44 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.tune_rounded, size: 16, color: Colors.white70),
-                                  const SizedBox(width: 8),
-                                  const Text('Other Deductions / Less Weight (Enamel, Wax, Thread):', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                                  const SizedBox(width: 14),
+                                  // Other Less Weight Input
                                   SizedBox(
-                                    width: 120,
+                                    width: 140,
                                     child: TextFormField(
                                       controller: tempOtherLessCtrl,
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       style: const TextStyle(color: Colors.white, fontSize: 12),
-                                      decoration: _buildDialogInputDecoration('Other Less (g)'),
+                                      decoration: InputDecoration(
+                                        labelText: 'Other Less Wt (g)',
+                                        labelStyle: const TextStyle(color: Colors.white60, fontSize: 11),
+                                        hintText: '0.000',
+                                        hintStyle: const TextStyle(color: Colors.white30, fontSize: 11),
+                                        filled: true,
+                                        fillColor: const Color(0xFF0F172A),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        isDense: true,
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
                                       onChanged: (_) => setDialogState(() {}),
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-
-                            // 4. LIVE SUMMARY BAR
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1E293B),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.6)),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
+                                  const SizedBox(width: 16),
+                                  // Total Less Weight
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text('Gross Weight', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                                      Text('${_weightFmt.format(grs)} g', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                                      const Text('TOTAL LESS WEIGHT', style: TextStyle(color: Colors.white60, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                                      Text('${_weightFmt.format(totalLessGrams)} g', style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 14, fontWeight: FontWeight.bold)),
                                     ],
                                   ),
-                                  const Text('—', style: TextStyle(color: Colors.white60, fontSize: 18, fontWeight: FontWeight.bold)),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('Total Less Wt', style: TextStyle(color: Color(0xFFFCA5A5), fontSize: 11, fontWeight: FontWeight.bold)),
-                                      Text('- ${_weightFmt.format(totalLessGrams)} g', style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 14, fontWeight: FontWeight.bold)),
-                                    ],
-                                  ),
-                                  const Text('=', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                  const SizedBox(width: 20),
+                                  // Net Gold Weight
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF059669).withValues(alpha: 0.2),
                                       borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: const Color(0xFF34D399)),
+                                      border: Border.all(color: const Color(0xFF059669)),
                                     ),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1841,6 +1553,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                       ],
                                     ),
                                   ),
+                                  const Spacer(),
                                   // Total Purchase Cost
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1857,6 +1570,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                       ],
                                     ),
                                   ),
+                                  const SizedBox(width: 10),
                                   // Total Sales Amount
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1951,9 +1665,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
           },
         );
       },
-    );
-
-    if (result != null) {
+    );    if (result != null) {
       setState(() {
         _stoneItems = (result['stones'] as List<TagStoneItem>?) ?? [];
         _diamondItems = (result['diamonds'] as List<TagDiamondItem>?) ?? [];
@@ -2035,6 +1747,11 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
       return;
     }
 
+    if (_isLotCompleted) {
+      _showToast('⚠️ Selected Lot is already completed (Remaining balance ≤ 0.200g). Barcoding is locked.', isError: true);
+      return;
+    }
+
     if (_selectedBranch == null) {
       _showToast('Please select a Target Branch for this tag.', isError: true);
       return;
@@ -2048,6 +1765,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
     final grs = double.tryParse(_grossWeightController.text.trim()) ?? 0.0;
     if (grs <= 0) {
       _showToast('Please enter a valid Gross Weight (e.g. 10.250g)', isError: true);
+      _grossWeightFocusNode.requestFocus();
+      return;
+    }
+
+    if (grs > (_rawRemainingGrossWeight + _lotToleranceGrams)) {
+      _showToast('⚠️ Tag weight (${_weightFmt.format(grs)}g) exceeds lot balance (${_weightFmt.format(_rawRemainingGrossWeight)}g).', isError: true);
       _grossWeightFocusNode.requestFocus();
       return;
     }
@@ -2103,25 +1826,18 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
         final itemLabel = _effectiveSubProductName.isNotEmpty ? '$_effectiveProductName - $_effectiveSubProductName' : _effectiveProductName;
         _showToast('✓ Generated $sku ($itemLabel) successfully!');
 
-        // Reload tags
-        final tagsRes = await _api.getStockTags(token);
-        if (mounted && tagsRes['success'] == true && tagsRes['tags'] != null) {
-          setState(() {
-            _taggedItems = (tagsRes['tags'] as List)
-                .map((t) => StockTaggedItem.fromJson(t as Map<String, dynamic>))
-                .toList();
-          });
+        // Reload tags for the active date filter
+        await _fetchTagsForDateRange();
 
-          // Print if requested
-          if (andPrint && _selectedTemplate != null) {
-            final newTag = _taggedItems.firstWhere((t) => t.skuCode == sku, orElse: () => _taggedItems.last);
-            BarcodePrinterService.directPrint(
-              template: _selectedTemplate!,
-              items: [newTag],
-              jobName: 'Tag_$sku',
-            );
-            _api.markStockTagsPrinted(token, itemIds: [newTag.itemId]);
-          }
+        // Print if requested
+        if (andPrint && _selectedTemplate != null && _taggedItems.isNotEmpty) {
+          final newTag = _taggedItems.firstWhere((t) => t.skuCode == sku, orElse: () => _taggedItems.last);
+          BarcodePrinterService.directPrint(
+            template: _selectedTemplate!,
+            items: [newTag],
+            jobName: 'Tag_$sku',
+          );
+          _api.markStockTagsPrinted(token, itemIds: [newTag.itemId]);
         }
 
         // Clean inputs and reset focus for the next piece tag!
@@ -2150,7 +1866,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
       builder: (ctx) {
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
-            final activeLots = _allLots.where((l) => l.isActive && l.status.toUpperCase() != 'DISABLED').toList();
+            final activeLots = _allLots.where((l) => l.isActive && l.status.toUpperCase() != 'DISABLED' && l.status.toUpperCase() != 'INACTIVE').toList();
             final filteredLots = activeLots.where((lot) {
               if (lotSearchQuery.isEmpty) return true;
               final q = lotSearchQuery.toLowerCase();
@@ -2645,7 +2361,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                     value: null,
                     child: Text('-- Select Lot --', style: TextStyle(fontSize: 12, color: GlassTheme.textMuted)),
                   ),
-                  ..._allLots.where((lot) => lot.isActive && lot.status.toUpperCase() != 'DISABLED').map((lot) {
+                  ..._allLots.where((lot) => lot.isActive && lot.status.toUpperCase() != 'DISABLED' && lot.status.toUpperCase() != 'INACTIVE').map((lot) {
                     return DropdownMenuItem<int?>(
                       value: lot.lotId,
                       child: Text(
@@ -2781,18 +2497,47 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                   const SizedBox(height: 4),
                   _buildCompactKpiRow('Tagged Pieces', '$_taggedPcsCount pcs', '${_weightFmt.format(_taggedGrossWeight)}g', const Color(0xFF059669)),
                   const SizedBox(height: 4),
-                  _buildCompactKpiRow('Pending Remaining', '$_remainingPcs pcs', '${_weightFmt.format(_remainingGrossWeight)}g', const Color(0xFFD97706), isBold: true),
+                  _buildCompactKpiRow(
+                    'Pending Remaining',
+                    '$_remainingPcs pcs',
+                    _isLotCompleted ? '0.000g (Completed)' : '${_weightFmt.format(_remainingGrossWeight)}g',
+                    _isLotCompleted ? const Color(0xFF059669) : const Color(0xFFD97706),
+                    isBold: true,
+                  ),
+                  if (_isLotCompleted) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: const Color(0xFFFCA5A5)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, size: 13, color: Color(0xFFDC2626)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'Lot Completed (Balance ≤ 0.200g). Tagging locked.',
+                              style: const TextStyle(color: Color(0xFFDC2626), fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
 
                   // Progress Bar
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: _taggingProgress,
+                      value: _isLotCompleted ? 1.0 : _taggingProgress,
                       minHeight: 6,
                       backgroundColor: const Color(0xFFE2E8F0),
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        _taggingProgress >= 1.0 ? const Color(0xFF059669) : const Color(0xFF0284C7),
+                        (_isLotCompleted || _taggingProgress >= 1.0) ? const Color(0xFF059669) : const Color(0xFF0284C7),
                       ),
                     ),
                   ),
@@ -2800,8 +2545,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      '${(_taggingProgress * 100).toStringAsFixed(0)}% Tagged',
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                      _isLotCompleted ? '100% Tagged (Completed)' : '${(_taggingProgress * 100).toStringAsFixed(0)}% Tagged',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: _isLotCompleted ? const Color(0xFF059669) : const Color(0xFF64748B),
+                      ),
                     ),
                   ),
 
@@ -3618,6 +3367,30 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
           ),
           const SizedBox(height: 10),
 
+          // Locked Notice if Lot is Completed
+          if (_isLotCompleted)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lock_rounded, size: 14, color: Color(0xFFDC2626)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '⚠️ Selected Lot is completed (Remaining balance ≤ 0.200g). Barcoding is locked for this lot.',
+                      style: TextStyle(color: Color(0xFFDC2626), fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // ROW 5: Action Buttons (Save & Print Tag vs Save Tag Only)
           Row(
             children: [
@@ -3626,7 +3399,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                 child: ElevatedButton.icon(
                   focusNode: _saveAndPrintFocusNode,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0284C7),
+                    backgroundColor: _isLotCompleted ? const Color(0xFF94A3B8) : const Color(0xFF0284C7),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 11),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
@@ -3635,12 +3408,14 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                   ),
                   icon: _isSaving
                       ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.print_rounded, size: 16),
+                      : Icon(_isLotCompleted ? Icons.lock_rounded : Icons.print_rounded, size: 16),
                   label: Text(
-                    _isSaving ? 'Tagging...' : 'Save & Print Tag (↵)',
+                    _isSaving
+                        ? 'Tagging...'
+                        : (_isLotCompleted ? 'Lot Completed (Locked)' : 'Save & Print Tag (↵)'),
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5),
                   ),
-                  onPressed: (_isSaving || _selectedLot == null) ? null : () => _saveAndTagSinglePiece(andPrint: true),
+                  onPressed: (_isSaving || _selectedLot == null || _isLotCompleted) ? null : () => _saveAndTagSinglePiece(andPrint: true),
                 ),
               ),
               const SizedBox(width: 6),
@@ -3656,7 +3431,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                 ),
                 icon: const Icon(Icons.save_outlined, size: 15),
                 label: const Text('Save Only', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                onPressed: (_isSaving || _selectedLot == null) ? null : () => _saveAndTagSinglePiece(andPrint: false),
+                onPressed: (_isSaving || _selectedLot == null || _isLotCompleted) ? null : () => _saveAndTagSinglePiece(andPrint: false),
               ),
             ],
           ),
@@ -3667,6 +3442,12 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
 
   // ================= BOTTOM SECTION: TAGGED STOCK ITEMS TABLE =================
   Widget _buildBottomTaggedTableSection(List<StockTaggedItem> displayedTags) {
+    final now = DateTime.now();
+    final isTodayFilter = _filterFromDate != null &&
+        _filterToDate != null &&
+        DateUtils.isSameDay(_filterFromDate, now) &&
+        DateUtils.isSameDay(_filterToDate, now);
+
     return Container(
       decoration: BoxDecoration(
         color: GlassTheme.bgSurface,
@@ -3683,7 +3464,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
           // Toolbar: Filter Switch, Search, Template Selector & Print Button
           Row(
             children: [
-              // Filter Toggle: Current Lot Only vs All Stock
+              // Filter Toggle: Current Lot Only vs Date Range Tags
               Container(
                 decoration: BoxDecoration(
                   color: GlassTheme.bgSurfaceMuted,
@@ -3698,7 +3479,9 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                       onTap: () => setState(() => _filterOnlyCurrentLot = true),
                     ),
                     _buildFilterTab(
-                      title: 'All Inventory Stock (${_taggedItems.length})',
+                      title: isTodayFilter
+                          ? "Today's Barcodes (${_taggedItems.length})"
+                          : 'Filtered Barcodes (${_taggedItems.length})',
                       isActive: !_filterOnlyCurrentLot,
                       onTap: () => setState(() => _filterOnlyCurrentLot = false),
                     ),
@@ -3709,7 +3492,7 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
 
               // Search Box
               SizedBox(
-                width: 240,
+                width: 230,
                 child: TextField(
                   controller: _searchController,
                   onChanged: (v) => setState(() => _searchQuery = v.trim()),
@@ -3800,6 +3583,185 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                 onPressed: _selectedItemIdsForPrint.isEmpty ? null : _printSelectedTags,
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+
+          // Date Range Filter Toolbar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF0284C7)),
+                const SizedBox(width: 8),
+                const Text('Date Range:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: Color(0xFF334155))),
+                const SizedBox(width: 10),
+
+                // From Date
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _filterFromDate ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setState(() => _filterFromDate = picked);
+                      _fetchTagsForDateRange();
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          _filterFromDate != null ? _displayDateFmt.format(_filterFromDate!) : 'From Date',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.calendar_today, size: 12, color: Color(0xFF64748B)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Text('to', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                const SizedBox(width: 6),
+
+                // To Date
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _filterToDate ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setState(() => _filterToDate = picked);
+                      _fetchTagsForDateRange();
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          _filterToDate != null ? _displayDateFmt.format(_filterToDate!) : 'To Date',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.calendar_today, size: 12, color: Color(0xFF64748B)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Preset: Today
+                ActionChip(
+                  label: const Text('Today', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  backgroundColor: isTodayFilter ? const Color(0xFF0284C7).withValues(alpha: 0.18) : Colors.white,
+                  side: BorderSide(color: isTodayFilter ? const Color(0xFF0284C7) : const Color(0xFFCBD5E1)),
+                  labelStyle: TextStyle(color: isTodayFilter ? const Color(0xFF0284C7) : const Color(0xFF334155)),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  onPressed: () {
+                    final today = DateTime.now();
+                    setState(() {
+                      _filterFromDate = today;
+                      _filterToDate = today;
+                    });
+                    _fetchTagsForDateRange(from: today, to: today);
+                  },
+                ),
+                const SizedBox(width: 6),
+
+                // Preset: Yesterday
+                ActionChip(
+                  label: const Text('Yesterday', style: TextStyle(fontSize: 11)),
+                  backgroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  onPressed: () {
+                    final yest = DateTime.now().subtract(const Duration(days: 1));
+                    setState(() {
+                      _filterFromDate = yest;
+                      _filterToDate = yest;
+                    });
+                    _fetchTagsForDateRange(from: yest, to: yest);
+                  },
+                ),
+                const SizedBox(width: 6),
+
+                // Preset: Last 7 Days
+                ActionChip(
+                  label: const Text('Last 7 Days', style: TextStyle(fontSize: 11)),
+                  backgroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  onPressed: () {
+                    final today = DateTime.now();
+                    final start = today.subtract(const Duration(days: 7));
+                    setState(() {
+                      _filterFromDate = start;
+                      _filterToDate = today;
+                    });
+                    _fetchTagsForDateRange(from: start, to: today);
+                  },
+                ),
+                const SizedBox(width: 6),
+
+                // Preset: All History
+                ActionChip(
+                  label: const Text('All History', style: TextStyle(fontSize: 11)),
+                  backgroundColor: (_filterFromDate == null && _filterToDate == null)
+                      ? const Color(0xFF0284C7).withValues(alpha: 0.18)
+                      : Colors.white,
+                  side: BorderSide(
+                    color: (_filterFromDate == null && _filterToDate == null) ? const Color(0xFF0284C7) : const Color(0xFFCBD5E1),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  onPressed: () {
+                    setState(() {
+                      _filterFromDate = null;
+                      _filterToDate = null;
+                    });
+                    _fetchTagsForDateRange();
+                  },
+                ),
+                const Spacer(),
+
+                // Load / Refresh Button
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F172A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  icon: _isLoadingTags
+                      ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.refresh_rounded, size: 14),
+                  label: const Text('Load Tags', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: _isLoadingTags ? null : () => _fetchTagsForDateRange(),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
 
@@ -3988,15 +3950,15 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                   child: IconButton(
                                     icon: const Icon(Icons.print, size: 16, color: Color(0xFF0284C7)),
                                     tooltip: 'Print this tag',
-                                    onPressed: () {
+                                    onPressed: () async {
                                       if (_selectedTemplate != null) {
-                                        BarcodePrinterService.directPrint(
+                                        final auth = Provider.of<AuthProvider>(context, listen: false);
+                                        final token = auth.authToken ?? '';
+                                        await BarcodePrinterService.directPrint(
                                           template: _selectedTemplate!,
                                           items: [item],
                                           jobName: 'Tag_${item.skuCode}',
                                         );
-                                        final auth = Provider.of<AuthProvider>(context, listen: false);
-                                        final token = auth.authToken ?? '';
                                         _api.markStockTagsPrinted(token, itemIds: [item.itemId]);
                                       }
                                     },
@@ -4011,8 +3973,32 @@ class _StockBarcodeTaggingScreenState extends State<StockBarcodeTaggingScreen> w
                                     onPressed: () async {
                                       final auth = Provider.of<AuthProvider>(context, listen: false);
                                       final token = auth.authToken ?? '';
-                                      await _api.deleteStockTag(token, item.itemId);
-                                      _loadInitialData();
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (c) => AlertDialog(
+                                          backgroundColor: const Color(0xFF1E293B),
+                                          title: const Text('Delete Tag?', style: TextStyle(color: Colors.white)),
+                                          content: Text('Are you sure you want to delete SKU Tag ${item.skuCode}?', style: const TextStyle(color: Colors.white70)),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel', style: TextStyle(color: Colors.white60))),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                              onPressed: () => Navigator.pop(c, true),
+                                              child: const Text('Delete', style: TextStyle(color: Colors.white)),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+
+                                      if (confirm == true) {
+                                        final res = await _api.deleteStockTag(token, item.itemId);
+                                        if (mounted && res['success'] == true) {
+                                          _showToast('✓ Tag ${item.skuCode} deleted.');
+                                          _loadInitialData();
+                                        } else {
+                                          _showToast(res['message'] ?? 'Failed to delete tag.', isError: true);
+                                        }
+                                      }
                                     },
                                   ),
                                 ),

@@ -2084,6 +2084,8 @@ class ApiService {
     int? lotId,
     String? status,
     String? search,
+    String? fromDate,
+    String? toDate,
   }) async {
     try {
       final params = <String, String>{};
@@ -2092,6 +2094,8 @@ class ApiService {
       if (lotId != null) params['lot_id'] = lotId.toString();
       if (status != null && status.isNotEmpty) params['status'] = status;
       if (search != null && search.isNotEmpty) params['search'] = search;
+      if (fromDate != null && fromDate.isNotEmpty) params['from_date'] = fromDate;
+      if (toDate != null && toDate.isNotEmpty) params['to_date'] = toDate;
 
       final uri = Uri.parse('$baseUrl/tenant/stock/tags').replace(queryParameters: params.isNotEmpty ? params : null);
       final res = await http.get(uri, headers: _headers(token));

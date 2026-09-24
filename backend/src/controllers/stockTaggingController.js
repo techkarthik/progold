@@ -215,7 +215,7 @@ export async function getStockTagsController(req, res) {
     const client = createTenantClient(turso_url, turso_token);
     await ensureStockTaggingTables(client);
 
-    const { companyid = "", branchid = "", lot_id, status = "", search = "" } = req.query;
+    const { companyid = "", branchid = "", lot_id, status = "", search = "", from_date, fromDate, to_date, toDate } = req.query;
 
     let query = `
       SELECT 
@@ -261,6 +261,16 @@ export async function getStockTagsController(req, res) {
     if (status && String(status).trim() !== "") {
       query += ` AND t.status = ?`;
       args.push(String(status).trim());
+    }
+    const startDate = (from_date || fromDate || '').toString().trim();
+    if (startDate) {
+      query += ` AND date(t.created_at) >= date(?)`;
+      args.push(startDate.slice(0, 10));
+    }
+    const endDate = (to_date || toDate || '').toString().trim();
+    if (endDate) {
+      query += ` AND date(t.created_at) <= date(?)`;
+      args.push(endDate.slice(0, 10));
     }
     if (search && String(search).trim() !== "") {
       const s = `%${String(search).trim()}%`;

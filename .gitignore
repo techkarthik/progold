@@ -41,5 +41,6 @@ Thumbs.db
 *.docx
 *.zip
 *.db
+progold-main/
 frontend/macos/Pods/
 frontend/macos/Flutter/ephemeral/
