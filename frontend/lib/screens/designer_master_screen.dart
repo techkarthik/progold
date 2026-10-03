@@ -181,12 +181,18 @@ class _DesignerMasterScreenState extends State<DesignerMasterScreen> {
 
     try {
       if (_editingRecord == null) {
-        await _api.createDesigner(token, record);
+        final res = await _api.createDesigner(token, record);
+        if (res['success'] != true) {
+          throw Exception(res['message'] ?? 'Failed to create designer');
+        }
         if (mounted) {
           _showSuccessSnackBar('Designer "$trimmedName" created successfully');
         }
       } else {
-        await _api.updateDesigner(token, _editingRecord!.designerid ?? 0, record);
+        final res = await _api.updateDesigner(token, _editingRecord!.designerid ?? 0, record);
+        if (res['success'] != true) {
+          throw Exception(res['message'] ?? 'Failed to update designer');
+        }
         if (mounted) {
           _showSuccessSnackBar('Designer "$trimmedName" updated successfully');
         }
@@ -293,7 +299,10 @@ class _DesignerMasterScreenState extends State<DesignerMasterScreen> {
 
       setState(() => _isLoading = true);
       try {
-        await _api.deleteDesigner(token, record.designerid!);
+        final res = await _api.deleteDesigner(token, record.designerid!);
+        if (res['success'] != true) {
+          throw Exception(res['message'] ?? 'Failed to delete designer');
+        }
         if (mounted) {
           _showSuccessSnackBar('Designer "${record.designername}" deleted');
           await _loadData();

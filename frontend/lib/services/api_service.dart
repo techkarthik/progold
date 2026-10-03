@@ -1686,10 +1686,25 @@ class ApiService {
 
   // ================= ESTIMATE / QUOTATION CRUD (3rd Main Menu) =================
 
-  /// Fetches estimates with metadata (counts, total value, next estimate no)
-  Future<Map<String, dynamic>> getEstimatesData(String token) async {
+  /// Fetches estimates with metadata (counts, total value, next estimate no) and optional filters
+  Future<Map<String, dynamic>> getEstimatesData(
+    String token, {
+    String? search,
+    String? status,
+    String? fromDate,
+    String? toDate,
+    int? employeeId,
+  }) async {
     try {
-      final res = await http.get(Uri.parse('$baseUrl/tenant/estimates'), headers: _headers(token));
+      final params = <String, String>{};
+      if (search != null && search.trim().isNotEmpty) params['search'] = search.trim();
+      if (status != null && status.trim().isNotEmpty && status.toUpperCase() != 'ALL') params['status'] = status.trim().toUpperCase();
+      if (fromDate != null && fromDate.trim().isNotEmpty) params['from_date'] = fromDate.trim();
+      if (toDate != null && toDate.trim().isNotEmpty) params['to_date'] = toDate.trim();
+      if (employeeId != null && employeeId > 0) params['employee_id'] = employeeId.toString();
+
+      final uri = Uri.parse('$baseUrl/tenant/estimates').replace(queryParameters: params.isNotEmpty ? params : null);
+      final res = await http.get(uri, headers: _headers(token));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (data['success'] == true && data['estimates'] is List) {
@@ -1702,19 +1717,33 @@ class ApiService {
             'total_count': data['total_count'] ?? 0,
             'open_count': data['open_count'] ?? 0,
             'total_value': (data['total_value'] as num?)?.toDouble() ?? 0.0,
+            'today_count': data['today_count'] ?? 0,
           };
         }
       }
-      return {'success': false, 'estimates': <EstimateRecord>[], 'next_estimate_no': 'EST-1001'};
+      return {'success': false, 'estimates': <EstimateRecord>[], 'next_estimate_no': 'EST-1001', 'total_count': 0};
     } catch (e) {
       debugPrint("Error getEstimatesData: $e");
-      return {'success': false, 'estimates': <EstimateRecord>[], 'next_estimate_no': 'EST-1001'};
+      return {'success': false, 'estimates': <EstimateRecord>[], 'next_estimate_no': 'EST-1001', 'total_count': 0};
     }
   }
 
   Future<List<EstimateRecord>> getEstimates(String token) async {
     final data = await getEstimatesData(token);
     return data['estimates'] as List<EstimateRecord>? ?? [];
+  }
+
+  /// Looks up barcode / SKU directly from tagged stock inventory
+  Future<Map<String, dynamic>> lookupBarcodeForEstimate(String token, String sku) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/tenant/estimates/barcode-lookup/${Uri.encodeComponent(sku.trim())}'),
+        headers: _headers(token),
+      );
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
   }
 
   Future<Map<String, dynamic>> createEstimate(String token, EstimateRecord estimate) async {
@@ -1746,6 +1775,32 @@ class ApiService {
   Future<Map<String, dynamic>> deleteEstimate(String token, int estimateId) async {
     try {
       final res = await http.delete(Uri.parse('$baseUrl/tenant/estimates/$estimateId'), headers: _headers(token));
+      return jsonDecode(res.body);
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Deletes estimates by date range or specific date
+  Future<Map<String, dynamic>> deleteEstimatesByDate(
+    String token, {
+    String? fromDate,
+    String? toDate,
+    String? beforeDate,
+    String? date,
+  }) async {
+    try {
+      final payload = <String, String>{};
+      if (fromDate != null && fromDate.trim().isNotEmpty) payload['from_date'] = fromDate.trim();
+      if (toDate != null && toDate.trim().isNotEmpty) payload['to_date'] = toDate.trim();
+      if (beforeDate != null && beforeDate.trim().isNotEmpty) payload['before_date'] = beforeDate.trim();
+      if (date != null && date.trim().isNotEmpty) payload['date'] = date.trim();
+
+      final res = await http.delete(
+        Uri.parse('$baseUrl/tenant/estimates/bulk/date-range'),
+        headers: _headers(token),
+        body: jsonEncode(payload),
+      );
       return jsonDecode(res.body);
     } catch (e) {
       return {'success': false, 'message': e.toString()};

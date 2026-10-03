@@ -8,16 +8,16 @@ class AppVersion {
   );
   static const String buildDate = String.fromEnvironment(
     'BUILD_DATE',
-    defaultValue: '14-Sep-2026 23:37 IST',
+    defaultValue: '03-Oct-2026 21:32 IST',
   );
   static const String channel = "Cloud Active";
 
-  /// Format: "ProGold v2.8.0 • Build: 14-Sep-2026 23:37 IST"
+  /// Format: "ProGold v2.8.0 • Build: 03-Oct-2026 21:32 IST"
   static String get drawerVersion => "$appName v$version • Build: $buildDate";
 
-  /// Format: "ProGold v2.8.0 • Build: 14-Sep-2026 23:37 IST • Cloud Active"
+  /// Format: "ProGold v2.8.0 • Build: 03-Oct-2026 21:32 IST • Cloud Active"
   static String get badgeVersion => "$appName v$version • Build: $buildDate • $channel";
 
-  /// Full title: "ProGold v2.8.0 (14-Sep-2026 23:37 IST)"
+  /// Full title: "ProGold v2.8.0 (03-Oct-2026 21:32 IST)"
   static String get fullTitle => "$appName v$version ($buildDate)";
 }

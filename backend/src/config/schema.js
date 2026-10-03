@@ -29,11 +29,11 @@ export async function initMasterSchema() {
     // Safe column additions for existing installations
     try {
       await masterTurso.execute(`ALTER TABLE tenants ADD COLUMN business_name TEXT DEFAULT 'ProGold Business';`);
-    } catch (_) {}
+    } catch (_) { }
 
     try {
       await masterTurso.execute(`ALTER TABLE tenants ADD COLUMN business_logo TEXT DEFAULT '';`);
-    } catch (_) {}
+    } catch (_) { }
 
     // 2. Create email_otps table
     await masterTurso.execute(`
@@ -80,7 +80,7 @@ export async function initMasterSchema() {
           const url = tenantRow.turso_url;
           const token = tenantRow.turso_token;
           if (!url || !token) continue;
-          
+
           try {
             let formattedUrl = (url || "").trim();
             if (!formattedUrl.startsWith("libsql://") && !formattedUrl.startsWith("https://") && !formattedUrl.startsWith("http://")) {
@@ -90,7 +90,7 @@ export async function initMasterSchema() {
               url: formattedUrl,
               authToken: (token || "").trim(),
             });
-            
+
             const tableCheck = await client.execute(`
               SELECT name FROM sqlite_master WHERE type='table' AND name='users'
             `);

@@ -113,9 +113,11 @@ import {
 } from "./controllers/systemControlsController.js";
 import {
   getEstimatesController,
+  getBarcodeForEstimateController,
   createEstimateController,
   updateEstimateController,
   deleteEstimateController,
+  bulkDeleteEstimatesByDateController,
 } from "./controllers/estimateController.js";
 import {
   getLatestRatesController,
@@ -338,8 +340,10 @@ app.delete("/api/tenant/system-controls/:id", requireAuth, deleteSystemControlCo
 
 // Tenant Estimates / Quotation Routes (3rd Main Menu)
 app.get("/api/tenant/estimates", requireAuth, getEstimatesController);
+app.get("/api/tenant/estimates/barcode-lookup/:sku", requireAuth, getBarcodeForEstimateController);
 app.post("/api/tenant/estimates", requireAuth, createEstimateController);
 app.put("/api/tenant/estimates/:id", requireAuth, updateEstimateController);
+app.delete("/api/tenant/estimates/bulk/date-range", requireAuth, bulkDeleteEstimatesByDateController);
 app.delete("/api/tenant/estimates/:id", requireAuth, deleteEstimateController);
 
 // Tenant Daily Purity Rates & History Routes (Rate Master)

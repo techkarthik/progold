@@ -236,6 +236,16 @@ async function ensureInventoryTables(client, tenantUrl = "") {
     `);
 
     try {
+      await client.execute(`ALTER TABLE designers ADD COLUMN accode TEXT DEFAULT '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE designers ADD COLUMN designershortname TEXT DEFAULT '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`UPDATE designers SET accode = linked_accode WHERE (accode IS NULL OR accode = '') AND linked_accode IS NOT NULL AND linked_accode != '';`);
+    } catch (_) { }
+
+    try {
       await client.execute(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_designers_designername_unique ON designers (UPPER(TRIM(designername)));
       `);

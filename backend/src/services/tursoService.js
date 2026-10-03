@@ -689,15 +689,20 @@ export async function syncTenantDatabaseSchema(url, token) {
         customer_name TEXT NOT NULL,
         customer_mobile TEXT NOT NULL DEFAULT '',
         customer_address TEXT DEFAULT '',
+        employee_id INTEGER,
+        employee_code TEXT DEFAULT '',
+        employee_name TEXT DEFAULT '',
         gross_weight REAL DEFAULT 0.0,
         net_weight REAL DEFAULT 0.0,
         total_metal_value REAL DEFAULT 0.0,
         total_making_charges REAL DEFAULT 0.0,
         total_stone_charges REAL DEFAULT 0.0,
+        total_diamond_charges REAL DEFAULT 0.0,
+        total_va_charges REAL DEFAULT 0.0,
         taxable_amount REAL DEFAULT 0.0,
+        gst_rate REAL DEFAULT 3.0,
         tax_amount REAL DEFAULT 0.0,
         net_amount REAL DEFAULT 0.0,
-        valid_days INTEGER DEFAULT 7,
         status TEXT NOT NULL DEFAULT 'OPEN',
         items_json TEXT NOT NULL DEFAULT '[]',
         notes TEXT DEFAULT '',
@@ -774,28 +779,27 @@ export async function syncTenantDatabaseSchema(url, token) {
 
       CREATE TABLE IF NOT EXISTS designers (
         designerid INTEGER PRIMARY KEY AUTOINCREMENT,
-        designername TEXT NOT NULL UNIQUE,
-        contact_person TEXT DEFAULT '',
-        phone TEXT DEFAULT '',
-        email TEXT DEFAULT '',
-        address TEXT DEFAULT '',
-        city TEXT DEFAULT '',
-        linked_accode TEXT DEFAULT '',
+        accode TEXT NOT NULL DEFAULT '',
+        designername TEXT NOT NULL,
+        designershortname TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS diamond_pricesetting (
+      CREATE TABLE IF NOT EXISTS diamondpricesetting (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        companyid TEXT DEFAULT '',
+        branchid TEXT DEFAULT '',
         productid INTEGER NOT NULL,
+        subproductid INTEGER DEFAULT NULL,
         accode TEXT NOT NULL,
-        diamond_quality TEXT NOT NULL DEFAULT 'EF-VVS',
-        carat_from REAL NOT NULL DEFAULT 0.0,
-        carat_to REAL NOT NULL DEFAULT 0.0,
-        rate_per_carat REAL NOT NULL DEFAULT 0.0,
-        selling_rate_per_carat REAL NOT NULL DEFAULT 0.0,
+        from_cent REAL NOT NULL DEFAULT 0.0,
+        to_cent REAL NOT NULL DEFAULT 0.0,
+        cent_rate REAL NOT NULL DEFAULT 0.0,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (productid) REFERENCES products(productid),
+        FOREIGN KEY (subproductid) REFERENCES subproducts(subproductid)
       );
 
       CREATE TABLE IF NOT EXISTS prepare_sku_lots (
@@ -803,30 +807,67 @@ export async function syncTenantDatabaseSchema(url, token) {
         lot_number TEXT UNIQUE NOT NULL,
         companyid TEXT NOT NULL,
         branchid TEXT NOT NULL,
-        dealer_accode TEXT NOT NULL,
-        dealer_name TEXT NOT NULL,
-        purityid INTEGER NOT NULL,
-        purity_name TEXT NOT NULL,
-        categoryid INTEGER NOT NULL,
-        category_name TEXT NOT NULL,
-        productid INTEGER NOT NULL,
-        product_name TEXT NOT NULL,
-        subproductid INTEGER,
-        subproduct_name TEXT DEFAULT '',
         designerid INTEGER NOT NULL,
-        designer_name TEXT NOT NULL,
+        productid INTEGER NOT NULL,
+        subproductid INTEGER,
+        purityid INTEGER NOT NULL,
+        rate REAL DEFAULT 0.0,
+        is_assorted TEXT NOT NULL DEFAULT 'NO',
         total_pcs INTEGER NOT NULL DEFAULT 1,
         total_gross_weight REAL NOT NULL DEFAULT 0.0,
-        touch_pct REAL DEFAULT 0.0,
-        gold_rate REAL DEFAULT 0.0,
-        mc_per_piece REAL DEFAULT 0.0,
-        stone_cost REAL DEFAULT 0.0,
-        diamond_cost REAL DEFAULT 0.0,
-        total_cost REAL DEFAULT 0.0,
-        status TEXT NOT NULL DEFAULT 'OPEN',
-        created_by TEXT DEFAULT '',
+        total_net_weight REAL NOT NULL DEFAULT 0.0,
+        
+        -- Stone Details (Optional / multi-items)
+        stone_productid INTEGER,
+        stone_subproductid INTEGER,
+        stone_unit TEXT DEFAULT 'G',
+        total_stone_pcs INTEGER DEFAULT 0,
+        total_stone_weight REAL DEFAULT 0.0,
+        total_stone_amount REAL DEFAULT 0.0,
+        stone_items_json TEXT DEFAULT '[]',
+        
+        -- Diamond Details (Optional / multi-items)
+        diamond_productid INTEGER,
+        diamond_subproductid INTEGER,
+        diamond_unit TEXT DEFAULT 'C',
+        total_diamond_pcs INTEGER DEFAULT 0,
+        total_diamond_weight REAL DEFAULT 0.0,
+        total_diamond_amount REAL DEFAULT 0.0,
+        diamond_items_json TEXT DEFAULT '[]',
+        
+        is_active INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'PENDING_SKU',
+        remarks TEXT DEFAULT '',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS prepare_sku_lot_stones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lot_id INTEGER NOT NULL,
+        stone_productid INTEGER NOT NULL,
+        stone_subproductid INTEGER,
+        stone_unit TEXT DEFAULT 'G',
+        pcs INTEGER DEFAULT 0,
+        weight REAL DEFAULT 0.0,
+        rate REAL DEFAULT 0.0,
+        amount REAL DEFAULT 0.0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (lot_id) REFERENCES prepare_sku_lots(lot_id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS prepare_sku_lot_diamonds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lot_id INTEGER NOT NULL,
+        diamond_productid INTEGER NOT NULL,
+        diamond_subproductid INTEGER,
+        diamond_unit TEXT DEFAULT 'C',
+        pcs INTEGER DEFAULT 0,
+        weight REAL DEFAULT 0.0,
+        rate REAL DEFAULT 0.0,
+        amount REAL DEFAULT 0.0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (lot_id) REFERENCES prepare_sku_lots(lot_id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS barcode_templates (
@@ -1017,15 +1058,20 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE estimates ADD COLUMN estimate_no TEXT;`,
       `ALTER TABLE estimates ADD COLUMN customer_mobile TEXT DEFAULT '';`,
       `ALTER TABLE estimates ADD COLUMN customer_address TEXT DEFAULT '';`,
+      `ALTER TABLE estimates ADD COLUMN employee_id INTEGER;`,
+      `ALTER TABLE estimates ADD COLUMN employee_code TEXT DEFAULT '';`,
+      `ALTER TABLE estimates ADD COLUMN employee_name TEXT DEFAULT '';`,
       `ALTER TABLE estimates ADD COLUMN gross_weight REAL DEFAULT 0.0;`,
       `ALTER TABLE estimates ADD COLUMN net_weight REAL DEFAULT 0.0;`,
       `ALTER TABLE estimates ADD COLUMN total_metal_value REAL DEFAULT 0.0;`,
       `ALTER TABLE estimates ADD COLUMN total_making_charges REAL DEFAULT 0.0;`,
       `ALTER TABLE estimates ADD COLUMN total_stone_charges REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN total_diamond_charges REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN total_va_charges REAL DEFAULT 0.0;`,
       `ALTER TABLE estimates ADD COLUMN taxable_amount REAL DEFAULT 0.0;`,
+      `ALTER TABLE estimates ADD COLUMN gst_rate REAL DEFAULT 3.0;`,
       `ALTER TABLE estimates ADD COLUMN tax_amount REAL DEFAULT 0.0;`,
       `ALTER TABLE estimates ADD COLUMN net_amount REAL DEFAULT 0.0;`,
-      `ALTER TABLE estimates ADD COLUMN valid_days INTEGER DEFAULT 7;`,
       `ALTER TABLE estimates ADD COLUMN items_json TEXT DEFAULT '[]';`,
       `ALTER TABLE estimates ADD COLUMN notes TEXT DEFAULT '';`,
       `ALTER TABLE estimates ADD COLUMN updated_at TEXT;`,
@@ -1034,6 +1080,26 @@ export async function syncTenantDatabaseSchema(url, token) {
       `ALTER TABLE stock_tagged_items ADD COLUMN stylename TEXT DEFAULT '';`,
       `ALTER TABLE stock_tagged_items ADD COLUMN sizeid INTEGER;`,
       `ALTER TABLE stock_tagged_items ADD COLUMN sizename TEXT DEFAULT '';`,
+      // Designers migrations
+      `ALTER TABLE designers ADD COLUMN accode TEXT DEFAULT '';`,
+      `ALTER TABLE designers ADD COLUMN designershortname TEXT DEFAULT '';`,
+      // Diamond Price Setting migrations
+      `ALTER TABLE diamondpricesetting ADD COLUMN branchid TEXT DEFAULT '';`,
+      `ALTER TABLE diamondpricesetting ADD COLUMN companyid TEXT DEFAULT '';`,
+      `ALTER TABLE diamondpricesetting ADD COLUMN subproductid INTEGER DEFAULT NULL;`,
+      `ALTER TABLE diamondpricesetting ADD COLUMN from_cent REAL DEFAULT 0.0;`,
+      `ALTER TABLE diamondpricesetting ADD COLUMN to_cent REAL DEFAULT 0.0;`,
+      `ALTER TABLE diamondpricesetting ADD COLUMN cent_rate REAL DEFAULT 0.0;`,
+      // Prepare SKU Lots migrations
+      `ALTER TABLE prepare_sku_lots ADD COLUMN stone_unit TEXT DEFAULT 'G';`,
+      `ALTER TABLE prepare_sku_lots ADD COLUMN diamond_unit TEXT DEFAULT 'C';`,
+      `ALTER TABLE prepare_sku_lots ADD COLUMN stone_items_json TEXT DEFAULT '[]';`,
+      `ALTER TABLE prepare_sku_lots ADD COLUMN diamond_items_json TEXT DEFAULT '[]';`,
+      `ALTER TABLE prepare_sku_lots ADD COLUMN total_stone_amount REAL DEFAULT 0.0;`,
+      `ALTER TABLE prepare_sku_lots ADD COLUMN total_diamond_amount REAL DEFAULT 0.0;`,
+      `ALTER TABLE prepare_sku_lots ADD COLUMN is_active INTEGER DEFAULT 1;`,
+      `ALTER TABLE prepare_sku_lots ADD COLUMN is_assorted TEXT DEFAULT 'NO';`,
+      `ALTER TABLE prepare_sku_lots ADD COLUMN rate REAL DEFAULT 0.0;`,
     ];
 
     // Execute safe column additions in sequential batches to avoid SQLITE_BUSY table locks
@@ -1064,7 +1130,8 @@ export async function syncTenantDatabaseSchema(url, token) {
       `CREATE INDEX IF NOT EXISTS idx_stock_tags_status ON stock_tagged_items (status);`,
       `CREATE INDEX IF NOT EXISTS idx_prepare_sku_lots_num ON prepare_sku_lots (lot_number);`,
       `CREATE INDEX IF NOT EXISTS idx_designers_name ON designers (designername);`,
-      `CREATE INDEX IF NOT EXISTS idx_diamond_price_product ON diamond_pricesetting (productid);`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_designers_designername_unique ON designers (UPPER(TRIM(designername)));`,
+      `CREATE INDEX IF NOT EXISTS idx_diamond_price_product ON diamondpricesetting (productid);`,
     ];
 
     try {
