@@ -80,26 +80,79 @@ export async function ensureStockTaggingTables(client, tenantUrl = "") {
 }
 
 /**
- * Generates sequential SKU Code for a Lot e.g. 'SKU-2627-1-001', 'SKU-2627-1-002'
+ * Returns current financial year 2-digit end year e.g. '27' for FY 2026-2027 (April-March).
  */
-async function generateNextSkuCodes(client, lotNumber, count = 1) {
-  const cleanLot = String(lotNumber || "").trim();
-  const prefix = `SKU-${cleanLot}-`;
+export function getFinancialYearEndYY(now = new Date()) {
+  const month = now.getMonth() + 1;
+  const fullYear = now.getFullYear();
+  let startYear = fullYear;
+  if (month < 4) {
+    startYear = fullYear - 1;
+  }
+  const endYear = startYear + 1;
+  return String(endYear).slice(-2);
+}
+
+/**
+ * Converts 0-based index to Alpha string (0 -> 'A', 1 -> 'B', 25 -> 'Z', 26 -> 'AA', ...)
+ */
+export function getAlphaFromIndex(index) {
+  let s = "";
+  let n = index;
+  while (n >= 0) {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  }
+  return s || "A";
+}
+
+/**
+ * Converts Alpha string to 0-based index ('A' -> 0, 'B' -> 1, 'Z' -> 25, 'AA' -> 26, ...)
+ */
+export function getIndexFromAlpha(str) {
+  let res = 0;
+  const upper = String(str || "").toUpperCase();
+  for (let i = 0; i < upper.length; i++) {
+    res = res * 26 + (upper.charCodeAt(i) - 64);
+  }
+  return res - 1;
+}
+
+/**
+ * Generates sequential SKU Code for Stock Tagging:
+ * Format: {EndYY}{AlphaLetter}{3-digit Seq} e.g. '27A001', '27A002', ..., '27A999', '27B001'
+ */
+export async function generateNextSkuCodes(client, arg1, arg2) {
+  let count = 1;
+  if (typeof arg2 === "number") {
+    count = arg2;
+  } else if (typeof arg1 === "number") {
+    count = arg1;
+  }
+
+  const yearYY = getFinancialYearEndYY();
 
   const res = await client.execute({
-    sql: `SELECT sku_code FROM stock_tagged_items WHERE sku_code LIKE ? ORDER BY item_id DESC;`,
-    args: [`${prefix}%`],
+    sql: `SELECT sku_code FROM stock_tagged_items WHERE UPPER(sku_code) LIKE ? OR UPPER(sku_code) LIKE ? ORDER BY item_id DESC;`,
+    args: [`${yearYY}%`, `SKU-${yearYY}%`],
   });
 
-  let maxSeq = 0;
+  let maxIndex = 0;
+  const regex = new RegExp(`^(?:SKU-)?${yearYY}([A-Z]+)(\\d{3,})$`, "i");
+
   if (res.rows && res.rows.length > 0) {
     for (const row of res.rows) {
       const code = String(row.sku_code || "").trim();
-      const match = code.match(new RegExp(`^${prefix}(\\d+)$`));
-      if (match && match[1]) {
-        const n = parseInt(match[1], 10);
-        if (!isNaN(n) && n > maxSeq) {
-          maxSeq = n;
+      const match = code.match(regex);
+      if (match) {
+        const alpha = match[1].toUpperCase();
+        const num = parseInt(match[2], 10);
+        const letterIdx = getIndexFromAlpha(alpha);
+        if (letterIdx >= 0 && !isNaN(num) && num > 0) {
+          const idx = letterIdx * 999 + num;
+          if (idx > maxIndex) {
+            maxIndex = idx;
+          }
         }
       }
     }
@@ -107,8 +160,13 @@ async function generateNextSkuCodes(client, lotNumber, count = 1) {
 
   const skuList = [];
   for (let i = 1; i <= count; i++) {
-    const seq = String(maxSeq + i).padStart(3, "0");
-    skuList.push(`${prefix}${seq}`);
+    const nextIdx = maxIndex + i;
+    const zeroBased = nextIdx - 1;
+    const letterIndex = Math.floor(zeroBased / 999);
+    const numInSeries = (zeroBased % 999) + 1;
+    const letterStr = getAlphaFromIndex(letterIndex);
+    const numStr = String(numInSeries).padStart(3, "0");
+    skuList.push(`${yearYY}${letterStr}${numStr}`);
   }
   return skuList;
 }

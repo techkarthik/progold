@@ -262,7 +262,7 @@ class BarcodeFieldDefinition {
     BarcodeFieldDefinition(
       key: 'sku',
       label: 'SKU / Barcode Number',
-      sampleValue: 'SKU-2627-1-001',
+      sampleValue: '27A001',
       defaultFormat: '{sku}',
       category: 'Core',
     ),

@@ -1262,7 +1262,7 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                             decoration: InputDecoration(
                               labelText: 'SKU / Barcode Number',
-                              hintText: 'Enter SKU (e.g. SKU-2627-1-001)',
+                              hintText: 'Enter SKU (e.g. 27A001)',
                               prefixIcon: const Icon(Icons.barcode_reader, size: 18),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

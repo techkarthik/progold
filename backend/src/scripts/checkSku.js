@@ -14,7 +14,7 @@ async function main() {
       console.table(res.rows);
 
       // Test the exact lookup query used in estimateController
-      const testSku = "SKU-2627-3-002";
+      const testSku = "sku-2627-6-001";
       console.log(`\nTesting lookup for SKU: '${testSku}'`);
       const tagResult = await client.execute({
         sql: `

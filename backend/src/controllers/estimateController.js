@@ -1,5 +1,6 @@
 import { createTenantClient } from "../config/turso.js";
 import { ensureTableOnce } from "../utils/schemaCache.js";
+import { ensureStockTaggingTables } from "./stockTaggingController.js";
 
 /**
  * Helper to ensure estimates table exists in tenant Turso DB.
@@ -154,6 +155,7 @@ export async function getBarcodeForEstimateController(req, res) {
     const { sku } = req.params;
     const { turso_url, turso_token } = req.tenant;
     const client = createTenantClient(turso_url, turso_token);
+    await ensureStockTaggingTables(client, turso_url);
 
     if (!sku || !sku.trim()) {
       return res.status(400).json({ success: false, message: "SKU / Barcode code is required." });
@@ -161,7 +163,7 @@ export async function getBarcodeForEstimateController(req, res) {
 
     const cleanSku = sku.trim();
 
-    // Query stock_tagged_items with joins
+    // Query stock_tagged_items with joins (flexible matching by SKU code, case-insensitive, with/without prefix)
     const tagResult = await client.execute({
       sql: `
         SELECT 
@@ -194,15 +196,19 @@ export async function getBarcodeForEstimateController(req, res) {
           )
         ) dr ON t.purityid = dr.purityid
         WHERE UPPER(TRIM(t.sku_code)) = UPPER(?)
+           OR UPPER(TRIM(t.sku_code)) = UPPER(REPLACE(?, 'SKU-', ''))
+           OR UPPER(TRIM(t.sku_code)) = UPPER(REPLACE(?, 'SKU', ''))
+           OR UPPER(TRIM(t.sku_code)) = UPPER('SKU-' || ?)
+        ORDER BY t.item_id DESC
         LIMIT 1;
       `,
-      args: [cleanSku],
+      args: [cleanSku, cleanSku, cleanSku, cleanSku],
     });
 
     if (tagResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: `Barcode / SKU '${cleanSku}' was not found in tagged stock inventory.`,
+        message: `Barcode / SKU '${cleanSku}' was not found in tagged stock inventory. Please ensure the item has been tagged in Stock Barcode Tagging Station.`,
       });
     }
 

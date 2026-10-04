@@ -22,7 +22,7 @@ class BarcodePrinterService {
     String formatVal(String key) {
       switch (key) {
         case 'sku':
-          return item.skuCode.isNotEmpty ? item.skuCode : 'SKU-SAMPLE-001';
+          return item.skuCode.isNotEmpty ? item.skuCode : '27A001';
         case 'gross_weight':
           return decimal3Fmt.format(item.grossWeight);
         case 'net_weight':
@@ -109,7 +109,7 @@ class BarcodePrinterService {
   }) {
     return StockTaggedItem(
       itemId: 1,
-      skuCode: skuCode ?? 'SKU-2627-1-001',
+      skuCode: skuCode ?? '27A001',
       lotId: 1,
       lotNumber: '2627-1',
       companyId: 'COMP01',

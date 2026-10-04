@@ -398,7 +398,7 @@ class _BarcodeTemplateDesignerScreenState extends State<BarcodeTemplateDesignerS
                               const BarcodeFieldDefinition(
                                 key: 'sku',
                                 label: 'SKU QR Code',
-                                sampleValue: 'SKU-2627-1-001',
+                                sampleValue: '27A001',
                                 defaultFormat: '{sku}',
                               ),
                               type: 'barcode_2d',
@@ -421,7 +421,7 @@ class _BarcodeTemplateDesignerScreenState extends State<BarcodeTemplateDesignerS
                               const BarcodeFieldDefinition(
                                 key: 'sku',
                                 label: 'SKU 1D Barcode',
-                                sampleValue: 'SKU-2627-1-001',
+                                sampleValue: '27A001',
                                 defaultFormat: '{sku}',
                               ),
                               type: 'barcode_1d',
