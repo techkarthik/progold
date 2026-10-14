@@ -158,7 +158,7 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
           _todayCount = estData['today_count'] ?? 0;
           _totalValue = (estData['total_value'] as num?)?.toDouble() ?? 0.0;
           _nextEstimateNo = estData['next_estimate_no'] ?? 'EST-1001';
-          _employees = empList.where((e) => e.active == 1).toList();
+          _employees = empList.where((e) => e.active).toList();
           if (_employees.isNotEmpty && _selectedEmployee == null) {
             _selectedEmployee = _employees.first;
           }
@@ -256,8 +256,20 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
     }
   }
 
-  Future<void> _lookupBarcode() async {
-    final barcode = _barcodeCtrl.text.trim();
+  double _parseNum(dynamic val, [double fallback = 0.0]) {
+    if (val == null) return fallback;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString().trim()) ?? fallback;
+  }
+
+  int _parseInt(dynamic val, [int fallback = 0]) {
+    if (val == null) return fallback;
+    if (val is num) return val.toInt();
+    return int.tryParse(val.toString().trim()) ?? fallback;
+  }
+
+  Future<void> _lookupBarcode([String? explicitSku]) async {
+    final barcode = (explicitSku ?? _barcodeCtrl.text).trim();
     if (barcode.isEmpty) {
       _showSnackBar('Please enter or scan a Barcode / SKU number.', isError: true);
       return;
@@ -271,43 +283,211 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
 
     try {
       final res = await _api.lookupBarcodeForEstimate(token, barcode);
+      if (!mounted) return;
       setState(() => _isLookingUpBarcode = false);
 
       if (res['success'] == true && res['data'] != null) {
         final data = res['data'] as Map<String, dynamic>;
-        setState(() {
-          _productNameCtrl.text = data['productname']?.toString() ?? data['product_name']?.toString() ?? 'Gold Ornament';
-          _subProductNameCtrl.text = data['subproductname']?.toString() ?? data['subproduct_name']?.toString() ?? '';
-          _purityNameCtrl.text = data['purityname']?.toString() ?? data['purity_name']?.toString() ?? '22K Gold (916)';
-          _grossWeightCtrl.text = (data['gross_weight'] as num?)?.toStringAsFixed(3) ?? '0.000';
-          _netWeightCtrl.text = (data['net_weight'] as num?)?.toStringAsFixed(3) ?? '0.000';
-          _stonePcsCtrl.text = data['stone_pcs']?.toString() ?? '0';
-          _stoneWeightCtrl.text = (data['stone_weight'] as num?)?.toStringAsFixed(3) ?? '0.000';
-          _stonePriceCtrl.text = (data['stone_selling_price'] as num?)?.toStringAsFixed(2) ?? '0.00';
-          _diamondPcsCtrl.text = data['diamond_pcs']?.toString() ?? '0';
-          _diamondWeightCtrl.text = (data['diamond_weight'] as num?)?.toStringAsFixed(3) ?? '0.000';
-          _diamondPriceCtrl.text = (data['diamond_selling_price'] as num?)?.toStringAsFixed(2) ?? '0.00';
-          _vaPercentCtrl.text = (data['va_percent'] as num?)?.toStringAsFixed(2) ?? '0.0';
-          _mcCtrl.text = (data['mc'] as num?)?.toStringAsFixed(2) ?? '0.00';
 
-          final bRate = (data['board_rate'] as num?)?.toDouble() ?? 0.0;
+        final fetchedSku = data['sku_code']?.toString() ?? barcode;
+        final prodName = data['productname']?.toString() ?? data['product_name']?.toString() ?? 'Gold Ornament';
+        final subProdName = data['subproductname']?.toString() ?? data['subproduct_name']?.toString() ?? '';
+        final purityName = data['purityname']?.toString() ?? data['purity_name']?.toString() ?? '22K Gold (916)';
+
+        final gross = _parseNum(data['gross_weight']);
+        final net = _parseNum(data['net_weight']);
+        final stPcs = _parseInt(data['stone_pcs']);
+        final stWt = _parseNum(data['stone_weight']);
+        final stPrice = _parseNum(data['stone_selling_price'] ?? data['stone_amt']);
+        final diaPcs = _parseInt(data['diamond_pcs']);
+        final diaWt = _parseNum(data['diamond_weight']);
+        final diaPrice = _parseNum(data['diamond_selling_price'] ?? data['diamond_amt']);
+        final va = _parseNum(data['va_percent'] ?? data['sales_va_percent'], 8.0);
+        final mc = _parseNum(data['mc'] ?? data['sales_m_charge']);
+        final bRate = _parseNum(data['board_rate'] ?? data['live_board_rate']);
+        final gst = _parseNum(data['gst_rate'], 3.0);
+
+        setState(() {
+          _barcodeCtrl.text = fetchedSku;
+          _productNameCtrl.text = prodName;
+          _subProductNameCtrl.text = subProdName;
+          _purityNameCtrl.text = purityName;
+          _grossWeightCtrl.text = gross > 0 ? gross.toStringAsFixed(3) : net.toStringAsFixed(3);
+          _netWeightCtrl.text = net.toStringAsFixed(3);
+          _stonePcsCtrl.text = stPcs.toString();
+          _stoneWeightCtrl.text = stWt.toStringAsFixed(3);
+          _stonePriceCtrl.text = stPrice.toStringAsFixed(2);
+          _diamondPcsCtrl.text = diaPcs.toString();
+          _diamondWeightCtrl.text = diaWt.toStringAsFixed(3);
+          _diamondPriceCtrl.text = diaPrice.toStringAsFixed(2);
+          _vaPercentCtrl.text = va.toStringAsFixed(2);
+          _mcCtrl.text = mc.toStringAsFixed(2);
+
           if (bRate > 0) {
             _boardRateCtrl.text = bRate.toStringAsFixed(2);
           } else if (_latestRates != null && _latestRates!.gold22k > 0) {
             _boardRateCtrl.text = _latestRates!.gold22k.toStringAsFixed(2);
           }
 
-          _gstRateCtrl.text = (data['gst_rate'] as num?)?.toStringAsFixed(1) ?? '3.0';
-          _recalcItemTotal();
+          _gstRateCtrl.text = gst.toStringAsFixed(1);
         });
-        _showSnackBar('Barcode "$barcode" loaded successfully!');
+
+        _recalcItemTotal();
+        final srcTag = data['source'] == 'PREPARE_SKU_LOT' ? 'Prepare Lot' : 'Tagged Stock';
+        _showSnackBar('Loaded "$fetchedSku" ($prodName, ${net.toStringAsFixed(3)}g) from $srcTag!');
       } else {
-        _showSnackBar(res['message']?.toString() ?? 'Barcode not found in tagged stock.', isError: true);
+        _showSnackBar(res['message']?.toString() ?? 'Barcode / SKU not found in database.', isError: true);
       }
     } catch (e) {
-      setState(() => _isLookingUpBarcode = false);
-      _showSnackBar('Barcode lookup failed: $e', isError: true);
+      if (mounted) {
+        setState(() => _isLookingUpBarcode = false);
+        _showSnackBar('Barcode lookup failed: $e', isError: true);
+      }
     }
+  }
+
+  Future<void> _showSkuPickerDialog() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final token = auth.authToken;
+    if (token == null) return;
+
+    List<Map<String, dynamic>> items = [];
+    bool isDialogLoading = true;
+    String dialogQuery = '';
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            void loadSkus([String q = '']) async {
+              setModalState(() => isDialogLoading = true);
+              final list = await _api.searchAvailableSkusForEstimate(token, query: q);
+              if (ctx.mounted) {
+                setModalState(() {
+                  items = list;
+                  isDialogLoading = false;
+                });
+              }
+            }
+
+            if (isDialogLoading && items.isEmpty && dialogQuery.isEmpty) {
+              loadSkus();
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: GlassTheme.primaryNeon.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.inventory_2_rounded, color: GlassTheme.primaryNeon, size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Select SKU / Lot from Database', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text('Click any inventory item to populate quotation fields', style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 620,
+                height: 480,
+                child: Column(
+                  children: [
+                    TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Search by SKU code, lot number, or product name...',
+                        prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      onChanged: (val) {
+                        dialogQuery = val;
+                        loadSkus(val);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: isDialogLoading
+                          ? const Center(child: CircularProgressIndicator(color: GlassTheme.primaryNeon))
+                          : items.isEmpty
+                              ? const Center(
+                                  child: Text('No matching SKUs or lots found in database.', style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
+                                )
+                              : ListView.separated(
+                                  itemCount: items.length,
+                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  itemBuilder: (context, idx) {
+                                    final item = items[idx];
+                                    final code = item['code']?.toString() ?? '';
+                                    final lotNo = item['lot_number']?.toString() ?? '';
+                                    final pName = item['product_name']?.toString() ?? 'Jewellery';
+                                    final purity = item['purity_name']?.toString() ?? '';
+                                    final netWt = (item['net_weight'] as num?)?.toDouble() ?? 0.0;
+                                    final status = item['status']?.toString() ?? 'IN_STOCK';
+
+                                    return ListTile(
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      title: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFEF3C7),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              code,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF92400E)),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              '$pName ($purity)',
+                                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      subtitle: Text(
+                                        'Lot: $lotNo • Net Wt: ${netWt.toStringAsFixed(3)}g • Status: $status',
+                                        style: const TextStyle(fontSize: 11, color: GlassTheme.textSecondary),
+                                      ),
+                                      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: GlassTheme.textSecondary),
+                                      onTap: () {
+                                        Navigator.of(ctx).pop();
+                                        _lookupBarcode(code);
+                                      },
+                                    );
+                                  },
+                                ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _addItemToEstimate() {
@@ -1262,7 +1442,7 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                             decoration: InputDecoration(
                               labelText: 'SKU / Barcode Number',
-                              hintText: 'Enter SKU (e.g. 27A001)',
+                              hintText: 'Enter SKU (e.g. 27A001) or Lot (e.g. 2627-1)',
                               prefixIcon: const Icon(Icons.barcode_reader, size: 18),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1271,7 +1451,7 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       SizedBox(
                         height: 46,
                         child: ElevatedButton.icon(
@@ -1283,9 +1463,24 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                             backgroundColor: const Color(0xFF2563EB),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
                           ),
                           onPressed: _isLookingUpBarcode ? null : _lookupBarcode,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: 46,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.list_alt_rounded, size: 18),
+                          label: const Text('Browse SKUs', style: TextStyle(fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF2563EB),
+                            side: const BorderSide(color: Color(0xFF93C5FD)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          onPressed: _showSkuPickerDialog,
                         ),
                       ),
                     ],
@@ -1298,31 +1493,31 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                       children: [
                         Expanded(child: _buildUniformTextField(_productNameCtrl, 'Product Name', Icons.inventory_2_outlined)),
                         const SizedBox(width: 10),
+                        Expanded(child: _buildUniformTextField(_subProductNameCtrl, 'Design / Style', Icons.style_outlined)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
                         Expanded(child: _buildUniformTextField(_purityNameCtrl, 'Purity', Icons.verified_outlined)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
+                        const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_grossWeightCtrl, 'Gross Wt (g)', Icons.scale_outlined, isNumeric: true)),
-                        const SizedBox(width: 10),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
                         Expanded(child: _buildUniformTextField(_netWeightCtrl, 'Net Wt (g) *', Icons.balance_outlined, isNumeric: true)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
+                        const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_boardRateCtrl, 'Board Rate (₹/g)', Icons.currency_rupee_rounded, isNumeric: true)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildUniformTextField(_vaPercentCtrl, 'VA %', Icons.percent_rounded, isNumeric: true)),
                       ],
                     ),
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Expanded(child: _buildUniformTextField(_mcCtrl, 'MC (₹)', Icons.handyman_outlined, isNumeric: true)),
+                        Expanded(child: _buildUniformTextField(_vaPercentCtrl, 'VA %', Icons.percent_rounded, isNumeric: true)),
                         const SizedBox(width: 10),
-                        Expanded(child: _buildUniformTextField(_gstRateCtrl, 'GST %', Icons.receipt_outlined, isNumeric: true)),
+                        Expanded(child: _buildUniformTextField(_mcCtrl, 'MC (₹)', Icons.handyman_outlined, isNumeric: true)),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -1331,6 +1526,14 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                         Expanded(child: _buildUniformTextField(_stonePriceCtrl, 'Stone Price (₹)', Icons.diamond_outlined, isNumeric: true)),
                         const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_diamondPriceCtrl, 'Diamond Price (₹)', Icons.auto_awesome_rounded, isNumeric: true)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(child: _buildUniformTextField(_gstRateCtrl, 'GST %', Icons.receipt_outlined, isNumeric: true)),
+                        const SizedBox(width: 10),
+                        Expanded(child: Container()),
                       ],
                     ),
                   ] else ...[
@@ -1339,23 +1542,23 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                       children: [
                         Expanded(child: _buildUniformTextField(_productNameCtrl, 'Product Name', Icons.inventory_2_outlined)),
                         const SizedBox(width: 10),
+                        Expanded(child: _buildUniformTextField(_subProductNameCtrl, 'Design / Style', Icons.style_outlined)),
+                        const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_purityNameCtrl, 'Purity', Icons.verified_outlined)),
                         const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_grossWeightCtrl, 'Gross Wt (g)', Icons.scale_outlined, isNumeric: true)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildUniformTextField(_netWeightCtrl, 'Net Wt (g) *', Icons.balance_outlined, isNumeric: true)),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
+                        Expanded(child: _buildUniformTextField(_netWeightCtrl, 'Net Wt (g) *', Icons.balance_outlined, isNumeric: true)),
+                        const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_boardRateCtrl, 'Board Rate (₹/g)', Icons.currency_rupee_rounded, isNumeric: true)),
                         const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_vaPercentCtrl, 'VA % (Wastage)', Icons.percent_rounded, isNumeric: true)),
                         const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_mcCtrl, 'Making Charges (₹)', Icons.handyman_outlined, isNumeric: true)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildUniformTextField(_gstRateCtrl, 'GST %', Icons.receipt_outlined, isNumeric: true)),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -1365,7 +1568,9 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                         const SizedBox(width: 10),
                         Expanded(child: _buildUniformTextField(_diamondPriceCtrl, 'Diamond Price (₹)', Icons.auto_awesome_rounded, isNumeric: true)),
                         const SizedBox(width: 10),
-                        Expanded(flex: 2, child: Container()), // spacing filler
+                        Expanded(child: _buildUniformTextField(_gstRateCtrl, 'GST %', Icons.receipt_outlined, isNumeric: true)),
+                        const SizedBox(width: 10),
+                        Expanded(child: Container()), // spacing filler
                       ],
                     ),
                   ],

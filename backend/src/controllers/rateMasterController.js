@@ -4,7 +4,7 @@ import { ensureTableOnce } from "../utils/schemaCache.js";
 /**
  * Ensures daily_rates and supporting tables exist in the tenant Turso database.
  */
-async function ensureDailyRatesTable(client, tenantUrl = "") {
+export async function ensureDailyRatesTable(client, tenantUrl = "") {
   const key = tenantUrl || client?.config?.url || "default";
   await ensureTableOnce(`daily_rates:${key}`, async () => {
     // Ensure metals and purities exist first

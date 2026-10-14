@@ -1733,16 +1733,46 @@ class ApiService {
     return data['estimates'] as List<EstimateRecord>? ?? [];
   }
 
-  /// Looks up barcode / SKU directly from tagged stock inventory
+  /// Looks up barcode / SKU directly from tagged stock inventory or prepare SKU lots
   Future<Map<String, dynamic>> lookupBarcodeForEstimate(String token, String sku) async {
     try {
-      final res = await http.get(
-        Uri.parse('$baseUrl/tenant/estimates/barcode-lookup/${Uri.encodeComponent(sku.trim())}'),
-        headers: _headers(token),
+      final clean = sku.trim();
+      final uri = Uri.parse('$baseUrl/tenant/estimates/barcode-lookup').replace(
+        queryParameters: {'sku': clean},
       );
-      return jsonDecode(res.body);
+      final res = await http.get(uri, headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data is Map<String, dynamic>) return data;
+      } else {
+        try {
+          final data = jsonDecode(res.body);
+          if (data is Map<String, dynamic>) return data;
+        } catch (_) {}
+      }
+      return {'success': false, 'message': 'Barcode "$clean" was not found in database.'};
     } catch (e) {
-      return {'success': false, 'message': e.toString()};
+      return {'success': false, 'message': 'Barcode lookup error: $e'};
+    }
+  }
+
+  /// Searches available SKUs / lots from database for quick picking in Estimate
+  Future<List<Map<String, dynamic>>> searchAvailableSkusForEstimate(String token, {String query = ''}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/tenant/estimates/search-skus').replace(
+        queryParameters: query.trim().isNotEmpty ? {'q': query.trim()} : null,
+      );
+      final res = await http.get(uri, headers: _headers(token));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['success'] == true && data['items'] is List) {
+          return List<Map<String, dynamic>>.from(data['items']);
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error searching SKUs: $e");
+      return [];
     }
   }
 

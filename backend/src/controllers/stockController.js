@@ -4,7 +4,7 @@ import { ensureTableOnce } from "../utils/schemaCache.js";
 /**
  * Helper to ensure prepare_sku_lots table and sub-tables exist in tenant Turso DB.
  */
-async function ensureStockTables(client, tenantUrl = "") {
+export async function ensureStockTables(client, tenantUrl = "") {
   const key = tenantUrl || client?.config?.url || "default";
   await ensureTableOnce(`stock:${key}`, async () => {
     await client.execute(`

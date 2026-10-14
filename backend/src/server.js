@@ -114,6 +114,7 @@ import {
 import {
   getEstimatesController,
   getBarcodeForEstimateController,
+  searchAvailableSkusController,
   createEstimateController,
   updateEstimateController,
   deleteEstimateController,
@@ -340,7 +341,9 @@ app.delete("/api/tenant/system-controls/:id", requireAuth, deleteSystemControlCo
 
 // Tenant Estimates / Quotation Routes (3rd Main Menu)
 app.get("/api/tenant/estimates", requireAuth, getEstimatesController);
+app.get("/api/tenant/estimates/search-skus", requireAuth, searchAvailableSkusController);
 app.get("/api/tenant/estimates/barcode-lookup/:sku", requireAuth, getBarcodeForEstimateController);
+app.get("/api/tenant/estimates/barcode-lookup", requireAuth, getBarcodeForEstimateController);
 app.post("/api/tenant/estimates", requireAuth, createEstimateController);
 app.put("/api/tenant/estimates/:id", requireAuth, updateEstimateController);
 app.delete("/api/tenant/estimates/bulk/date-range", requireAuth, bulkDeleteEstimatesByDateController);

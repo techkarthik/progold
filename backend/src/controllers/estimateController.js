@@ -1,6 +1,8 @@
 import { createTenantClient } from "../config/turso.js";
 import { ensureTableOnce } from "../utils/schemaCache.js";
 import { ensureStockTaggingTables } from "./stockTaggingController.js";
+import { ensureDailyRatesTable } from "./rateMasterController.js";
+import { ensureStockTables } from "./stockController.js";
 
 /**
  * Helper to ensure estimates table exists in tenant Turso DB.
@@ -147,131 +149,339 @@ export async function getEstimatesController(req, res) {
 }
 
 /**
+ * Generates permutations of a SKU/Barcode/Lot code to guarantee match regardless of formatting.
+ */
+function generateSkuVariants(input) {
+  if (!input) return [];
+  const raw = String(input).trim();
+  const upper = raw.toUpperCase();
+  const variants = new Set([raw, upper]);
+
+  const withoutSku = upper.replace(/^SKU[-\s_:]*/i, "").trim();
+  const withoutLot = upper.replace(/^LOT[-\s_:]*/i, "").trim();
+
+  if (withoutSku) {
+    variants.add(withoutSku);
+    variants.add(`SKU-${withoutSku}`);
+    variants.add(`SKU${withoutSku}`);
+  }
+  if (withoutLot) {
+    variants.add(withoutLot);
+    variants.add(`LOT-${withoutLot}`);
+    variants.add(`LOT${withoutLot}`);
+  }
+
+  return Array.from(variants);
+}
+
+/**
  * GET /api/tenant/estimates/barcode-lookup/:sku
- * Fetches barcode info directly from stock_tagged_items joined with product, category, purity, live rate.
+ * GET /api/tenant/estimates/barcode-lookup?sku=...
+ * Fetches barcode info directly from stock_tagged_items or prepare_sku_lots joined with product, category, purity, live rate.
  */
 export async function getBarcodeForEstimateController(req, res) {
   try {
-    const { sku } = req.params;
+    const rawSku = req.query?.sku || req.params?.sku;
     const { turso_url, turso_token } = req.tenant;
     const client = createTenantClient(turso_url, turso_token);
-    await ensureStockTaggingTables(client, turso_url);
 
-    if (!sku || !sku.trim()) {
+    await ensureStockTaggingTables(client, turso_url);
+    await ensureDailyRatesTable(client, turso_url);
+    await ensureStockTables(client, turso_url);
+
+    if (!rawSku || !String(rawSku).trim()) {
       return res.status(400).json({ success: false, message: "SKU / Barcode code is required." });
     }
 
-    const cleanSku = sku.trim();
+    const cleanSku = String(rawSku).trim();
+    const variants = generateSkuVariants(cleanSku);
+    const placeholders = variants.map(() => "?").join(",");
+    const withoutPrefix = cleanSku.toUpperCase().replace(/^(SKU|LOT)[-\s_:]*/i, "").trim();
+    const likePattern = `%${withoutPrefix || cleanSku}%`;
 
-    // Query stock_tagged_items with joins (flexible matching by SKU code, case-insensitive, with/without prefix)
-    const tagResult = await client.execute({
-      sql: `
-        SELECT 
-          t.*,
-          p.productname,
-          p.hsncode,
-          p.categoryid,
-          c.catname,
-          c.categorytype,
-          c.sgst_per,
-          c.cgst_per,
-          c.igst_per,
-          pu.purityname,
-          pu.purityshortname,
-          pu.purity,
-          pu.metalid,
-          d.designername,
-          d.designershortname,
-          COALESCE(dr.rate, 0.0) AS live_board_rate
-        FROM stock_tagged_items t
-        LEFT JOIN products p ON t.productid = p.productid
-        LEFT JOIN categories c ON p.categoryid = c.id
-        LEFT JOIN purities pu ON t.purityid = pu.purityid
-        LEFT JOIN designers d ON t.designerid = d.designerid
-        LEFT JOIN (
-          SELECT dr1.purityid, dr1.rate
-          FROM daily_rates dr1
-          WHERE dr1.id = (
-            SELECT MAX(dr2.id) FROM daily_rates dr2 WHERE dr2.purityid = dr1.purityid
-          )
-        ) dr ON t.purityid = dr.purityid
-        WHERE UPPER(TRIM(t.sku_code)) = UPPER(?)
-           OR UPPER(TRIM(t.sku_code)) = UPPER(REPLACE(?, 'SKU-', ''))
-           OR UPPER(TRIM(t.sku_code)) = UPPER(REPLACE(?, 'SKU', ''))
-           OR UPPER(TRIM(t.sku_code)) = UPPER('SKU-' || ?)
-        ORDER BY t.item_id DESC
-        LIMIT 1;
-      `,
-      args: [cleanSku, cleanSku, cleanSku, cleanSku],
-    });
+    // 1. First, search stock_tagged_items (tagged items)
+    const tagSql = `
+      SELECT 
+        t.*,
+        p.productname,
+        p.hsncode,
+        p.categoryid,
+        c.catname,
+        c.categorytype,
+        c.sgst_per,
+        c.cgst_per,
+        c.igst_per,
+        pu.purityname,
+        pu.purityshortname,
+        pu.purity,
+        pu.metalid,
+        d.designername,
+        d.designershortname,
+        COALESCE(dr.rate, 0.0) AS live_board_rate
+      FROM stock_tagged_items t
+      LEFT JOIN products p ON t.productid = p.productid
+      LEFT JOIN categories c ON p.categoryid = c.id
+      LEFT JOIN purities pu ON t.purityid = pu.purityid
+      LEFT JOIN designers d ON t.designerid = d.designerid
+      LEFT JOIN (
+        SELECT dr1.purityid, dr1.rate
+        FROM daily_rates dr1
+        WHERE dr1.id = (
+          SELECT MAX(dr2.id) FROM daily_rates dr2 WHERE dr2.purityid = dr1.purityid
+        )
+      ) dr ON t.purityid = dr.purityid
+      WHERE UPPER(TRIM(t.sku_code)) IN (${placeholders})
+         OR UPPER(TRIM(t.lot_number)) IN (${placeholders})
+         OR UPPER(TRIM(t.sku_code)) LIKE ?
+         OR UPPER(TRIM(t.lot_number)) LIKE ?
+      ORDER BY 
+        CASE 
+          WHEN UPPER(TRIM(t.sku_code)) = UPPER(?) THEN 0
+          WHEN UPPER(TRIM(t.lot_number)) = UPPER(?) THEN 1
+          WHEN UPPER(TRIM(t.sku_code)) IN (${placeholders}) THEN 2
+          ELSE 3
+        END,
+        t.item_id ASC
+      LIMIT 1;
+    `;
 
-    if (tagResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Barcode / SKU '${cleanSku}' was not found in tagged stock inventory. Please ensure the item has been tagged in Stock Barcode Tagging Station.`,
+    const tagArgs = [
+      ...variants,
+      ...variants,
+      likePattern,
+      likePattern,
+      cleanSku,
+      cleanSku,
+      ...variants
+    ];
+
+    const tagResult = await client.execute({ sql: tagSql, args: tagArgs });
+
+    if (tagResult.rows.length > 0) {
+      const item = tagResult.rows[0];
+
+      // Determine current Board Rate (prefer latest daily_rates, fallback to tag's board_rate or 0)
+      const boardRate = Number(item.live_board_rate) > 0 ? Number(item.live_board_rate) : (Number(item.board_rate) || 0.0);
+      
+      // Determine GST Rate (sum of sgst_per + cgst_per from category, or igst_per, fallback 3.0%)
+      const catGst = (Number(item.sgst_per) || 0.0) + (Number(item.cgst_per) || 0.0);
+      const gstRate = catGst > 0 ? catGst : (Number(item.igst_per) > 0 ? Number(item.igst_per) : 3.0);
+
+      const grossWeight = Number(item.gross_weight) || 0.0;
+      const netWeight = Number(item.net_weight) || 0.0;
+      const vaPercent = Number(item.sales_va_percent) || 0.0;
+      const mc = Number(item.sales_m_charge) || (Number(item.sales_mc_per_gram) * netWeight) || 0.0;
+      const stoneSellingPrice = Number(item.stone_amt) || 0.0;
+      const diamondSellingPrice = Number(item.diamond_amt) || 0.0;
+
+      // Subtotals & totals
+      const metalValue = netWeight * boardRate;
+      const vaCharges = metalValue * (vaPercent / 100.0);
+      const taxableSubtotal = metalValue + vaCharges + mc + stoneSellingPrice + diamondSellingPrice;
+      const gstAmount = taxableSubtotal * (gstRate / 100.0);
+      const totalAmount = taxableSubtotal + gstAmount;
+
+      return res.json({
+        success: true,
+        data: {
+          source: "STOCK_TAGGED",
+          sku_code: item.sku_code,
+          item_id: item.item_id,
+          lot_id: item.lot_id,
+          lot_number: item.lot_number,
+          productname: item.productname || "Jewellery Item",
+          subproductname: item.stylename ? `${item.stylename}` : (item.sizename ? `${item.sizename}` : ""),
+          category_name: item.catname || "",
+          purityname: item.purityname || "22K Gold (916)",
+          purityshortname: item.purityshortname || "22K",
+          metalid: item.metalid || "G",
+          gross_weight: grossWeight,
+          net_weight: netWeight,
+          stone_pcs: Number(item.stone_pcs) || 0,
+          stone_weight: Number(item.stone_weight) || 0.0,
+          stone_selling_price: stoneSellingPrice,
+          diamond_pcs: Number(item.diamond_pcs) || 0,
+          diamond_weight: Number(item.diamond_weight) || 0.0,
+          diamond_selling_price: diamondSellingPrice,
+          va_percent: vaPercent,
+          mc: mc,
+          board_rate: boardRate,
+          metal_value: metalValue,
+          va_charges: vaCharges,
+          taxable_amount: taxableSubtotal,
+          gst_rate: gstRate,
+          gst_amount: gstAmount,
+          total_amount: totalAmount,
+          huid: item.huid || "",
+          designername: item.designername || "",
+          designershortname: item.designershortname || "",
+        },
       });
     }
 
-    const item = tagResult.rows[0];
+    // 2. If not found in tagged stock, fallback to prepare_sku_lots (source lots before tagging)
+    const lotSql = `
+      SELECT 
+        l.*,
+        p.productname,
+        p.hsncode,
+        p.categoryid,
+        c.catname,
+        c.categorytype,
+        c.sgst_per,
+        c.cgst_per,
+        c.igst_per,
+        pu.purityname,
+        pu.purityshortname,
+        pu.purity,
+        pu.metalid,
+        d.designername,
+        d.designershortname,
+        COALESCE(dr.rate, 0.0) AS live_board_rate
+      FROM prepare_sku_lots l
+      LEFT JOIN products p ON l.productid = p.productid
+      LEFT JOIN categories c ON p.categoryid = c.id
+      LEFT JOIN purities pu ON l.purityid = pu.purityid
+      LEFT JOIN designers d ON l.designerid = d.designerid
+      LEFT JOIN (
+        SELECT dr1.purityid, dr1.rate
+        FROM daily_rates dr1
+        WHERE dr1.id = (
+          SELECT MAX(dr2.id) FROM daily_rates dr2 WHERE dr2.purityid = dr1.purityid
+        )
+      ) dr ON l.purityid = dr.purityid
+      WHERE UPPER(TRIM(l.lot_number)) IN (${placeholders})
+         OR UPPER(TRIM(l.lot_number)) LIKE ?
+      ORDER BY 
+        CASE WHEN UPPER(TRIM(l.lot_number)) = UPPER(?) THEN 0 ELSE 1 END,
+        l.lot_id DESC
+      LIMIT 1;
+    `;
 
-    // Determine current Board Rate (prefer latest daily_rates, fallback to tag's board_rate or 0)
-    const boardRate = Number(item.live_board_rate) > 0 ? Number(item.live_board_rate) : (Number(item.board_rate) || 0.0);
-    
-    // Determine GST Rate (sum of sgst_per + cgst_per from category, or igst_per, fallback 3.0%)
-    const catGst = (Number(item.sgst_per) || 0.0) + (Number(item.cgst_per) || 0.0);
-    const gstRate = catGst > 0 ? catGst : (Number(item.igst_per) > 0 ? Number(item.igst_per) : 3.0);
+    const lotArgs = [...variants, likePattern, cleanSku];
+    const lotResult = await client.execute({ sql: lotSql, args: lotArgs });
 
-    const grossWeight = Number(item.gross_weight) || 0.0;
-    const netWeight = Number(item.net_weight) || 0.0;
-    const vaPercent = Number(item.sales_va_percent) || 0.0;
-    const mc = Number(item.sales_m_charge) || (Number(item.sales_mc_per_gram) * netWeight) || 0.0;
-    const stoneSellingPrice = Number(item.stone_amt) || 0.0;
-    const diamondSellingPrice = Number(item.diamond_amt) || 0.0;
+    if (lotResult.rows.length > 0) {
+      const lot = lotResult.rows[0];
 
-    // Calculation
-    const metalValue = netWeight * boardRate;
-    const vaCharges = metalValue * (vaPercent / 100.0);
-    const taxableSubtotal = metalValue + vaCharges + mc + stoneSellingPrice + diamondSellingPrice;
-    const gstAmount = taxableSubtotal * (gstRate / 100.0);
-    const totalAmount = taxableSubtotal + gstAmount;
+      const boardRate = Number(lot.live_board_rate) > 0 ? Number(lot.live_board_rate) : (Number(lot.rate) || 0.0);
+      const catGst = (Number(lot.sgst_per) || 0.0) + (Number(lot.cgst_per) || 0.0);
+      const gstRate = catGst > 0 ? catGst : (Number(lot.igst_per) > 0 ? Number(lot.igst_per) : 3.0);
 
-    return res.json({
-      success: true,
-      data: {
-        sku_code: item.sku_code,
-        item_id: item.item_id,
-        lot_id: item.lot_id,
-        lot_number: item.lot_number,
-        productname: item.productname || "Jewellery Item",
-        subproductname: item.stylename ? `${item.stylename}` : (item.sizename ? `${item.sizename}` : ""),
-        category_name: item.catname || "",
-        purityname: item.purityname || "22K Gold (916)",
-        purityshortname: item.purityshortname || "22K",
-        metalid: item.metalid || "G",
-        gross_weight: grossWeight,
-        net_weight: netWeight,
-        stone_pcs: Number(item.stone_pcs) || 0,
-        stone_weight: Number(item.stone_weight) || 0.0,
-        stone_selling_price: stoneSellingPrice,
-        diamond_pcs: Number(item.diamond_pcs) || 0,
-        diamond_weight: Number(item.diamond_weight) || 0.0,
-        diamond_selling_price: diamondSellingPrice,
-        va_percent: vaPercent,
-        mc: mc,
-        board_rate: boardRate,
-        metal_value: metalValue,
-        va_charges: vaCharges,
-        taxable_amount: taxableSubtotal,
-        gst_rate: gstRate,
-        gst_amount: gstAmount,
-        total_amount: totalAmount,
-        huid: item.huid || "",
-        designername: item.designername || "",
-        designershortname: item.designershortname || "",
-      },
+      const grossWeight = Number(lot.total_gross_weight) || 0.0;
+      const netWeight = Number(lot.total_net_weight) || 0.0;
+      const vaPercent = 8.0; // Sensible default wastage
+      const mc = 0.0;
+      const stoneSellingPrice = Number(lot.total_stone_amount) || 0.0;
+      const diamondSellingPrice = Number(lot.total_diamond_amount) || 0.0;
+
+      const metalValue = netWeight * boardRate;
+      const vaCharges = metalValue * (vaPercent / 100.0);
+      const taxableSubtotal = metalValue + vaCharges + mc + stoneSellingPrice + diamondSellingPrice;
+      const gstAmount = taxableSubtotal * (gstRate / 100.0);
+      const totalAmount = taxableSubtotal + gstAmount;
+
+      return res.json({
+        success: true,
+        data: {
+          source: "PREPARE_SKU_LOT",
+          sku_code: lot.lot_number,
+          item_id: null,
+          lot_id: lot.lot_id,
+          lot_number: lot.lot_number,
+          productname: lot.productname || "Jewellery Item",
+          subproductname: "",
+          category_name: lot.catname || "",
+          purityname: lot.purityname || "22K Gold (916)",
+          purityshortname: lot.purityshortname || "22K",
+          metalid: lot.metalid || "G",
+          gross_weight: grossWeight,
+          net_weight: netWeight,
+          stone_pcs: Number(lot.total_stone_pcs) || 0,
+          stone_weight: Number(lot.total_stone_weight) || 0.0,
+          stone_selling_price: stoneSellingPrice,
+          diamond_pcs: Number(lot.total_diamond_pcs) || 0,
+          diamond_weight: Number(lot.total_diamond_weight) || 0.0,
+          diamond_selling_price: diamondSellingPrice,
+          va_percent: vaPercent,
+          mc: mc,
+          board_rate: boardRate,
+          metal_value: metalValue,
+          va_charges: vaCharges,
+          taxable_amount: taxableSubtotal,
+          gst_rate: gstRate,
+          gst_amount: gstAmount,
+          total_amount: totalAmount,
+          huid: "",
+          designername: lot.designername || "",
+          designershortname: lot.designershortname || "",
+        },
+      });
+    }
+
+    return res.status(404).json({
+      success: false,
+      message: `Barcode / SKU '${cleanSku}' was not found in tagged stock inventory or Prepare SKU lots. Please check the code.`,
     });
   } catch (error) {
     console.error("getBarcodeForEstimate error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * GET /api/tenant/estimates/search-skus
+ * Returns list of available SKUs and lots for quick lookup/selection in Estimate screen.
+ */
+export async function searchAvailableSkusController(req, res) {
+  try {
+    const { q = "" } = req.query;
+    const { turso_url, turso_token } = req.tenant;
+    const client = createTenantClient(turso_url, turso_token);
+
+    await ensureStockTaggingTables(client, turso_url);
+    await ensureStockTables(client, turso_url);
+
+    const term = `%${String(q).trim()}%`;
+
+    // Query tagged items
+    const taggedRes = await client.execute({
+      sql: `
+        SELECT 
+          t.item_id,
+          t.sku_code,
+          t.lot_number,
+          p.productname,
+          pu.purityname,
+          t.net_weight,
+          t.gross_weight,
+          t.board_rate,
+          t.status
+        FROM stock_tagged_items t
+        LEFT JOIN products p ON t.productid = p.productid
+        LEFT JOIN purities pu ON t.purityid = pu.purityid
+        WHERE t.sku_code LIKE ? OR t.lot_number LIKE ? OR p.productname LIKE ?
+        ORDER BY t.item_id DESC
+        LIMIT 25;
+      `,
+      args: [term, term, term],
+    });
+
+    const items = taggedRes.rows.map((r) => ({
+      type: "TAG",
+      code: r.sku_code,
+      lot_number: r.lot_number,
+      product_name: r.productname || "Jewellery Item",
+      purity_name: r.purityname || "22K",
+      net_weight: Number(r.net_weight) || 0.0,
+      gross_weight: Number(r.gross_weight) || 0.0,
+      board_rate: Number(r.board_rate) || 0.0,
+      status: r.status,
+    }));
+
+    return res.json({ success: true, items });
+  } catch (error) {
+    console.error("searchAvailableSkus error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 }
