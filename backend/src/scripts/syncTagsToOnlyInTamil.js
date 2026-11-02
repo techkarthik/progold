@@ -107,6 +107,7 @@ async function run() {
     await syncTableNoFK(srcClient, tgtClient, t, {
       dealer_accode: "DEALER_DEFAULT",
       dealer_name: "Standard Dealer",
+      designer_name: "Standard Designer",
       purity_name: "22KT",
       category_name: "GOLD ORNAMENTS 22K",
       product_name: "Malai",
