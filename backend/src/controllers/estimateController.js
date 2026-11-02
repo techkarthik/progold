@@ -3,6 +3,7 @@ import { ensureTableOnce } from "../utils/schemaCache.js";
 import { ensureStockTaggingTables } from "./stockTaggingController.js";
 import { ensureDailyRatesTable } from "./rateMasterController.js";
 import { ensureStockTables } from "./stockController.js";
+import { ensureInventoryTables } from "./inventoryMasterController.js";
 
 /**
  * Helper to ensure estimates table exists in tenant Turso DB.
@@ -164,11 +165,37 @@ function generateSkuVariants(input) {
     variants.add(withoutSku);
     variants.add(`SKU-${withoutSku}`);
     variants.add(`SKU${withoutSku}`);
+    variants.add(`SKU ${withoutSku}`);
+    variants.add(`SKU_${withoutSku}`);
   }
   if (withoutLot) {
     variants.add(withoutLot);
     variants.add(`LOT-${withoutLot}`);
     variants.add(`LOT${withoutLot}`);
+    variants.add(`LOT ${withoutLot}`);
+    variants.add(`LOT_${withoutLot}`);
+  }
+
+  // Handle SKU sequence zero padding e.g. 27A1 -> 27A001 or 27A01 -> 27A001
+  const alphaNumMatch = upper.match(/^([0-9]{2}[A-Z]+)([0-9]+)$/);
+  if (alphaNumMatch) {
+    const prefix = alphaNumMatch[1];
+    const seqNum = parseInt(alphaNumMatch[2], 10);
+    if (!isNaN(seqNum)) {
+      variants.add(`${prefix}${String(seqNum).padStart(3, "0")}`);
+      variants.add(`SKU-${prefix}${String(seqNum).padStart(3, "0")}`);
+    }
+  }
+
+  // Handle piece parts e.g. 2627-1-1 -> 2627-1-001
+  const parts = upper.split(/[-_]/);
+  if (parts.length >= 3) {
+    const lastNum = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(lastNum)) {
+      const basePrefix = parts.slice(0, parts.length - 1).join("-");
+      variants.add(`${basePrefix}-${String(lastNum).padStart(3, "0")}`);
+      variants.add(`SKU-${basePrefix}-${String(lastNum).padStart(3, "0")}`);
+    }
   }
 
   return Array.from(variants);
@@ -177,7 +204,8 @@ function generateSkuVariants(input) {
 /**
  * GET /api/tenant/estimates/barcode-lookup/:sku
  * GET /api/tenant/estimates/barcode-lookup?sku=...
- * Fetches barcode info directly from stock_tagged_items or prepare_sku_lots joined with product, category, purity, live rate.
+ * Fetches barcode info directly from stock_tagged_items, prepare_sku_lots, or products catalog
+ * joined with product, category, purity, live rate.
  */
 export async function getBarcodeForEstimateController(req, res) {
   try {
@@ -185,6 +213,8 @@ export async function getBarcodeForEstimateController(req, res) {
     const { turso_url, turso_token } = req.tenant;
     const client = createTenantClient(turso_url, turso_token);
 
+    // Ensure all required tables and master schemas exist
+    await ensureInventoryTables(client, turso_url);
     await ensureStockTaggingTables(client, turso_url);
     await ensureDailyRatesTable(client, turso_url);
     await ensureStockTables(client, turso_url);
@@ -199,7 +229,7 @@ export async function getBarcodeForEstimateController(req, res) {
     const withoutPrefix = cleanSku.toUpperCase().replace(/^(SKU|LOT)[-\s_:]*/i, "").trim();
     const likePattern = `%${withoutPrefix || cleanSku}%`;
 
-    // 1. First, search stock_tagged_items (tagged items)
+    // 1. First, search stock_tagged_items (tagged items by SKU, lot, item_id, HUID)
     const tagSql = `
       SELECT 
         t.*,
@@ -232,14 +262,18 @@ export async function getBarcodeForEstimateController(req, res) {
       ) dr ON t.purityid = dr.purityid
       WHERE UPPER(TRIM(t.sku_code)) IN (${placeholders})
          OR UPPER(TRIM(t.lot_number)) IN (${placeholders})
+         OR CAST(t.item_id AS TEXT) = ?
+         OR UPPER(TRIM(t.huid)) = UPPER(?)
          OR UPPER(TRIM(t.sku_code)) LIKE ?
          OR UPPER(TRIM(t.lot_number)) LIKE ?
       ORDER BY 
         CASE 
           WHEN UPPER(TRIM(t.sku_code)) = UPPER(?) THEN 0
           WHEN UPPER(TRIM(t.lot_number)) = UPPER(?) THEN 1
-          WHEN UPPER(TRIM(t.sku_code)) IN (${placeholders}) THEN 2
-          ELSE 3
+          WHEN CAST(t.item_id AS TEXT) = ? THEN 2
+          WHEN UPPER(TRIM(t.huid)) = UPPER(?) THEN 3
+          WHEN UPPER(TRIM(t.sku_code)) IN (${placeholders}) THEN 4
+          ELSE 5
         END,
         t.item_id ASC
       LIMIT 1;
@@ -248,8 +282,12 @@ export async function getBarcodeForEstimateController(req, res) {
     const tagArgs = [
       ...variants,
       ...variants,
+      cleanSku,
+      cleanSku,
       likePattern,
       likePattern,
+      cleanSku,
+      cleanSku,
       cleanSku,
       cleanSku,
       ...variants
@@ -268,7 +306,9 @@ export async function getBarcodeForEstimateController(req, res) {
       const gstRate = catGst > 0 ? catGst : (Number(item.igst_per) > 0 ? Number(item.igst_per) : 3.0);
 
       const grossWeight = Number(item.gross_weight) || 0.0;
-      const netWeight = Number(item.net_weight) || 0.0;
+      let netWeight = Number(item.net_weight) || 0.0;
+      if (netWeight <= 0 && grossWeight > 0) netWeight = grossWeight;
+
       const vaPercent = Number(item.sales_va_percent) || 0.0;
       const mc = Number(item.sales_m_charge) || (Number(item.sales_mc_per_gram) * netWeight) || 0.0;
       const stoneSellingPrice = Number(item.stone_amt) || 0.0;
@@ -351,14 +391,19 @@ export async function getBarcodeForEstimateController(req, res) {
         )
       ) dr ON l.purityid = dr.purityid
       WHERE UPPER(TRIM(l.lot_number)) IN (${placeholders})
+         OR CAST(l.lot_id AS TEXT) = ?
          OR UPPER(TRIM(l.lot_number)) LIKE ?
       ORDER BY 
-        CASE WHEN UPPER(TRIM(l.lot_number)) = UPPER(?) THEN 0 ELSE 1 END,
+        CASE 
+          WHEN UPPER(TRIM(l.lot_number)) = UPPER(?) THEN 0 
+          WHEN CAST(l.lot_id AS TEXT) = ? THEN 1
+          ELSE 2 
+        END,
         l.lot_id DESC
       LIMIT 1;
     `;
 
-    const lotArgs = [...variants, likePattern, cleanSku];
+    const lotArgs = [...variants, cleanSku, likePattern, cleanSku, cleanSku];
     const lotResult = await client.execute({ sql: lotSql, args: lotArgs });
 
     if (lotResult.rows.length > 0) {
@@ -369,7 +414,9 @@ export async function getBarcodeForEstimateController(req, res) {
       const gstRate = catGst > 0 ? catGst : (Number(lot.igst_per) > 0 ? Number(lot.igst_per) : 3.0);
 
       const grossWeight = Number(lot.total_gross_weight) || 0.0;
-      const netWeight = Number(lot.total_net_weight) || 0.0;
+      let netWeight = Number(lot.total_net_weight) || 0.0;
+      if (netWeight <= 0 && grossWeight > 0) netWeight = grossWeight;
+
       const vaPercent = 8.0; // Sensible default wastage
       const mc = 0.0;
       const stoneSellingPrice = Number(lot.total_stone_amount) || 0.0;
@@ -419,9 +466,94 @@ export async function getBarcodeForEstimateController(req, res) {
       });
     }
 
+    // 3. Fallback to products catalog (for standard product barcode lookup)
+    const prodSql = `
+      SELECT 
+        p.*,
+        c.catname,
+        c.categorytype,
+        c.sgst_per,
+        c.cgst_per,
+        c.igst_per,
+        pu.purityname,
+        pu.purityshortname,
+        pu.purity,
+        pu.metalid,
+        COALESCE(dr.rate, 0.0) AS live_board_rate
+      FROM products p
+      LEFT JOIN categories c ON p.categoryid = c.id
+      LEFT JOIN purities pu ON c.purityid = pu.purityid
+      LEFT JOIN (
+        SELECT dr1.purityid, dr1.rate
+        FROM daily_rates dr1
+        WHERE dr1.id = (
+          SELECT MAX(dr2.id) FROM daily_rates dr2 WHERE dr2.purityid = dr1.purityid
+        )
+      ) dr ON c.purityid = dr.purityid
+      WHERE UPPER(TRIM(p.productname)) IN (${placeholders})
+         OR CAST(p.productid AS TEXT) = ?
+         OR UPPER(TRIM(p.hsncode)) = UPPER(?)
+         OR UPPER(TRIM(p.productname)) LIKE ?
+      ORDER BY 
+        CASE 
+          WHEN UPPER(TRIM(p.productname)) = UPPER(?) THEN 0
+          WHEN CAST(p.productid AS TEXT) = ? THEN 1
+          ELSE 2
+        END,
+        p.productid ASC
+      LIMIT 1;
+    `;
+
+    const prodArgs = [...variants, cleanSku, cleanSku, likePattern, cleanSku, cleanSku];
+    const prodResult = await client.execute({ sql: prodSql, args: prodArgs });
+
+    if (prodResult.rows.length > 0) {
+      const prod = prodResult.rows[0];
+      const boardRate = Number(prod.live_board_rate) || 0.0;
+      const catGst = (Number(prod.sgst_per) || 0.0) + (Number(prod.cgst_per) || 0.0);
+      const gstRate = catGst > 0 ? catGst : (Number(prod.igst_per) > 0 ? Number(prod.igst_per) : 3.0);
+
+      return res.json({
+        success: true,
+        data: {
+          source: "PRODUCT_CATALOG",
+          sku_code: cleanSku,
+          item_id: null,
+          lot_id: null,
+          lot_number: "",
+          productname: prod.productname || "Jewellery Item",
+          subproductname: "",
+          category_name: prod.catname || "",
+          purityname: prod.purityname || "22K Gold (916)",
+          purityshortname: prod.purityshortname || "22K",
+          metalid: prod.metalid || "G",
+          gross_weight: 0.0,
+          net_weight: 0.0,
+          stone_pcs: 0,
+          stone_weight: 0.0,
+          stone_selling_price: 0.0,
+          diamond_pcs: 0,
+          diamond_weight: 0.0,
+          diamond_selling_price: 0.0,
+          va_percent: 8.0,
+          mc: 0.0,
+          board_rate: boardRate,
+          metal_value: 0.0,
+          va_charges: 0.0,
+          taxable_amount: 0.0,
+          gst_rate: gstRate,
+          gst_amount: 0.0,
+          total_amount: 0.0,
+          huid: "",
+          designername: "",
+          designershortname: "",
+        },
+      });
+    }
+
     return res.status(404).json({
       success: false,
-      message: `Barcode / SKU '${cleanSku}' was not found in tagged stock inventory or Prepare SKU lots. Please check the code.`,
+      message: `Barcode / SKU '${cleanSku}' was not found in tagged stock inventory, Prepare lots, or Product catalog. Please verify the barcode.`,
     });
   } catch (error) {
     console.error("getBarcodeForEstimate error:", error);
@@ -431,7 +563,7 @@ export async function getBarcodeForEstimateController(req, res) {
 
 /**
  * GET /api/tenant/estimates/search-skus
- * Returns list of available SKUs and lots for quick lookup/selection in Estimate screen.
+ * Returns list of available SKUs, lots, and products for quick lookup/selection in Estimate screen.
  */
 export async function searchAvailableSkusController(req, res) {
   try {
@@ -439,12 +571,13 @@ export async function searchAvailableSkusController(req, res) {
     const { turso_url, turso_token } = req.tenant;
     const client = createTenantClient(turso_url, turso_token);
 
+    await ensureInventoryTables(client, turso_url);
     await ensureStockTaggingTables(client, turso_url);
     await ensureStockTables(client, turso_url);
 
     const term = `%${String(q).trim()}%`;
 
-    // Query tagged items
+    // 1. Query tagged items
     const taggedRes = await client.execute({
       sql: `
         SELECT 
@@ -478,6 +611,45 @@ export async function searchAvailableSkusController(req, res) {
       board_rate: Number(r.board_rate) || 0.0,
       status: r.status,
     }));
+
+    // 2. Also query prepare_sku_lots if results < 25
+    if (items.length < 25) {
+      try {
+        const lotRes = await client.execute({
+          sql: `
+            SELECT 
+              l.lot_id,
+              l.lot_number,
+              p.productname,
+              pu.purityname,
+              l.total_net_weight,
+              l.total_gross_weight,
+              l.status
+            FROM prepare_sku_lots l
+            LEFT JOIN products p ON l.productid = p.productid
+            LEFT JOIN purities pu ON l.purityid = pu.purityid
+            WHERE l.lot_number LIKE ? OR p.productname LIKE ?
+            ORDER BY l.lot_id DESC
+            LIMIT 10;
+          `,
+          args: [term, term],
+        });
+
+        for (const r of lotRes.rows) {
+          items.push({
+            type: "LOT",
+            code: r.lot_number,
+            lot_number: r.lot_number,
+            product_name: r.productname || "Jewellery Item",
+            purity_name: r.purityname || "22K",
+            net_weight: Number(r.total_net_weight) || 0.0,
+            gross_weight: Number(r.total_gross_weight) || 0.0,
+            board_rate: 0.0,
+            status: r.status || "PENDING_SKU",
+          });
+        }
+      } catch (_) {}
+    }
 
     return res.json({ success: true, items });
   } catch (error) {

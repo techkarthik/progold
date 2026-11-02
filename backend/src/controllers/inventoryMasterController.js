@@ -4,7 +4,7 @@ import { ensureTableOnce } from "../utils/schemaCache.js";
 /**
  * Helper to ensure metals, purities, and categories tables exist in the tenant Turso DB.
  */
-async function ensureInventoryTables(client, tenantUrl = "") {
+export async function ensureInventoryTables(client, tenantUrl = "") {
   const key = tenantUrl || client?.config?.url || "default";
   await ensureTableOnce(`inventory_tables:${key}`, async () => {
     // Metals
@@ -85,6 +85,30 @@ async function ensureInventoryTables(client, tenantUrl = "") {
     try {
       await client.execute(`ALTER TABLE categories ADD COLUMN purchaseacname TEXT DEFAULT '';`);
     } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN catname TEXT DEFAULT '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN catcode TEXT DEFAULT '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN categorytype TEXT DEFAULT 'ORNAMENTS';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN sgst_per REAL DEFAULT 1.5;`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN cgst_per REAL DEFAULT 1.5;`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE categories ADD COLUMN igst_per REAL DEFAULT 3.0;`);
+    } catch (_) { }
+    try {
+      await client.execute(`UPDATE categories SET catname = name WHERE (catname IS NULL OR catname = '') AND name IS NOT NULL AND name != '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`UPDATE categories SET catcode = code WHERE (catcode IS NULL OR catcode = '') AND code IS NOT NULL AND code != '';`);
+    } catch (_) { }
 
     // Products (New 4th Master under Inventory)
     await client.execute(`
@@ -106,6 +130,36 @@ async function ensureInventoryTables(client, tenantUrl = "") {
       );
     `);
 
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN productid INTEGER;`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN categoryid INTEGER DEFAULT 0;`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN productname TEXT DEFAULT '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN calctype TEXT DEFAULT 'WEIGHT';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN stocktype TEXT DEFAULT 'SKU';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN havestone_diamond TEXT DEFAULT 'NO';`);
+    } catch (_) { }
+    try {
+      await client.execute(`ALTER TABLE products ADD COLUMN havesubproduct TEXT DEFAULT 'NO';`);
+    } catch (_) { }
+    try {
+      await client.execute(`UPDATE products SET productname = title WHERE (productname IS NULL OR productname = '') AND title IS NOT NULL AND title != '';`);
+    } catch (_) { }
+    try {
+      await client.execute(`UPDATE products SET productid = id WHERE (productid IS NULL OR productid = 0) AND id IS NOT NULL;`);
+    } catch (_) { }
+    try {
+      await client.execute(`UPDATE products SET categoryid = category_id WHERE (categoryid IS NULL OR categoryid = 0) AND category_id IS NOT NULL;`);
+    } catch (_) { }
     try {
       await client.execute(`ALTER TABLE products ADD COLUMN studded TEXT DEFAULT 'N';`);
     } catch (_) { }

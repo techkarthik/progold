@@ -249,9 +249,13 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
     final gst = taxable * (gstRate / 100.0);
     final total = taxable + gst;
 
-    if (mounted) {
-      setState(() {
-        _calculatedItemTotal = total;
+    if (mounted && (_calculatedItemTotal - total).abs() > 0.001) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _calculatedItemTotal = total;
+          });
+        }
       });
     }
   }
@@ -296,6 +300,9 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
 
         final gross = _parseNum(data['gross_weight']);
         final net = _parseNum(data['net_weight']);
+        final effectiveGross = gross > 0 ? gross : net;
+        final effectiveNet = net > 0 ? net : effectiveGross;
+
         final stPcs = _parseInt(data['stone_pcs']);
         final stWt = _parseNum(data['stone_weight']);
         final stPrice = _parseNum(data['stone_selling_price'] ?? data['stone_amt']);
@@ -307,34 +314,48 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
         final bRate = _parseNum(data['board_rate'] ?? data['live_board_rate']);
         final gst = _parseNum(data['gst_rate'], 3.0);
 
-        setState(() {
-          _barcodeCtrl.text = fetchedSku;
-          _productNameCtrl.text = prodName;
-          _subProductNameCtrl.text = subProdName;
-          _purityNameCtrl.text = purityName;
-          _grossWeightCtrl.text = gross > 0 ? gross.toStringAsFixed(3) : net.toStringAsFixed(3);
-          _netWeightCtrl.text = net.toStringAsFixed(3);
-          _stonePcsCtrl.text = stPcs.toString();
-          _stoneWeightCtrl.text = stWt.toStringAsFixed(3);
-          _stonePriceCtrl.text = stPrice.toStringAsFixed(2);
-          _diamondPcsCtrl.text = diaPcs.toString();
-          _diamondWeightCtrl.text = diaWt.toStringAsFixed(3);
-          _diamondPriceCtrl.text = diaPrice.toStringAsFixed(2);
-          _vaPercentCtrl.text = va.toStringAsFixed(2);
-          _mcCtrl.text = mc.toStringAsFixed(2);
+        // Update controllers directly (avoiding reentrant setState crashes)
+        _barcodeCtrl.text = fetchedSku;
+        _productNameCtrl.text = prodName;
+        _subProductNameCtrl.text = subProdName;
+        _purityNameCtrl.text = purityName;
+        _grossWeightCtrl.text = effectiveGross > 0 ? effectiveGross.toStringAsFixed(3) : '0.000';
+        _netWeightCtrl.text = effectiveNet > 0 ? effectiveNet.toStringAsFixed(3) : '0.000';
+        _stonePcsCtrl.text = stPcs.toString();
+        _stoneWeightCtrl.text = stWt.toStringAsFixed(3);
+        _stonePriceCtrl.text = stPrice.toStringAsFixed(2);
+        _diamondPcsCtrl.text = diaPcs.toString();
+        _diamondWeightCtrl.text = diaWt.toStringAsFixed(3);
+        _diamondPriceCtrl.text = diaPrice.toStringAsFixed(2);
+        _vaPercentCtrl.text = va.toStringAsFixed(2);
+        _mcCtrl.text = mc.toStringAsFixed(2);
 
-          if (bRate > 0) {
-            _boardRateCtrl.text = bRate.toStringAsFixed(2);
-          } else if (_latestRates != null && _latestRates!.gold22k > 0) {
-            _boardRateCtrl.text = _latestRates!.gold22k.toStringAsFixed(2);
-          }
+        if (bRate > 0) {
+          _boardRateCtrl.text = bRate.toStringAsFixed(2);
+        } else if (_latestRates != null && _latestRates!.gold22k > 0) {
+          _boardRateCtrl.text = _latestRates!.gold22k.toStringAsFixed(2);
+        }
 
-          _gstRateCtrl.text = gst.toStringAsFixed(1);
-        });
+        _gstRateCtrl.text = gst.toStringAsFixed(1);
 
-        _recalcItemTotal();
-        final srcTag = data['source'] == 'PREPARE_SKU_LOT' ? 'Prepare Lot' : 'Tagged Stock';
-        _showSnackBar('Loaded "$fetchedSku" ($prodName, ${net.toStringAsFixed(3)}g) from $srcTag!');
+        // Compute direct item total
+        final currentNet = effectiveNet;
+        final currentRate = double.tryParse(_boardRateCtrl.text.trim()) ?? 0.0;
+        final metalVal = currentNet * currentRate;
+        final vaVal = metalVal * (va / 100.0);
+        final taxable = metalVal + vaVal + mc + stPrice + diaPrice;
+        final gstVal = taxable * (gst / 100.0);
+        _calculatedItemTotal = taxable + gstVal;
+
+        if (mounted) {
+          setState(() {});
+        }
+
+        final src = data['source']?.toString();
+        final srcTag = src == 'PREPARE_SKU_LOT'
+            ? 'Prepare Lot'
+            : (src == 'PRODUCT_CATALOG' ? 'Catalog Master' : 'Tagged Stock');
+        _showSnackBar('✓ Loaded "$fetchedSku" ($prodName, ${effectiveNet.toStringAsFixed(3)}g) from $srcTag!');
       } else {
         _showSnackBar(res['message']?.toString() ?? 'Barcode / SKU not found in database.', isError: true);
       }
@@ -1440,13 +1461,25 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                           child: TextField(
                             controller: _barcodeCtrl,
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            textInputAction: TextInputAction.search,
                             decoration: InputDecoration(
                               labelText: 'SKU / Barcode Number',
-                              hintText: 'Enter SKU (e.g. 27A001) or Lot (e.g. 2627-1)',
+                              hintText: 'Enter SKU (e.g. 27A001), Lot (e.g. 2627-1), or Item # (e.g. 45)',
                               prefixIcon: const Icon(Icons.barcode_reader, size: 18),
+                              suffixIcon: _barcodeCtrl.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear_rounded, size: 16),
+                                      onPressed: () {
+                                        _barcodeCtrl.clear();
+                                        setState(() {});
+                                      },
+                                    )
+                                  : null,
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             ),
+                            onChanged: (_) => setState(() {}),
+                            onEditingComplete: () => _lookupBarcode(),
                             onSubmitted: (_) => _lookupBarcode(),
                           ),
                         ),
