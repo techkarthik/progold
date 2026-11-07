@@ -376,6 +376,14 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
     bool isDialogLoading = true;
     String dialogQuery = '';
 
+    // Pre-fetch initial items BEFORE opening dialog to prevent illegal setState during build
+    try {
+      items = await _api.searchAvailableSkusForEstimate(token);
+    } catch (_) {}
+    isDialogLoading = false;
+
+    if (!mounted) return;
+
     await showDialog(
       context: context,
       builder: (ctx) {
@@ -390,10 +398,6 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                   isDialogLoading = false;
                 });
               }
-            }
-
-            if (isDialogLoading && items.isEmpty && dialogQuery.isEmpty) {
-              loadSkus();
             }
 
             return AlertDialog(
@@ -417,6 +421,11 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                         Text('Click any inventory item to populate quotation fields', style: TextStyle(fontSize: 11, color: GlassTheme.textSecondary)),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    tooltip: 'Refresh Inventory',
+                    onPressed: () => loadSkus(dialogQuery),
                   ),
                 ],
               ),
@@ -442,8 +451,21 @@ class _EstimateScreenState extends State<EstimateScreen> with SingleTickerProvid
                       child: isDialogLoading
                           ? const Center(child: CircularProgressIndicator(color: GlassTheme.primaryNeon))
                           : items.isEmpty
-                              ? const Center(
-                                  child: Text('No matching SKUs or lots found in database.', style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
+                              ? Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.search_off_rounded, size: 40, color: GlassTheme.textSecondary),
+                                      const SizedBox(height: 8),
+                                      const Text('No matching SKUs or lots found in database.', style: TextStyle(color: GlassTheme.textSecondary, fontSize: 13)),
+                                      const SizedBox(height: 12),
+                                      ElevatedButton.icon(
+                                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                                        label: const Text('Reload All Barcodes'),
+                                        onPressed: () => loadSkus(''),
+                                      ),
+                                    ],
+                                  ),
                                 )
                               : ListView.separated(
                                   itemCount: items.length,

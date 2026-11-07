@@ -575,11 +575,13 @@ export async function searchAvailableSkusController(req, res) {
     await ensureStockTaggingTables(client, turso_url);
     await ensureStockTables(client, turso_url);
 
-    const term = `%${String(q).trim()}%`;
+    const cleanQ = String(q || "").trim();
+    let taggedSql = "";
+    let taggedArgs = [];
 
-    // 1. Query tagged items
-    const taggedRes = await client.execute({
-      sql: `
+    if (cleanQ) {
+      const term = `%${cleanQ}%`;
+      taggedSql = `
         SELECT 
           t.item_id,
           t.sku_code,
@@ -593,12 +595,37 @@ export async function searchAvailableSkusController(req, res) {
         FROM stock_tagged_items t
         LEFT JOIN products p ON t.productid = p.productid
         LEFT JOIN purities pu ON t.purityid = pu.purityid
-        WHERE t.sku_code LIKE ? OR t.lot_number LIKE ? OR p.productname LIKE ?
+        WHERE UPPER(TRIM(t.sku_code)) LIKE UPPER(?) 
+           OR UPPER(TRIM(t.lot_number)) LIKE UPPER(?) 
+           OR UPPER(TRIM(p.productname)) LIKE UPPER(?)
+           OR CAST(t.item_id AS TEXT) LIKE ?
         ORDER BY t.item_id DESC
-        LIMIT 25;
-      `,
-      args: [term, term, term],
-    });
+        LIMIT 50;
+      `;
+      taggedArgs = [term, term, term, term];
+    } else {
+      // When query is empty (Browse all), return all tagged items without WHERE restriction
+      taggedSql = `
+        SELECT 
+          t.item_id,
+          t.sku_code,
+          t.lot_number,
+          p.productname,
+          pu.purityname,
+          t.net_weight,
+          t.gross_weight,
+          t.board_rate,
+          t.status
+        FROM stock_tagged_items t
+        LEFT JOIN products p ON t.productid = p.productid
+        LEFT JOIN purities pu ON t.purityid = pu.purityid
+        ORDER BY t.item_id DESC
+        LIMIT 100;
+      `;
+      taggedArgs = [];
+    }
+
+    const taggedRes = await client.execute({ sql: taggedSql, args: taggedArgs });
 
     const items = taggedRes.rows.map((r) => ({
       type: "TAG",
@@ -612,11 +639,15 @@ export async function searchAvailableSkusController(req, res) {
       status: r.status,
     }));
 
-    // 2. Also query prepare_sku_lots if results < 25
-    if (items.length < 25) {
+    // 2. Also query prepare_sku_lots if results < 50
+    if (items.length < 50) {
       try {
-        const lotRes = await client.execute({
-          sql: `
+        let lotSql = "";
+        let lotArgs = [];
+
+        if (cleanQ) {
+          const term = `%${cleanQ}%`;
+          lotSql = `
             SELECT 
               l.lot_id,
               l.lot_number,
@@ -628,12 +659,33 @@ export async function searchAvailableSkusController(req, res) {
             FROM prepare_sku_lots l
             LEFT JOIN products p ON l.productid = p.productid
             LEFT JOIN purities pu ON l.purityid = pu.purityid
-            WHERE l.lot_number LIKE ? OR p.productname LIKE ?
+            WHERE UPPER(TRIM(l.lot_number)) LIKE UPPER(?) 
+               OR UPPER(TRIM(p.productname)) LIKE UPPER(?)
+               OR CAST(l.lot_id AS TEXT) LIKE ?
             ORDER BY l.lot_id DESC
-            LIMIT 10;
-          `,
-          args: [term, term],
-        });
+            LIMIT 25;
+          `;
+          lotArgs = [term, term, term];
+        } else {
+          lotSql = `
+            SELECT 
+              l.lot_id,
+              l.lot_number,
+              p.productname,
+              pu.purityname,
+              l.total_net_weight,
+              l.total_gross_weight,
+              l.status
+            FROM prepare_sku_lots l
+            LEFT JOIN products p ON l.productid = p.productid
+            LEFT JOIN purities pu ON l.purityid = pu.purityid
+            ORDER BY l.lot_id DESC
+            LIMIT 25;
+          `;
+          lotArgs = [];
+        }
+
+        const lotRes = await client.execute({ sql: lotSql, args: lotArgs });
 
         for (const r of lotRes.rows) {
           items.push({
